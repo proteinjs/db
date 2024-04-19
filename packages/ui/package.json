@@ -1,6 +1,6 @@
 {
     "name": "@proteinjs/db-ui",
-    "version": "1.0.1",
+    "version": "1.0.0",
     "description": "Db ui components",
     "repository": {
         "type": "git",

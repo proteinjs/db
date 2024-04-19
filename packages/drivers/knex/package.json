@@ -1,6 +1,7 @@
 {
     "name": "@proteinjs/db-driver-knex",
-    "version": "1.0.1",
+    "private": true,
+    "version": "1.0.0",
     "description": "Db driver for Knex",
     "repository": {
         "type": "git",

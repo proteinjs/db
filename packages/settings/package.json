@@ -1,6 +1,7 @@
 {
     "name": "@proteinjs/db-settings",
-    "version": "1.0.1",
+    "private": true,
+    "version": "1.0.0",
     "description": "Db settings",
     "repository": {
         "type": "git",
