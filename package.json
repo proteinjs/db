@@ -3,8 +3,8 @@
   "private": true,
   "scripts": {
     "clean-workspace": "workspace clean",
-    "build-workspace": "build-workspace --skip=@proteinjs/db,@proteinjs/db-driver-knex,@proteinjs/db-driver-spanner,@proteinjs/db-settings,@proteinjs/db-ui",
-    "test-workspace": "workspace test --skip=@proteinjs/db,@proteinjs/db-driver-knex,@proteinjs/db-driver-spanner,@proteinjs/db-settings,@proteinjs/db-ui",
+    "build-workspace": "build-workspace --skip=@proteinjs/db-driver-knex,@proteinjs/db-driver-spanner,@proteinjs/db-settings,@proteinjs/db-ui",
+    "test-workspace": "workspace test --skip=@proteinjs/db-driver-knex,@proteinjs/db-driver-spanner,@proteinjs/db-settings,@proteinjs/db-ui",
     "watch-workspace": "watch-workspace"
   },
   "devDependencies": {
