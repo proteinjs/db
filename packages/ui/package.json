@@ -5,14 +5,14 @@
     "description": "Db ui components",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/brentbahry/db.git"
+        "url": "git+https://github.com/proteinjs/db.git"
     },
     "bugs": {
-        "url": "https://github.com/brentbahry/db/issues"
+        "url": "https://github.com/proteinjs/db/issues"
     },
-    "homepage": "https://github.com/brentbahry/db#readme",
+    "homepage": "https://github.com/proteinjs/db#readme",
     "author": "Brent Bahry",
-    "license": "ISC",
+    "license": "MIT",
     "scripts": {
         "clean": "rm -rf dist/ node_modules/ generated/ package-lock.json",
         "build": "reflection-build && tsc",
@@ -23,7 +23,7 @@
         "@emotion/styled": "11.11.0",
         "@mui/icons-material": "5.14.11",
         "@mui/material": "5.14.11",
-        "@proteinjs/db": "1.0.2",
+        "@proteinjs/db": "1.0.3",
         "@proteinjs/reflection": "1.0.2",
         "@proteinjs/ui": "file:../../ui",
         "@proteinjs/util": "1.0.18",
