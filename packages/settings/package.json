@@ -1,8 +1,10 @@
 {
     "name": "@proteinjs/db-settings",
-    "private": true,
     "version": "1.0.1",
     "description": "Db settings",
+    "publishConfig": {
+        "access": "public"
+    },
     "repository": {
         "type": "git",
         "url": "git+https://github.com/brentbahry/db.git"
@@ -16,11 +18,10 @@
     "scripts": {
         "clean": "rm -rf dist/ node_modules/ generated/ package-lock.json",
         "build": "reflection-build && tsc",
-        "watch": "reflection-watch",
-        "test": "jest"
+        "watch": "reflection-watch"
     },
     "dependencies": {
-        "@proteinjs/db": "file:../db",
+        "@proteinjs/db": "1.0.2",
         "@proteinjs/reflection": "1.0.2",
         "@proteinjs/service": "1.0.1",
         "@proteinjs/util": "1.0.18",

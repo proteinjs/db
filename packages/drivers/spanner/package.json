@@ -1,8 +1,10 @@
 {
     "name": "@proteinjs/db-driver-spanner",
-    "private": true,
     "version": "1.0.1",
     "description": "Db driver for Google Spanner",
+    "publishConfig": {
+        "access": "public"
+    },
     "repository": {
         "type": "git",
         "url": "git+https://github.com/brentbahry/db.git"
@@ -21,7 +23,7 @@
     },
     "dependencies": {
         "@google-cloud/spanner": "7.5.0",
-        "@proteinjs/db": "file:../../db",
+        "@proteinjs/db": "1.0.2",
         "@proteinjs/db-query": "1.0.1",
         "@proteinjs/reflection": "1.0.2",
         "@proteinjs/util": "1.0.18"
