@@ -1,6 +1,6 @@
 {
     "name": "@proteinjs/db-ui",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "Db ui components",
     "repository": {
         "type": "git",
@@ -19,14 +19,14 @@
         "test": "jest"
     },
     "dependencies": {
-        "@proteinjs/reflection": "file:../../reflection",
-        "@proteinjs/util": "file:../../util/common",
         "@emotion/react": "11.11.1",
         "@emotion/styled": "11.11.0",
         "@mui/icons-material": "5.14.11",
         "@mui/material": "5.14.11",
         "@proteinjs/db": "file:../db",
+        "@proteinjs/reflection": "file:../../reflection",
         "@proteinjs/ui": "file:../../ui",
+        "@proteinjs/util": "file:../../util/common",
         "moment": "2.29.4",
         "react": "18.2.0",
         "string": "3.3.3",

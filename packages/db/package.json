@@ -1,6 +1,6 @@
 {
     "name": "@proteinjs/db",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "Db",
     "repository": {
         "type": "git",
@@ -19,12 +19,12 @@
         "test": "jest"
     },
     "dependencies": {
-        "@proteinjs/reflection": "file:../../reflection",
-        "@proteinjs/util": "file:../../util/common",
         "@proteinjs/db-query": "file:../query",
+        "@proteinjs/reflection": "file:../../reflection",
         "@proteinjs/serializer": "file:../../serializer",
         "@proteinjs/service": "file:../../service",
         "@proteinjs/user-auth": "file:../../user/auth",
+        "@proteinjs/util": "file:../../util/common",
         "moment": "2.29.4",
         "uuid": "8.3.0"
     },
