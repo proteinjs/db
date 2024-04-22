@@ -1,37 +1,37 @@
 {
-    "name": "@proteinjs/db-query",
-    "version": "1.0.2",
-    "description": "A sql query builder",
-    "publishConfig": {
-        "access": "public"
-    },
-    "repository": {
-        "type": "git",
-        "url": "git+https://github.com/proteinjs/db.git"
-    },
-    "bugs": {
-        "url": "https://github.com/proteinjs/db/issues"
-    },
-    "homepage": "https://github.com/proteinjs/db#readme",
-    "author": "Brent Bahry",
-    "license": "ISC",
-    "scripts": {
-        "clean": "rm -rf dist/ node_modules/ generated/ package-lock.json",
-        "watch": "tsc -w -p .",
-        "build": "tsc",
-        "test": "jest"
-    },
-    "dependencies": {
-        "@proteinjs/serializer": "1.0.1",
-        "@proteinjs/util": "1.0.18"
-    },
-    "devDependencies": {
-        "@types/jest": "29.5.5",
-        "@types/node": "14.0.27",
-        "jest": "29.7.0",
-        "ts-jest": "29.1.1",
-        "typescript": "5.2.2"
-    },
-    "main": "./dist/index.js",
-    "types": "./dist/index.d.ts"
+  "name": "@proteinjs/db-query",
+  "version": "1.0.3",
+  "description": "A sql query builder",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/proteinjs/db.git"
+  },
+  "bugs": {
+    "url": "https://github.com/proteinjs/db/issues"
+  },
+  "homepage": "https://github.com/proteinjs/db#readme",
+  "author": "Brent Bahry",
+  "license": "ISC",
+  "scripts": {
+    "clean": "rm -rf dist/ node_modules/ generated/ package-lock.json",
+    "watch": "tsc -w -p .",
+    "build": "tsc",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@proteinjs/serializer": "1.0.2",
+    "@proteinjs/util": "1.0.18"
+  },
+  "devDependencies": {
+    "@types/jest": "29.5.5",
+    "@types/node": "14.0.27",
+    "jest": "29.7.0",
+    "ts-jest": "29.1.1",
+    "typescript": "5.2.2"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts"
 }
