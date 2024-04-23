@@ -1,6 +1,6 @@
 {
     "name": "@proteinjs/db-ui",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "description": "Db ui components",
     "publishConfig": {
         "access": "public"
@@ -25,9 +25,9 @@
         "@emotion/styled": "11.11.0",
         "@mui/icons-material": "5.14.11",
         "@mui/material": "5.14.11",
-        "@proteinjs/db": "1.0.3",
-        "@proteinjs/reflection": "1.0.2",
-        "@proteinjs/ui": "1.0.1",
+        "@proteinjs/db": "1.0.5",
+        "@proteinjs/reflection": "1.0.6",
+        "@proteinjs/ui": "1.0.3",
         "@proteinjs/util": "1.0.18",
         "moment": "2.29.4",
         "react": "18.2.0",
@@ -35,7 +35,7 @@
         "uuid": "8.3.0"
     },
     "devDependencies": {
-        "@proteinjs/reflection-build": "1.0.5",
+        "@proteinjs/reflection-build": "1.0.10",
         "@types/jest": "29.5.5",
         "@types/node": "14.0.27",
         "@types/react": "18.2.23",
