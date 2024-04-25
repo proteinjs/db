@@ -1,4 +1,4 @@
-import { Logger, Graph } from '@proteinjs/util';
+import { Logger, Graph, isInstanceOf } from '@proteinjs/util';
 import { Statement, StatementConfig, StatementParamManager } from './StatementFactory';
 
 export interface Select<T> {
@@ -127,7 +127,7 @@ export class QueryBuilder<T = any> {
     const childIds: string[] = [];
     // Process each element in the provided array.
     elements.forEach((element) => {
-      if (element instanceof QueryBuilder) {
+      if (isInstanceOf(element, QueryBuilder)) {
         // Handling of QueryBuilder instances, assuming it's the same instance.
         if (this.currentContextIds.length > 0) {
           childIds.unshift(this.currentContextIds.pop() as string);
@@ -230,7 +230,7 @@ export class QueryBuilder<T = any> {
           const resolvedFieldName = node.field && config.resolveFieldName ? config.resolveFieldName(this.tableName, node.field) : node.field;
           if (node.empty) {
             return `1=0`;
-          } else if (node.value instanceof QueryBuilder) {
+          } else if (isInstanceOf(node.value, QueryBuilder)) {
             let valueStr = paramManager.parameterize(node.value, 'subquery');
             return `${resolvedFieldName} ${node.operator} ${valueStr}`;
           } else if (node.operator === 'IN' || node.operator === 'NOT IN') {

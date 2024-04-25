@@ -1,24 +1,25 @@
 import knex from 'knex';
+import { isInstanceOf } from '@proteinjs/util';
 import { BinaryColumn, BooleanColumn, Column, DateColumn, DateTimeColumn, DecimalColumn, FloatColumn, IntegerColumn, StringColumn, UuidColumn } from '@proteinjs/db';
 
 export const getColumnFactory = (column: Column<any, any>): ColumnFactory => {
-  if (column instanceof IntegerColumn)
+  if (isInstanceOf(column, IntegerColumn))
 		return new IntegerColumnFactory();
-	else if (column instanceof UuidColumn)
+	else if (isInstanceOf(column, UuidColumn))
 		return new UuidColumnFactory();
-	else if (column instanceof StringColumn)
+	else if (isInstanceOf(column, StringColumn))
 		return new StringColumnFactory();
-	else if (column instanceof FloatColumn)
+	else if (isInstanceOf(column, FloatColumn))
 		return new FloatColumnFactory();
-	else if (column instanceof DecimalColumn)
+	else if (isInstanceOf(column, DecimalColumn))
 		return new DecimalColumnFactory();
-	else if (column instanceof BooleanColumn)
+	else if (isInstanceOf(column, BooleanColumn))
 		return new BooleanColumnFactory();
-	else if (column instanceof DateColumn)
+	else if (isInstanceOf(column, DateColumn))
 		return new DateColumnFactory();
-	else if (column instanceof DateTimeColumn)
+	else if (isInstanceOf(column, DateTimeColumn))
 		return new DateTimeColumnFactory();
-	else if (column instanceof BinaryColumn)
+	else if (isInstanceOf(column, BinaryColumn))
 		return new BinaryColumnFactory();
 
 	throw new Error(`Invalid column type: ${column.constructor.name}, must extend a base column`);

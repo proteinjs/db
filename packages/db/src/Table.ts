@@ -5,6 +5,8 @@ import { TableSerializerId } from './serializers/TableSerializer';
 import { QueryBuilder } from '@proteinjs/db-query';
 import { Identity, TableOperationsAuth } from './auth/TableAuth';
 
+export const isTable = (obj: any) => obj.__serializerId === TableSerializerId;
+
 export const getTables = <T extends Record = any>() => SourceRepository.get().objects<Table<T>>('@proteinjs/db/Table');
 
 export const tableByName = (name: string) => {

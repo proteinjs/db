@@ -1,3 +1,4 @@
+import { isInstanceOf } from '@proteinjs/util';
 import { QueryBuilder } from './QueryBuilder';
 
 export interface Statement {
@@ -157,7 +158,7 @@ export class StatementParamManager {
    * Process and parameterize values (ie. condition values), including handling subqueries
   */
   parameterize(value: any, valueType: string): string {
-    if (value instanceof QueryBuilder) {
+    if (isInstanceOf(value, QueryBuilder)) {
       // Generate SQL for the subquery
       const subQuery = value.toSql(this.config);
       if (this.config.useParams) {

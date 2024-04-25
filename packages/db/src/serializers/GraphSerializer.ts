@@ -1,5 +1,5 @@
 import { ThirdPartyLibCustomSerializer } from '@proteinjs/serializer';
-import { graphSerializer, Graph } from '@proteinjs/util';
+import { graphSerializer, Graph, isInstanceOf } from '@proteinjs/util';
 
 type SerializedGraph = {
   value: string,
@@ -9,7 +9,7 @@ export class GraphSerializer implements ThirdPartyLibCustomSerializer {
   id = '@proteinjs/serializer/GraphSerializer';
   
   matches(obj: any) {
-    return obj instanceof Graph;
+    return isInstanceOf(obj, Graph);
   }
 
   serialize(graph: Graph): SerializedGraph {
