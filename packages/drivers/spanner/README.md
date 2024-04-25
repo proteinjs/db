@@ -1,6 +1,8 @@
 # Test Environment Setup
 
-1. Setup the [Spanner Emulator](https://cloud.google.com/spanner/docs/emulator#linux-macos) on your local machine
+1. [Install Docker](https://docs.docker.com/desktop/install/mac-install/)
+2. [Install gcloud cli](https://cloud.google.com/sdk/docs/install)
+3. Setup the [Spanner Emulator](https://cloud.google.com/spanner/docs/emulator#linux-macos) on your local machine
     - Setup emulator in Docker
       ```
       docker pull gcr.io/cloud-spanner-emulator/emulator
