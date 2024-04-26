@@ -9,7 +9,10 @@ export class SchemaMetadata {
   ){}
 
   async tableExists(table: Table<any>): Promise<boolean> {
-		const qb = new QueryBuilder('TABLES').condition({ field: 'TABLE_NAME', operator: '=', value: table.name });
+		const qb = new QueryBuilder('TABLES')
+      .condition({ field: 'TABLE_SCHEMA', operator: '=', value: this.dbDriver.getDbName() })
+      .condition({ field: 'TABLE_NAME', operator: '=', value: table.name })
+    ;
 		const generateStatement = (config: ParameterizationConfig) => qb.toSql({ dbName: 'INFORMATION_SCHEMA', ...config });
 		const results = await this.dbDriver.runQuery(generateStatement);
 		return results.length > 0;

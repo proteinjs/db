@@ -16,7 +16,7 @@
     "author": "Brent Bahry",
     "license": "ISC",
     "scripts": {
-        "clean": "rm -rf dist/ node_modules/ generated/ package-lock.json",
+        "clean": "rm -rf dist/ node_modules/ generated/",
         "build": "reflection-build && tsc",
         "watch": "reflection-watch",
         "test": "jest"
