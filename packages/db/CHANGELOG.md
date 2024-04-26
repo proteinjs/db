@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.9](https://github.com/proteinjs/db/compare/@proteinjs/db@1.0.8...@proteinjs/db@1.0.9) (2024-04-26)
+
+
+### Bug Fixes
+
+* remove `instanceof` calls in .tsx files; add ui hiding config to corresponding columns ([19c818e](https://github.com/proteinjs/db/commit/19c818eed74197834474231042f51da0a9fe21ed))
+
+
+
+
+
 ## [1.0.8](https://github.com/proteinjs/db/compare/@proteinjs/db@1.0.7...@proteinjs/db@1.0.8) (2024-04-26)
 
 
