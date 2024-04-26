@@ -20,7 +20,13 @@ export class StringColumn<T = string> implements Column<T, string> {
 		public name: string,
 		public options?: ColumnOptions,
 		public maxLength: number|'MAX' = 255
-	) {}
+	) {
+		this.options = Object.assign({
+			ui: {
+				hidden: maxLength === 'MAX',
+			},
+		}, options);
+	}
 }
 
 export class FloatColumn implements Column<number, number> {
@@ -92,7 +98,13 @@ export class BinaryColumn implements Column<number, number> {
 		public name: string,
 		public options?: ColumnOptions,
 		public maxLength?: number|'MAX',
-	) {}
+	) {
+		this.options = Object.assign({
+			ui: {
+				hidden: true,
+			},
+		}, options);
+	}
 }
 
 export class UuidColumn extends StringColumn {
@@ -100,7 +112,12 @@ export class UuidColumn extends StringColumn {
 		name: string,
 		options?: ColumnOptions
 	) {
-		super(name, Object.assign({ defaultValue: async () => uuidv1().split('-').join('') }, options), 36);
+		super(name, Object.assign({ 
+			defaultValue: async () => uuidv1(),
+			ui: {
+				hidden: true,
+			},
+		}, options), 36);
 	}
 }
 
@@ -118,7 +135,11 @@ export class ObjectColumn<T> extends StringColumn<T> {
 		name: string,
 		options?: ColumnOptions
 	) {
-		super(name, options, 'MAX'); // MAX is 4gb
+		super(name, Object.assign({
+			ui: {
+				hidden: true,
+			},
+		}, options), 'MAX'); // MAX is 4gb
 	}
 
 	async serialize(fieldValue: T|undefined): Promise<string|undefined> {
@@ -141,7 +162,11 @@ export class ArrayColumn<T> extends ObjectColumn<T[]> {
 		name: string,
 		options?: ColumnOptions
 	) {
-		super(name, options);
+		super(name, Object.assign({
+			ui: {
+				hidden: true,
+			},
+		}, options));
 	}
 }
 
@@ -160,7 +185,11 @@ export class ReferenceArrayColumn<T extends Record> extends ObjectColumn<Referen
 		public cascadeDelete: boolean,
 		options?: ColumnOptions
 	) {
-		super(name, options);
+		super(name, Object.assign({
+			ui: {
+				hidden: true,
+			},
+		}, options));
 	}
 
 	async serialize(fieldValue: ReferenceArray<T>|undefined): Promise<string|undefined> {
@@ -217,7 +246,11 @@ export class ReferenceColumn<T extends Record> extends StringColumn<Reference<T>
 		public cascadeDelete: boolean,
 		options?: ColumnOptions
 	) {
-		super(name, options, 36);
+		super(name, Object.assign({
+			ui: {
+				hidden: true,
+			},
+		}, options), 36);
 	}
 
 	async serialize(fieldValue: Reference<T>|undefined): Promise<string|undefined> {

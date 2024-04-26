@@ -16,7 +16,8 @@ export class QueryTableLoader<T extends Record> implements TableLoader<T> {
       .paginate({ start: startIndex, end: endIndex })
     ;
     const queryPromise = db.query(this.table, qb);
-    const rowCountPromise = db.getRowCount(this.table, qb);
+    const rowcountQb = new QueryBuilderFactory().getQueryBuilder(this.table, this.query);
+    const rowCountPromise = db.getRowCount(this.table, rowcountQb);
     const [rows, totalCount] = await Promise.all([queryPromise, rowCountPromise]);
     return { rows, totalCount };
   }

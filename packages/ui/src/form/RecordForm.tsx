@@ -1,9 +1,9 @@
 import React from 'react'
 import S from 'string'
 import moment from 'moment'
-import { StringUtil } from '@proteinjs/util'
+import { StringUtil, isInstanceOf } from '@proteinjs/util'
 import { Form, Fields, textField, FormButtons } from '@proteinjs/ui'
-import { Table, Record, Column, getDbService, DateTimeColumn, ReferenceArrayColumn, BooleanColumn, StringColumn } from '@proteinjs/db'
+import { Table, Record, Column, getDbService, DateTimeColumn, BooleanColumn } from '@proteinjs/db'
 import { recordTableLink } from '../pages/RecordTablePage'
 import { recordFormLink } from '../pages/RecordFormPage'
 import { getRecordFormCustomization } from './RecordFormCustomization'
@@ -39,9 +39,6 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
         continue;
 
       if (column.options?.ui?.hidden)
-        continue;
-
-      if ((column instanceof StringColumn && column.maxLength === 'MAX') || column instanceof ReferenceArrayColumn)
         continue;
 
       columns[columnPropertyName] = column;
@@ -171,7 +168,7 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
       let fieldValue = (record as any)[columnPropertyName];
       if (moment.isMoment(fieldValue))
         fieldValue = fieldValue.format('ddd, MMM Do YY, h:mm:ss a');
-      else if (column instanceof BooleanColumn)
+      else if (isInstanceOf(column, BooleanColumn))
         fieldValue = fieldValue == true ? 'True' : 'False';
       
       field.value = fieldValue;
@@ -179,7 +176,7 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
         columnPropertyName == 'created' || 
         columnPropertyName == 'updated' || 
         columnPropertyName == 'id' ||
-        column instanceof DateTimeColumn
+        isInstanceOf(column, DateTimeColumn)
       ) {
         if (!field.accessibility)
           field.accessibility = {};
