@@ -1,6 +1,6 @@
 {
     "name": "@proteinjs/db",
-    "version": "1.0.7",
+    "version": "1.0.8",
     "description": "Db",
     "publishConfig": {
         "access": "public"
