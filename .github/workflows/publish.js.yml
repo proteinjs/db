@@ -1,4 +1,4 @@
-name: Build and Publish
+name: Publish
 
 on:
   push:
@@ -30,6 +30,11 @@ jobs:
         with:
           fetch-depth: "0"
 
+      - name: Configure git user
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -42,6 +47,18 @@ jobs:
       - name: Build packages
         run: |
           npm run build-workspace
+
+      - name: Commit package-locks
+        run: |
+          git add .
+          if git diff --staged --exit-code; then
+            echo "No changes to commit."
+          else
+            git fetch origin main
+            git rebase origin/main
+            git commit -m "chore(version) update package-locks [skip ci]"
+            git push origin main
+          fi
 
       - name: 'Set up Cloud SDK'
         uses: 'google-github-actions/setup-gcloud@v2'
@@ -81,8 +98,6 @@ jobs:
 
       - name: Version and Publish
         run: |
-          git config user.name github-actions
-          git config user.email github-actions@github.com
           npx lerna publish --yes --no-private
         env:
           NPM_TOKEN: ${{secrets.NPM_TOKEN}}
