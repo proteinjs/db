@@ -6,7 +6,7 @@ on:
       - main
 
 jobs:
-  build:
+  publish:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -54,9 +54,9 @@ jobs:
           if git diff --staged --exit-code; then
             echo "No changes to commit."
           else
+            git commit -m "chore(version) update package-locks [skip ci]"
             git fetch origin main
             git rebase origin/main
-            git commit -m "chore(version) update package-locks [skip ci]"
             git push origin main
           fi
 
