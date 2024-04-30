@@ -31,7 +31,7 @@ const buttons: FormButtons<UuidFields> = {
 			variant: 'contained',
 		},
 		onClick: async (fields: UuidFields, buttons: FormButtons<UuidFields>) => {
-			fields.uuid.field.value = uuidv1().split('-').join('');
+			fields.uuid.field.value = uuidv1();
 		},
 	},
 };
