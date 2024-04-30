@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.12](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.0.11...@proteinjs/db-ui@1.0.12) (2024-04-30)
+
+
+### Bug Fixes
+
+* updated `UuidGeneratorPage` to use standard id formatting ([4ebce0a](https://github.com/proteinjs/db/commit/4ebce0a7e92fa4d05ddf552b5d41e47f96019808))
+
+
+
+
+
 ## [1.0.8](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.0.7...@proteinjs/db-ui@1.0.8) (2024-04-26)
 
 
