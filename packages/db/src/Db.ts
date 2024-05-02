@@ -56,7 +56,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
         if (!Db.defaultDbDriver) {
             const defaultDbDriverFactory = SourceRepository.get().object<DefaultDbDriverFactory>('@proteinjs/db/DefaultDbDriverFactory');
             if (!defaultDbDriverFactory)
-                throw new Error(`Unable to find a @proteinjs/db/DefaultDbDriver implementation. Either implement DefaultDbDriverFactory or pass in a db driver when instantiating Db.`);
+                throw new Error(`Unable to find a @proteinjs/db/DefaultDbDriverFactory implementation. Either implement DefaultDbDriverFactory or pass in a db driver when instantiating Db.`);
 
             Db.defaultDbDriver = defaultDbDriverFactory.getDbDriver();
         }
