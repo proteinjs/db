@@ -1,6 +1,6 @@
 import { Database, Instance, Spanner } from '@google-cloud/spanner';
 import { DbDriver, DbDriverStatementConfig, TableManager } from '@proteinjs/db';
-import { SpannerConfig, getSpannerConfig } from './SpannerConfig';
+import { SpannerConfig } from './SpannerConfig';
 import { Logger } from '@proteinjs/util';
 import { Statement } from '@proteinjs/db-query';
 import { SpannerSchemaOperations } from './SpannerSchemaOperations';
@@ -14,8 +14,8 @@ export class SpannerDriver implements DbDriver {
 	private logger = new Logger(this.constructor.name);
 	private config: SpannerConfig;
 
-	constructor(config?: SpannerConfig) {
-		this.config = config ? config : getSpannerConfig();
+	constructor(config: SpannerConfig) {
+		this.config = config;
 	}
 
 	private getSpanner(): Spanner {

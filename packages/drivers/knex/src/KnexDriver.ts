@@ -1,6 +1,6 @@
 import knex from 'knex';
 import { DbDriver, DbDriverStatementConfig, SerializedRecord, TableManager } from '@proteinjs/db';
-import { KnexConfig, getKnexConfig } from './KnexConfig';
+import { KnexConfig } from './KnexConfig';
 import { Logger } from '@proteinjs/util';
 import { Statement } from '@proteinjs/db-query';
 import { KnexSchemaOperations } from './KnexSchemaOperations';
@@ -12,8 +12,8 @@ export class KnexDriver implements DbDriver {
 	private config: KnexConfig;
 	private knexConfig: any;
 
-	constructor(config?: KnexConfig) {
-		this.config = config ? config : getKnexConfig();
+	constructor(config: KnexConfig) {
+		this.config = config;
 		this.knexConfig = {
 			client: 'mysql',
 			connection: {

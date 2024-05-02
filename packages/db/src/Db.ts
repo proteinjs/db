@@ -17,7 +17,11 @@ export const getSystemDb = <R extends Record = Record>() => new Db<R>(undefined,
 
 export type DbDriverStatementConfig = ParameterizationConfig & { prefixTablesWithDb?: boolean }
 
-export interface DbDriver extends Loadable {
+export interface DefaultDbDriverFactory extends Loadable {
+    getDbDriver(): DbDriver;
+}
+
+export interface DbDriver {
     getDbName(): string;
     createDbIfNotExists(): Promise<void>;
     start?(): Promise<void>;
@@ -28,7 +32,7 @@ export interface DbDriver extends Loadable {
 }
 
 export class Db<R extends Record = Record> implements DbService<R> {
-    private static globalDbDriver: DbDriver;
+    private static defaultDbDriver: DbDriver;
     private dbDriver: DbDriver;
     private logger = new Logger(this.constructor.name);
     private statementConfigFactory: StatementConfigFactory;
@@ -44,18 +48,20 @@ export class Db<R extends Record = Record> implements DbService<R> {
         getTable?: (tableName: string) => Table<any>,
         private ignoreAuth?: boolean
     ) {
-        this.dbDriver = dbDriver ? dbDriver : this.getGlobalDbDriver();
+        this.dbDriver = dbDriver ? dbDriver : this.getDefaultDbDriver();
         this.statementConfigFactory = new StatementConfigFactory(this.dbDriver.getDbName(), getTable);
     }
 
-    private getGlobalDbDriver(): DbDriver {
-        if (!Db.globalDbDriver) {
-            Db.globalDbDriver = SourceRepository.get().object<DbDriver>('@proteinjs/db/DbDriver');
-            if (!Db.globalDbDriver)
-                throw new Error(`Unable to find @proteinjs/db/DbDriver implementation. Make sure you've included one as a package dependency.`);
+    private getDefaultDbDriver(): DbDriver {
+        if (!Db.defaultDbDriver) {
+            const defaultDbDriverFactory = SourceRepository.get().object<DefaultDbDriverFactory>('@proteinjs/db/DefaultDbDriverFactory');
+            if (!defaultDbDriverFactory)
+                throw new Error(`Unable to find a @proteinjs/db/DefaultDbDriver implementation. Either implement DefaultDbDriverFactory or pass in a db driver when instantiating Db.`);
+
+            Db.defaultDbDriver = defaultDbDriverFactory.getDbDriver();
         }
 
-        return Db.globalDbDriver;
+        return Db.defaultDbDriver;
     }
 
     async init(): Promise<void> {
@@ -108,6 +114,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
         if (!query)
             qb.condition({ field: 'id', operator: '=', value: recordCopy.id as T[keyof T] });
             
+        delete serializedRecord['id'];
         const generateUpdate = (config: DbDriverStatementConfig) => new StatementFactory<T>().update(table.name, serializedRecord as Partial<T>, qb, this.statementConfigFactory.getStatementConfig(config));
         return await this.dbDriver.runDml(generateUpdate);
     }

@@ -1,5 +1,5 @@
 import { Logger } from '@proteinjs/util';
-import { Column, Table, getTables, tableByName } from '../Table';
+import { Column, Table, getTables } from '../Table';
 import { SchemaOperations, TableChanges } from './SchemaOperations';
 import { SchemaMetadata } from './SchemaMetadata';
 import { DbDriver } from '../Db';
