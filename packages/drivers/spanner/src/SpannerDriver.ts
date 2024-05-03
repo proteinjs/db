@@ -19,9 +19,12 @@ export class SpannerDriver implements DbDriver {
 	}
 
 	private getSpanner(): Spanner {
-		if (!SpannerDriver.SPANNER)
-			SpannerDriver.SPANNER = new Spanner({ projectId: this.config.projectId });
-
+		if (!SpannerDriver.SPANNER) {
+			if (this.config.spannerOptions)
+				SpannerDriver.SPANNER = new Spanner(Object.assign({ projectId: this.config.projectId }, this.config.spannerOptions));
+			else
+				SpannerDriver.SPANNER = new Spanner({ projectId: this.config.projectId });
+		}
 
 		return SpannerDriver.SPANNER;
 	}
