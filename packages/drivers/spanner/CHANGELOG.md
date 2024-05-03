@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.1.0](https://github.com/brentbahry/db/compare/@proteinjs/db-driver-spanner@1.0.11...@proteinjs/db-driver-spanner@1.1.0) (2024-05-03)
+
+
+### Features
+
+* updated `SpannerConfig` to include `SpannerOptions` ([53d9aae](https://github.com/brentbahry/db/commit/53d9aaeb401b7a1272e3b66df448352de2281226))
+
+
+
+
+
 ## [1.0.11](https://github.com/brentbahry/db/compare/@proteinjs/db-driver-spanner@1.0.10...@proteinjs/db-driver-spanner@1.0.11) (2024-05-02)
 
 
