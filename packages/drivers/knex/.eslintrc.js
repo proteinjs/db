@@ -6,7 +6,7 @@ module.exports = {
   ignorePatterns: ['**/dist/*', '**/node_modules/*'],
   rules: {
     'prettier/prettier': ['error'],
-    curly: ['error', 'multi-or-nest'],
+    curly: ['error'],
     'eol-last': ['error', 'always'],
     'keyword-spacing': ['error', { before: true }],
     'no-undef': 'off',
