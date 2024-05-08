@@ -1,33 +1,39 @@
 import { Logger } from '@proteinjs/util';
-import { Table, SchemaOperations, TableChanges, StatementFactory, AlterTableParams, StatementUtil, getColumnByName } from '@proteinjs/db';
+import {
+  Table,
+  SchemaOperations,
+  TableChanges,
+  StatementFactory,
+  AlterTableParams,
+  StatementUtil,
+  getColumnByName,
+} from '@proteinjs/db';
 import { SpannerDriver } from './SpannerDriver';
 import { SpannerColumnTypeFactory } from './SpannerColumnTypeFactory';
 
 export class SpannerSchemaOperations implements SchemaOperations {
   private logger = new Logger(this.constructor.name);
 
-  constructor(
-    private spannerDriver: SpannerDriver
-  ){}
+  constructor(private spannerDriver: SpannerDriver) {}
 
   async createTable(table: Table<any>) {
-    const indexes: { name?: string, columns: string|string[], unique?: boolean }[] = [];
-    for (let index of table.indexes) {
+    const indexes: { name?: string; columns: string | string[]; unique?: boolean }[] = [];
+    for (const index of table.indexes) {
       indexes.push({ name: index.name, columns: index.columns as string[] });
     }
 
-    const serializedColumns: { name: string, type: string, nullable?: boolean }[] = [];
-    const foreignKeys: { table: string, column: string, referencedByColumn: string }[] = [];
+    const serializedColumns: { name: string; type: string; nullable?: boolean }[] = [];
+    const foreignKeys: { table: string; column: string; referencedByColumn: string }[] = [];
     for (const columnPropertyName in table.columns) {
       const column = table.columns[columnPropertyName];
       const columnType = new SpannerColumnTypeFactory().getType(column);
       serializedColumns.push({ name: column.name, type: columnType, nullable: column.options?.nullable });
-      this.logger.info(`[${table.name}] Creating column: ${column.name} (${column.constructor.name})`)
+      this.logger.info(`[${table.name}] Creating column: ${column.name} (${column.constructor.name})`);
       if (column.options?.unique?.unique) {
         indexes.push({ name: column.options.unique.indexName, columns: column.name, unique: true });
         this.logger.info(`[${table.name}.${column.name}] Adding unique constraint`);
       }
-  
+
       if (column.options?.references) {
         foreignKeys.push({ table: column.options.references.table, column: 'id', referencedByColumn: column.name });
         this.logger.info(`[${table.name}.${column.name}] Adding foreign key -> ${column.options.references.table}.id`);
@@ -36,12 +42,16 @@ export class SpannerSchemaOperations implements SchemaOperations {
     const createTableSql = new StatementFactory().createTable(table.name, serializedColumns, 'id', foreignKeys).sql;
     await this.spannerDriver.runUpdateSchema(createTableSql);
 
-    for (let index of indexes) {
+    for (const index of indexes) {
       const createIndexSql = new StatementFactory().createIndex(index, table.name).sql;
       const indexName = StatementUtil.getIndexName(table.name, index);
-      this.logger.info(`[${table.name}] Creating index: ${indexName} (${typeof index.columns === 'string' ? index.columns : index.columns.join(', ')})`);
+      this.logger.info(
+        `[${table.name}] Creating index: ${indexName} (${typeof index.columns === 'string' ? index.columns : index.columns.join(', ')})`
+      );
       await this.spannerDriver.runUpdateSchema(createIndexSql);
-      this.logger.info(`[${table.name}] Created index: ${indexName} (${typeof index.columns === 'string' ? index.columns : index.columns.join(', ')})`);
+      this.logger.info(
+        `[${table.name}] Created index: ${indexName} (${typeof index.columns === 'string' ? index.columns : index.columns.join(', ')})`
+      );
     }
   }
 
@@ -55,7 +65,7 @@ export class SpannerSchemaOperations implements SchemaOperations {
     };
     const indexesToDrop = tableChanges.indexesToDrop;
     const indexesToAdd = tableChanges.indexesToCreate;
-		for (const columnPropertyName of tableChanges.columnsToCreate) {
+    for (const columnPropertyName of tableChanges.columnsToCreate) {
       const column = table.columns[columnPropertyName];
       const columnType = new SpannerColumnTypeFactory().getType(column);
       alterParams.columnsToAdd?.push({ name: column.name, type: columnType, nullable: column.options?.nullable });
@@ -64,9 +74,13 @@ export class SpannerSchemaOperations implements SchemaOperations {
         indexesToAdd.push({ name: column.options.unique.indexName, columns: column.name, unique: true });
         this.logger.info(`[${table.name}.${column.name}] Adding unique constraint`);
       }
-  
+
       if (column.options?.references && tableChanges.columnsWithForeignKeysToCreate.includes(column.name)) {
-        alterParams.foreignKeysToAdd?.push({ table: column.options.references.table, column: 'id', referencedByColumn: column.name });
+        alterParams.foreignKeysToAdd?.push({
+          table: column.options.references.table,
+          column: 'id',
+          referencedByColumn: column.name,
+        });
         this.logger.info(`[${table.name}.${column.name}] Adding foreign key -> ${column.options.references.table}.id`);
       }
     }
@@ -78,7 +92,9 @@ export class SpannerSchemaOperations implements SchemaOperations {
 
     for (const foreignKey of tableChanges.foreignKeysToDrop) {
       alterParams.foreignKeysToDrop?.push(foreignKey);
-      this.logger.info(`[${table.name}.${foreignKey.referencedByColumn}] Dropping foreign key -> ${foreignKey.table}.${foreignKey.column}`);
+      this.logger.info(
+        `[${table.name}.${foreignKey.referencedByColumn}] Dropping foreign key -> ${foreignKey.table}.${foreignKey.column}`
+      );
     }
 
     for (const columnTypeChange of tableChanges.columnTypeChanges) {
@@ -101,22 +117,31 @@ export class SpannerSchemaOperations implements SchemaOperations {
     }
 
     const alterStatements = new StatementFactory().alterTable(alterParams);
-    for (let alterStatement of alterStatements)
+    for (const alterStatement of alterStatements) {
       await this.spannerDriver.runUpdateSchema(alterStatement.sql);
-
-    for (let index of tableChanges.indexesToDrop) {
-      const dropIndexSql = new StatementFactory().dropIndex(index, table.name).sql;
-      this.logger.info(`[${table.name}] Dropping index: ${index.name} (${typeof index.columns === 'string' ? index.columns : index.columns.join(', ')})`);
-      await this.spannerDriver.runUpdateSchema(dropIndexSql);
-      this.logger.info(`[${table.name}] Dropped index: ${index.name} (${typeof index.columns === 'string' ? index.columns : index.columns.join(', ')})`);
     }
 
-    for (let index of tableChanges.indexesToCreate) {
+    for (const index of tableChanges.indexesToDrop) {
+      const dropIndexSql = new StatementFactory().dropIndex(index, table.name).sql;
+      this.logger.info(
+        `[${table.name}] Dropping index: ${index.name} (${typeof index.columns === 'string' ? index.columns : index.columns.join(', ')})`
+      );
+      await this.spannerDriver.runUpdateSchema(dropIndexSql);
+      this.logger.info(
+        `[${table.name}] Dropped index: ${index.name} (${typeof index.columns === 'string' ? index.columns : index.columns.join(', ')})`
+      );
+    }
+
+    for (const index of tableChanges.indexesToCreate) {
       const createIndexSql = new StatementFactory().createIndex(index, table.name).sql;
       const indexName = StatementUtil.getIndexName(table.name, index);
-      this.logger.info(`[${table.name}] Creating index: ${indexName} (${typeof index.columns === 'string' ? index.columns : index.columns.join(', ')})`);
+      this.logger.info(
+        `[${table.name}] Creating index: ${indexName} (${typeof index.columns === 'string' ? index.columns : index.columns.join(', ')})`
+      );
       await this.spannerDriver.runUpdateSchema(createIndexSql);
-      this.logger.info(`[${table.name}] Created index: ${indexName} (${typeof index.columns === 'string' ? index.columns : index.columns.join(', ')})`);
+      this.logger.info(
+        `[${table.name}] Created index: ${indexName} (${typeof index.columns === 'string' ? index.columns : index.columns.join(', ')})`
+      );
     }
-	}
+  }
 }

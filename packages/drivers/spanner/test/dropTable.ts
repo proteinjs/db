@@ -7,20 +7,29 @@ export const getDropTable = (spannerDriver: SpannerDriver) => {
     const tableManager = spannerDriver.getTableManager();
     if (await tableManager.schemaMetadata.tableExists(table)) {
       const foreignKeys = await tableManager.schemaMetadata.getForeignKeys(table);
-      for (let columnName in foreignKeys) {
+      for (const columnName in foreignKeys) {
         const foreignKey = foreignKeys[columnName];
-        await spannerDriver.runUpdateSchema(new StatementFactory().dropForeignKey(table.name, { table: foreignKey.referencedTableName, column: foreignKey.referencedColumnName, referencedByColumn: columnName }).sql);
+        await spannerDriver.runUpdateSchema(
+          new StatementFactory().dropForeignKey(table.name, {
+            table: foreignKey.referencedTableName,
+            column: foreignKey.referencedColumnName,
+            referencedByColumn: columnName,
+          }).sql
+        );
       }
 
       const indexes = await tableManager.schemaMetadata.getIndexes(table);
       // console.info(`Indexes: ${JSON.stringify(indexes, null, 2)}`)
-      for (let indexName in indexes) {
-        if (indexName == 'PRIMARY_KEY')
+      for (const indexName in indexes) {
+        if (indexName == 'PRIMARY_KEY') {
           continue;
+        }
 
         try {
           // console.info(`Dropping index: ${indexName}`);
-          await spannerDriver.runUpdateSchema(new StatementFactory().dropIndex({ name: indexName, columns: indexes[indexName] }, table.name).sql);
+          await spannerDriver.runUpdateSchema(
+            new StatementFactory().dropIndex({ name: indexName, columns: indexes[indexName] }, table.name).sql
+          );
         } catch (error: any) {
           console.error(`Failed to drop index: ${indexName}\nreason: ${error.details}`);
         }
@@ -28,5 +37,5 @@ export const getDropTable = (spannerDriver: SpannerDriver) => {
       await spannerDriver.runUpdateSchema(`DROP TABLE ${table.name}`);
       // console.info(`Dropped table: ${table.name}`);
     }
-  }
-}
+  };
+};
