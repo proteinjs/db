@@ -1,10 +1,10 @@
-import { Fields, FormButtons } from '@proteinjs/ui'
-import { Migration, getMigrationRunnerService, tables } from '@proteinjs/db'
-import { RecordFormCustomization } from '../RecordFormCustomization'
+import { Fields, FormButtons } from '@proteinjs/ui';
+import { Migration, getMigrationRunnerService, tables } from '@proteinjs/db';
+import { RecordFormCustomization } from '../RecordFormCustomization';
 
 export class MigrationRecordFormCustomization extends RecordFormCustomization {
   public table = tables.Migration;
-  
+
   getFormButtons(migration: Migration, defaultFormButtons: FormButtons<any>): FormButtons<any> {
     const formButtons = { ...defaultFormButtons };
     delete formButtons['create'];
@@ -22,7 +22,9 @@ export class MigrationRecordFormCustomization extends RecordFormCustomization {
         await getMigrationRunnerService().runMigration(migration.id);
         return `Started migration`;
       },
-      progressMessage: (fields: Fields) => { return `Starting migration` },
+      progressMessage: (fields: Fields) => {
+        return `Starting migration`;
+      },
     };
     return formButtons;
   }

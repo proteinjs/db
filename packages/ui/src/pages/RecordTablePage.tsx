@@ -1,7 +1,8 @@
-import React from 'react'
-import { FormPage, Page, PageComponentProps } from '@proteinjs/ui'
-import { tableByName, Table } from '@proteinjs/db'
-import { RecordTable } from '../table/RecordTable'
+/* eslint-disable no-ex-assign */
+import React from 'react';
+import { FormPage, Page, PageComponentProps } from '@proteinjs/ui';
+import { tableByName, Table } from '@proteinjs/db';
+import { RecordTable } from '../table/RecordTable';
 
 export const recordTablePage: Page = {
   name: 'Record Table',
@@ -9,20 +10,20 @@ export const recordTablePage: Page = {
   auth: {
     allUsers: true,
   },
-  component: ({...props}) => (
+  component: ({ ...props }) => (
     <FormPage>
       <DynamicRecordTable {...props} />
     </FormPage>
-  )
-}
+  ),
+};
 
 export const recordTableLink = (table: Table<any>) => {
   return `/${recordTablePage.path}?name=${table.name}`;
-}
+};
 
 export const recordTableLinkByName = (tableName: string) => {
   return `/${recordTablePage.path}?name=${tableName}`;
-}
+};
 
 const DynamicRecordTable = ({ urlParams }: PageComponentProps) => {
   function Table() {
@@ -40,17 +41,11 @@ const DynamicRecordTable = ({ urlParams }: PageComponentProps) => {
     }
 
     if (!table) {
-      return <div>{ error }</div>;
+      return <div>{error}</div>;
     }
 
-    return (
-      <RecordTable
-        table={table}
-      />
-    );
+    return <RecordTable table={table} />;
   }
 
-  return (
-    <Table />
-  );
-}
+  return <Table />;
+};
