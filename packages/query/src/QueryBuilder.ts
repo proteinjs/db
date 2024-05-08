@@ -1,3 +1,4 @@
+/* eslint-disable no-case-declarations */
 import { Logger, Graph, isInstanceOf } from '@proteinjs/util';
 import { Statement, StatementConfig, StatementParamManager } from './StatementFactory';
 
@@ -5,19 +6,34 @@ export interface Select<T> {
   fields?: (keyof T)[];
 }
 
-export type LogicalOperator = 'AND'|'OR';
-export type Operator = '='|'<>'|'!='|'>'|'<'|'>='|'<='|'IN'|'NOT IN'|'LIKE'|'NOT LIKE'|'BETWEEN'|'IS NULL'|'IS NOT NULL'|'NOT';
-export type AggregateFunction = 'COUNT'|'SUM'|'AVG'|'MIN'|'MAX';
+export type LogicalOperator = 'AND' | 'OR';
+export type Operator =
+  | '='
+  | '<>'
+  | '!='
+  | '>'
+  | '<'
+  | '>='
+  | '<='
+  | 'IN'
+  | 'NOT IN'
+  | 'LIKE'
+  | 'NOT LIKE'
+  | 'BETWEEN'
+  | 'IS NULL'
+  | 'IS NOT NULL'
+  | 'NOT';
+export type AggregateFunction = 'COUNT' | 'SUM' | 'AVG' | 'MIN' | 'MAX';
 
 export interface LogicalGroup<T> {
   operator: LogicalOperator;
-  children: Array<Condition<T>|LogicalGroup<T>>;
+  children: Array<Condition<T> | LogicalGroup<T>>;
 }
 
 export interface Condition<T> {
   field: keyof T;
   operator: Operator;
-  value?: T[keyof T]|T[keyof T][]|QueryBuilder<T>|null;
+  value?: T[keyof T] | T[keyof T][] | QueryBuilder<T> | null;
 }
 
 interface InternalCondition<T> extends Condition<T> {
@@ -50,9 +66,7 @@ export class QueryBuilder<T = any> {
   public paginationNodeId?: string;
   private debugLogicalGrouping = false;
 
-  constructor(
-    public tableName: string
-  ) {
+  constructor(public tableName: string) {
     this.graph = new Graph({ directed: true });
     this.graph.setNode(this.rootId, { type: 'ROOT' });
   }
@@ -70,11 +84,12 @@ export class QueryBuilder<T = any> {
    */
   static fromObject<T extends Object>(obj: Partial<T>, tableName: string): QueryBuilder<T> {
     const qb = new QueryBuilder<T>(tableName);
-    for (let prop of Object.keys(obj)) {
-      if (typeof obj[prop as keyof T] === 'undefined')
+    for (const prop of Object.keys(obj)) {
+      if (typeof obj[prop as keyof T] === 'undefined') {
         continue;
-      
-      qb.condition({ field: prop as keyof T, operator: '=', value: obj[prop as keyof T] as T[keyof T]});
+      }
+
+      qb.condition({ field: prop as keyof T, operator: '=', value: obj[prop as keyof T] as T[keyof T] });
     }
     return qb;
   }
@@ -91,7 +106,7 @@ export class QueryBuilder<T = any> {
    * @param elements Array of Condition<T> or LogicalGroup<T> to be combined with AND.
    * @returns The instance of the QueryBuilder for chaining.
    */
-  and(elements: Array<Condition<T>|LogicalGroup<T>|QueryBuilder<T>>): this {
+  and(elements: Array<Condition<T> | LogicalGroup<T> | QueryBuilder<T>>): this {
     return this.logicalGroup('AND', elements);
   }
 
@@ -100,7 +115,7 @@ export class QueryBuilder<T = any> {
    * @param elements Array of Condition<T> or LogicalGroup<T> to be combined with OR.
    * @returns The instance of the QueryBuilder for chaining.
    */
-  or(elements: Array<Condition<T>|LogicalGroup<T>|QueryBuilder<T>>): this {
+  or(elements: Array<Condition<T> | LogicalGroup<T> | QueryBuilder<T>>): this {
     return this.logicalGroup('OR', elements);
   }
 
@@ -111,19 +126,23 @@ export class QueryBuilder<T = any> {
    * @param parentId The ID of the parent node to attach the logical group to.
    * @returns The instance of the QueryBuilder for chaining.
    */
-  logicalGroup(operator: LogicalOperator, elements: Array<Condition<T>|LogicalGroup<T>|QueryBuilder<T>>, parentId?: string): this {
+  logicalGroup(
+    operator: LogicalOperator,
+    elements: Array<Condition<T> | LogicalGroup<T> | QueryBuilder<T>>,
+    parentId?: string
+  ): this {
     const logger = new Logger(`${this.constructor.name}.logicalGroup`, this.debugLogicalGrouping ? 'debug' : 'info');
     const groupId = this.generateId();
     this.graph.setNode(groupId, { type: 'LOGICAL', operator });
-    logger.debug(`Created node: ${operator} (${groupId})`)
+    logger.debug(`Created node: ${operator} (${groupId})`);
     if (parentId) {
       this.graph.setEdge(parentId, groupId);
-      logger.debug(`Set edge: ${parentId} -> ${groupId}`)
+      logger.debug(`Set edge: ${parentId} -> ${groupId}`);
     } else {
       this.graph.setEdge(this.rootId, groupId);
-      logger.debug(`Set edge: ${this.rootId} -> ${groupId}`)
+      logger.debug(`Set edge: ${this.rootId} -> ${groupId}`);
     }
-  
+
     const childIds: string[] = [];
     // Process each element in the provided array.
     elements.forEach((element) => {
@@ -142,22 +161,23 @@ export class QueryBuilder<T = any> {
     });
 
     // Process linking child QueryBuilder nodes
-    for (let childId of childIds) {
+    for (const childId of childIds) {
       this.graph.setEdge(groupId, childId);
-      logger.debug(`Set edge: ${groupId} -> ${childId}`)
+      logger.debug(`Set edge: ${groupId} -> ${childId}`);
       if (this.graph.hasEdge(this.rootId, childId)) {
         this.graph.removeEdge(this.rootId, childId);
-        logger.debug(`Removed edge: ${this.rootId} -> ${childId}`)
+        logger.debug(`Removed edge: ${this.rootId} -> ${childId}`);
       }
     }
-  
+
     this.currentContextIds.push(groupId);
     return this;
-  }  
+  }
 
   condition(condition: Condition<T>, parentId?: string): this {
-    if (condition.value === this)
+    if (condition.value === this) {
       throw new Error(`Must use a new QueryBuilder instance for subquery`);
+    }
 
     let resolvedCondition = condition;
     if (
@@ -167,19 +187,20 @@ export class QueryBuilder<T = any> {
       resolvedCondition = Object.assign(resolvedCondition, { empty: true }) as InternalCondition<T>;
     }
 
-    if (typeof resolvedCondition.value === 'undefined')
+    if (typeof resolvedCondition.value === 'undefined') {
       resolvedCondition.value = null;
+    }
 
     const logger = new Logger(`${this.constructor.name}.condition`, this.debugLogicalGrouping ? 'debug' : 'info');
     const conditionId = this.generateId();
     this.graph.setNode(conditionId, { ...resolvedCondition, type: 'CONDITION' });
-    logger.debug(`Created node: CONDITION(${JSON.stringify(resolvedCondition)}) (${conditionId})`)
+    logger.debug(`Created node: CONDITION(${JSON.stringify(resolvedCondition)}) (${conditionId})`);
     if (parentId) {
       this.graph.setEdge(parentId, conditionId);
-      logger.debug(`Set edge: ${parentId} -> ${conditionId}`)
+      logger.debug(`Set edge: ${parentId} -> ${conditionId}`);
     } else {
       this.graph.setEdge(this.rootId, conditionId);
-      logger.debug(`Set edge: ${this.rootId} -> ${conditionId}`)
+      logger.debug(`Set edge: ${this.rootId} -> ${conditionId}`);
       this.currentContextIds.push(conditionId);
     }
     return this;
@@ -187,7 +208,7 @@ export class QueryBuilder<T = any> {
 
   aggregate(aggregate: Aggregate<T>): this {
     const id = this.generateId();
-    aggregate.field = aggregate.field ? aggregate.field : '*' as keyof T;
+    aggregate.field = aggregate.field ? aggregate.field : ('*' as keyof T);
     this.graph.setNode(id, { ...aggregate, type: 'AGGREGATE' });
     this.graph.setEdge(this.rootId, id);
     return this;
@@ -205,13 +226,14 @@ export class QueryBuilder<T = any> {
     const id = this.paginationNodeId ? this.paginationNodeId : this.generateId();
     this.paginationNodeId = id;
     this.graph.setNode(id, { type: 'PAGINATION', ...pagination });
-    if (!paginationNodeExists)
+    if (!paginationNodeExists) {
       this.graph.setEdge(this.rootId, id);
+    }
     return this;
   }
 
   sort(sortCriteria: SortCriteria<T>[]): this {
-    sortCriteria.forEach(criteria => {
+    sortCriteria.forEach((criteria) => {
       const id = this.generateId();
       this.graph.setNode(id, { type: 'SORT', criteria });
       this.graph.setEdge(this.rootId, id);
@@ -227,18 +249,23 @@ export class QueryBuilder<T = any> {
       const node: any = this.graph.node(nodeId);
       switch (node.type) {
         case 'CONDITION':
-          const resolvedFieldName = node.field && config.resolveFieldName ? config.resolveFieldName(this.tableName, node.field) : node.field;
+          const resolvedFieldName =
+            node.field && config.resolveFieldName ? config.resolveFieldName(this.tableName, node.field) : node.field;
           if (node.empty) {
             return `1=0`;
           } else if (isInstanceOf(node.value, QueryBuilder)) {
-            let valueStr = paramManager.parameterize(node.value, 'subquery');
+            const valueStr = paramManager.parameterize(node.value, 'subquery');
             return `${resolvedFieldName} ${node.operator} ${valueStr}`;
           } else if (node.operator === 'IN' || node.operator === 'NOT IN') {
-            let valuesStr = Array.isArray(node.value) ? node.value.map((val: any) => paramManager.parameterize(val, typeof val)).join(', ') : paramManager.parameterize(node.value, typeof node.value);
+            const valuesStr = Array.isArray(node.value)
+              ? node.value.map((val: any) => paramManager.parameterize(val, typeof val)).join(', ')
+              : paramManager.parameterize(node.value, typeof node.value);
             return `${resolvedFieldName} ${node.operator} (${valuesStr})`;
           } else if (node.operator === 'BETWEEN') {
             // Ensure BETWEEN values are provided as an array of two elements
-            let valuesStr = Array.isArray(node.value) ? node.value.map((val: any) => paramManager.parameterize(val, typeof val)).join(' AND ') : paramManager.parameterize(node.value, typeof node.value);
+            const valuesStr = Array.isArray(node.value)
+              ? node.value.map((val: any) => paramManager.parameterize(val, typeof val)).join(' AND ')
+              : paramManager.parameterize(node.value, typeof node.value);
             return `${resolvedFieldName} ${node.operator} ${valuesStr}`;
           } else if (node.operator === 'IS NULL' || node.operator === 'IS NOT NULL') {
             return `${resolvedFieldName} ${node.operator}`;
@@ -248,7 +275,7 @@ export class QueryBuilder<T = any> {
           }
         case 'LOGICAL':
           const childIds: string[] = this.graph.successors(nodeId) || [];
-          const childConditions: string[] = childIds.map(processNode).filter(cond => cond !== '');
+          const childConditions: string[] = childIds.map(processNode).filter((cond) => cond !== '');
           const combinedConditions = childConditions.join(` ${node.operator} `);
           return combinedConditions ? `(${combinedConditions})` : '';
         default:
@@ -258,17 +285,17 @@ export class QueryBuilder<T = any> {
 
     // Start processing from the root node
     const rootChildren: string[] = this.graph.successors(this.rootId) || [];
-    const whereParts = rootChildren.map(processNode).filter(part => part.length > 0);
+    const whereParts = rootChildren.map(processNode).filter((part) => part.length > 0);
     const whereClause = whereParts.length > 0 ? `WHERE ${whereParts.join(' AND ')}` : '';
     return { sql: whereClause, ...paramManager.getParams() };
   }
 
   toSql(config: StatementConfig): Statement {
-    let select: Select<any>|undefined;
+    let select: Select<any> | undefined;
     const aggregates: string[] = [];
-    let groupBys: string[] = [];
-    let pagination: Pagination|undefined;
-    let sortClauses: string[] = [];
+    const groupBys: string[] = [];
+    let pagination: Pagination | undefined;
+    const sortClauses: string[] = [];
     const paramManager = new StatementParamManager(config);
 
     // Define a recursive function to process nodes and statement parts
@@ -279,29 +306,45 @@ export class QueryBuilder<T = any> {
           select = node;
           return '';
         case 'AGGREGATE':
-          const resolvedAggFieldName = config.resolveFieldName && node.field != '*' ? config.resolveFieldName(this.tableName, node.field) : node.field;
-          aggregates.push(`${node.function}(${resolvedAggFieldName})${node.resultProp ? ` as ${node.resultProp}` : ''}`);
+          const resolvedAggFieldName =
+            config.resolveFieldName && node.field != '*'
+              ? config.resolveFieldName(this.tableName, node.field)
+              : node.field;
+          aggregates.push(
+            `${node.function}(${resolvedAggFieldName})${node.resultProp ? ` as ${node.resultProp}` : ''}`
+          );
           return '';
         case 'GROUP_BY':
-          groupBys.push(...node.fields.map((field: keyof T) => config.resolveFieldName ? config.resolveFieldName(this.tableName, String(field)) : String(field)));
+          groupBys.push(
+            ...node.fields.map((field: keyof T) =>
+              config.resolveFieldName ? config.resolveFieldName(this.tableName, String(field)) : String(field)
+            )
+          );
           return '';
         case 'PAGINATION':
           pagination = { start: node.start, end: node.end };
           return '';
         case 'SORT':
           const { field, desc, byValues } = node.criteria;
-          const resolvedSortFieldName = config.resolveFieldName ? config.resolveFieldName(this.tableName, field) : field;
+          const resolvedSortFieldName = config.resolveFieldName
+            ? config.resolveFieldName(this.tableName, field)
+            : field;
           if (byValues && byValues.length > 0) {
             // Constructing a CASE statement for sorting by specific values
-            const cases = byValues.map((value: string, index: number) => `WHEN ${resolvedSortFieldName} = ${paramManager.parameterize(value, typeof value)} THEN ${index}`).join(' ');
+            const cases = byValues
+              .map(
+                (value: string, index: number) =>
+                  `WHEN ${resolvedSortFieldName} = ${paramManager.parameterize(value, typeof value)} THEN ${index}`
+              )
+              .join(' ');
             const orderByCase = `CASE ${cases} ELSE ${byValues.length} END`;
             sortClauses.push(`${orderByCase}${desc ? ' DESC' : ' ASC'}`);
           } else {
             // Standard sorting
-            let sortClause = `${resolvedSortFieldName}${desc ? ' DESC' : ' ASC'}`;
+            const sortClause = `${resolvedSortFieldName}${desc ? ' DESC' : ' ASC'}`;
             sortClauses.push(sortClause);
           }
-        return '';
+          return '';
         default:
           return '';
       }
@@ -312,18 +355,11 @@ export class QueryBuilder<T = any> {
 
     // order dependent for parameter value sequencing in paramManager.params
     const { sql: whereClause } = this.toWhereClause(config, paramManager);
-    rootChildren.map(processNode).filter(part => part.length > 0);
+    rootChildren.map(processNode).filter((part) => part.length > 0);
     // order dependent for parameter value sequencing in paramManager.params
 
     let sql = 'SELECT ';
-    sql += aggregates.length > 0 ? 
-    aggregates.join(', ')
-      :
-      select?.fields ?
-        select.fields.join(', ')
-        :
-        '*'
-    ;
+    sql += aggregates.length > 0 ? aggregates.join(', ') : select?.fields ? select.fields.join(', ') : '*';
     sql += ` FROM ${config.dbName ? `${config.dbName}.` : ''}${this.tableName}`;
 
     if (whereClause.length > 0) {

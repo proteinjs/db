@@ -1,2 +1,2 @@
-export * from './src/QueryBuilder'
-export * from './src/StatementFactory'
+export * from './src/QueryBuilder';
+export * from './src/StatementFactory';
