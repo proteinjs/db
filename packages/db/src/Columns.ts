@@ -54,13 +54,17 @@ export class BooleanColumn implements Column<boolean, boolean> {
   ) {}
 
   async serialize(fieldValue: boolean | undefined): Promise<boolean> {
-    if (fieldValue) return true;
+    if (fieldValue) {
+      return true;
+    }
 
     return false;
   }
 
   async deserialize(serializedFieldValue: boolean): Promise<boolean> {
-    if (serializedFieldValue) return true;
+    if (serializedFieldValue) {
+      return true;
+    }
 
     return false;
   }
@@ -80,9 +84,13 @@ export class DateTimeColumn implements Column<moment.Moment, Date> {
   ) {}
 
   async serialize(fieldValue: moment.Moment | undefined): Promise<Date | undefined> {
-    if (typeof fieldValue === 'undefined') return;
+    if (typeof fieldValue === 'undefined') {
+      return;
+    }
 
-    if (typeof fieldValue.toDate === 'undefined') return moment(fieldValue).toDate();
+    if (typeof fieldValue.toDate === 'undefined') {
+      return moment(fieldValue).toDate();
+    }
 
     return fieldValue.toDate();
   }
@@ -150,13 +158,17 @@ export class ObjectColumn<T> extends StringColumn<T> {
   }
 
   async serialize(fieldValue: T | undefined): Promise<string | undefined> {
-    if (typeof fieldValue === 'undefined' || fieldValue == null) return;
+    if (typeof fieldValue === 'undefined' || fieldValue == null) {
+      return;
+    }
 
     return JSON.stringify(fieldValue);
   }
 
   async deserialize(serializedFieldValue: string): Promise<T | undefined> {
-    if (typeof serializedFieldValue === 'undefined' || serializedFieldValue == null) return;
+    if (typeof serializedFieldValue === 'undefined' || serializedFieldValue == null) {
+      return;
+    }
 
     return JSON.parse(serializedFieldValue);
   }
@@ -207,7 +219,9 @@ export class ReferenceArrayColumn<T extends Record> extends ObjectColumn<Referen
   }
 
   async serialize(fieldValue: ReferenceArray<T> | undefined): Promise<string | undefined> {
-    if (typeof fieldValue === 'undefined') return;
+    if (typeof fieldValue === 'undefined') {
+      return;
+    }
 
     const ids = (await fieldValue.get()).map((record) => record.id);
     return await super.serialize(ids as any);
@@ -215,22 +229,30 @@ export class ReferenceArrayColumn<T extends Record> extends ObjectColumn<Referen
 
   async deserialize(serializedFieldValue: string): Promise<ReferenceArray<T>> {
     let ids = (await super.deserialize(serializedFieldValue)) as string[] | undefined;
-    if (typeof ids === 'undefined') ids = [];
+    if (typeof ids === 'undefined') {
+      ids = [];
+    }
 
     return new ReferenceArray(this.referenceTable, ids);
   }
 
   async beforeDelete(table: Table<any>, columnPropertyName: string, records: any[]) {
-    if (!this.cascadeDelete) return;
+    if (!this.cascadeDelete) {
+      return;
+    }
 
     const recordIdsToDelete: string[] = [];
     for (const record of records) {
       const referenceArray = record[columnPropertyName] as ReferenceArray<Record>;
       const referenceRecords = await referenceArray.get();
-      for (const referenceRecord of referenceRecords) recordIdsToDelete.push(referenceRecord.id);
+      for (const referenceRecord of referenceRecords) {
+        recordIdsToDelete.push(referenceRecord.id);
+      }
     }
 
-    if (recordIdsToDelete.length < 1) return;
+    if (recordIdsToDelete.length < 1) {
+      return;
+    }
 
     const referenceTable = tableByName(this.referenceTable);
     const qb = new QueryBuilderFactory()
@@ -270,9 +292,13 @@ export class ReferenceColumn<T extends Record> extends StringColumn<Reference<T>
   }
 
   async serialize(fieldValue: Reference<T> | undefined): Promise<string | undefined> {
-    if (typeof fieldValue === 'undefined') return;
+    if (typeof fieldValue === 'undefined') {
+      return;
+    }
 
-    if (!fieldValue._id) return;
+    if (!fieldValue._id) {
+      return;
+    }
 
     return fieldValue._id;
   }
@@ -282,15 +308,21 @@ export class ReferenceColumn<T extends Record> extends StringColumn<Reference<T>
   }
 
   async beforeDelete(table: Table<any>, columnPropertyName: string, records: any[]) {
-    if (!this.cascadeDelete) return;
+    if (!this.cascadeDelete) {
+      return;
+    }
 
     const recordIdsToDelete: string[] = [];
     for (const record of records) {
       const reference = record[columnPropertyName] as Reference<Record>;
-      if (reference && reference._id) recordIdsToDelete.push(reference._id);
+      if (reference && reference._id) {
+        recordIdsToDelete.push(reference._id);
+      }
     }
 
-    if (recordIdsToDelete.length < 1) return;
+    if (recordIdsToDelete.length < 1) {
+      return;
+    }
 
     const referenceTable = tableByName(this.referenceTable);
     const qb = new QueryBuilderFactory()

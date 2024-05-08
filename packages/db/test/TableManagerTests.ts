@@ -80,7 +80,9 @@ export const tableManagerTests = (
     const tableManager = driver.getTableManager();
 
     beforeAll(async () => {
-      if (driver.start) await driver.start();
+      if (driver.start) {
+        await driver.start();
+      }
     });
 
     afterEach(async () => {
@@ -89,7 +91,9 @@ export const tableManagerTests = (
     });
 
     afterAll(async () => {
-      if (driver.stop) await driver.stop();
+      if (driver.stop) {
+        await driver.stop();
+      }
     });
 
     test('create primary key', async () => {
@@ -195,7 +199,9 @@ export const tableManagerTests = (
     });
 
     test('alter column name', async () => {
-      if (excludedTests?.alterColumnName) return;
+      if (excludedTests?.alterColumnName) {
+        return;
+      }
 
       const userTable = new UserTable();
       await tableManager.loadTable(userTable);
@@ -209,7 +215,9 @@ export const tableManagerTests = (
     });
 
     test('alter column types', async () => {
-      if (excludedTests?.alterColumnTypes) return;
+      if (excludedTests?.alterColumnTypes) {
+        return;
+      }
 
       const userTable = new UserTable();
       const columnTypesTable = new ColumnTypesTable();
@@ -397,7 +405,9 @@ export const tableManagerTests = (
     });
 
     test('alter column nullable constraint', async () => {
-      if (excludedTests?.alterNullableConstraint) return;
+      if (excludedTests?.alterNullableConstraint) {
+        return;
+      }
 
       const userTable = new UserTable();
       const columnTypesTable = new ColumnTypesTable();

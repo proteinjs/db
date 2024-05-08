@@ -24,7 +24,9 @@ export class StatementConfigFactory {
     return (tableName: string, propertyName: string): string => {
       const table = this.getTable(tableName);
       const column = table.columns[propertyName];
-      if (!column) throw new Error(`(${table.name}) Column does not exist for property: ${propertyName}`);
+      if (!column) {
+        throw new Error(`(${table.name}) Column does not exist for property: ${propertyName}`);
+      }
 
       return column.name;
     };

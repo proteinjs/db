@@ -23,7 +23,9 @@ export class SourceRecordLoader {
       const sourceRecordIds = sourceRecordsMap[tableName].recordIds;
       if (!table.sourceRecordOptions.doNotDeleteSourceRecordsFromDb) {
         const qb = QueryBuilder.fromObject<SourceRecord>({ isLoadedFromSource: true }, table.name);
-        if (sourceRecordIds.length > 0) qb.condition({ field: 'id', operator: 'NOT IN', value: sourceRecordIds });
+        if (sourceRecordIds.length > 0) {
+          qb.condition({ field: 'id', operator: 'NOT IN', value: sourceRecordIds });
+        }
 
         deleteCount = await db.delete(table, qb);
       }
@@ -32,8 +34,9 @@ export class SourceRecordLoader {
       for (let sourceRecord of sourceRecords) {
         sourceRecord.isLoadedFromSource = true;
         const count = await db.update(table, sourceRecord);
-        if (count > 0) updateCount += count;
-        else {
+        if (count > 0) {
+          updateCount += count;
+        } else {
           const dbSourceRecord = await db.insert(table, sourceRecord);
           sourceRecord = { ...sourceRecord, ...dbSourceRecord };
           insertCount += 1;
@@ -52,8 +55,9 @@ export class SourceRecordLoader {
     const sourceRecordsMap: SourceRecordsMap = {};
     const sourceRecordTables = getSourceRecordTables();
     for (const sourceRecordTable of sourceRecordTables) {
-      if (!sourceRecordsMap[sourceRecordTable.name])
+      if (!sourceRecordsMap[sourceRecordTable.name]) {
         sourceRecordsMap[sourceRecordTable.name] = { table: sourceRecordTable, records: [], recordIds: [] };
+      }
     }
 
     const sourceRecordLoaders = getSourceRecordLoaders();

@@ -46,7 +46,9 @@ export class RecordSerializer<T extends Record> {
     const serialized: any = {};
     const fieldSerializer = new FieldSerializer(this.table);
     for (const fieldPropertyName in record) {
-      if (typeof record[fieldPropertyName] === 'function') continue;
+      if (typeof record[fieldPropertyName] === 'function') {
+        continue;
+      }
 
       const fieldValue = await record[fieldPropertyName];
       const { columnName, serializedFieldValue } = await fieldSerializer.serialize(fieldPropertyName, fieldValue);
@@ -80,7 +82,9 @@ export class FieldSerializer<T extends Record> {
     }
 
     let serializedFieldValue = fieldValue;
-    if (column.serialize) serializedFieldValue = await column.serialize(fieldValue);
+    if (column.serialize) {
+      serializedFieldValue = await column.serialize(fieldValue);
+    }
 
     return { columnName: column.name, serializedFieldValue };
   }
@@ -106,7 +110,9 @@ export class FieldSerializer<T extends Record> {
     }
 
     let fieldValue = serializedFieldValue;
-    if (column.deserialize) fieldValue = await column.deserialize(serializedFieldValue);
+    if (column.deserialize) {
+      fieldValue = await column.deserialize(serializedFieldValue);
+    }
 
     return { fieldPropertyName, fieldValue };
   }

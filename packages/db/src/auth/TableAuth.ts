@@ -30,7 +30,9 @@ export class TableAuth {
     operation: 'query' | 'insert' | 'update' | 'delete'
   ): boolean {
     const tableAuth = table.auth ? table.auth[api] : undefined;
-    if (!tableAuth || Object.keys(tableAuth).length == 0) return UserAuth.hasRole('admin');
+    if (!tableAuth || Object.keys(tableAuth).length == 0) {
+      return UserAuth.hasRole('admin');
+    }
 
     return (
       tableAuth.all === 'public' ||
@@ -43,21 +45,26 @@ export class TableAuth {
   }
 
   canQuery(table: Table<any>, api: 'db' | 'service' = 'db'): void {
-    if (!this.canAccess(table, api, 'query')) throw new Error(`User is not authorized to query table: ${table.name}`);
+    if (!this.canAccess(table, api, 'query')) {
+      throw new Error(`User is not authorized to query table: ${table.name}`);
+    }
   }
 
   canInsert(table: Table<any>, api: 'db' | 'service' = 'db'): void {
-    if (!this.canAccess(table, api, 'insert'))
+    if (!this.canAccess(table, api, 'insert')) {
       throw new Error(`User is not authorized to insert records into table: ${table.name}`);
+    }
   }
 
   canUpdate(table: Table<any>, api: 'db' | 'service' = 'db'): void {
-    if (!this.canAccess(table, api, 'update'))
+    if (!this.canAccess(table, api, 'update')) {
       throw new Error(`User is not authorized to update records in table: ${table.name}`);
+    }
   }
 
   canDelete(table: Table<any>, api: 'db' | 'service' = 'db'): void {
-    if (!this.canAccess(table, api, 'query'))
+    if (!this.canAccess(table, api, 'query')) {
       throw new Error(`User is not authorized to delete records from table: ${table.name}`);
+    }
   }
 }

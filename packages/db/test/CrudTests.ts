@@ -21,14 +21,18 @@ export const crudTests = (driver: DbDriver, dropTable: (table: Table<any>) => Pr
   return () => {
     const getTable = (tableName: string) => {
       const employeeTable = new EmployeeTable();
-      if (employeeTable.name == tableName) return employeeTable;
+      if (employeeTable.name == tableName) {
+        return employeeTable;
+      }
 
       throw new Error('Cannot find test table');
     };
     const db = new Db(driver, getTable);
 
     beforeAll(async () => {
-      if (driver.start) await driver.start();
+      if (driver.start) {
+        await driver.start();
+      }
 
       await driver.getTableManager().loadTable(new EmployeeTable());
     });
@@ -36,7 +40,9 @@ export const crudTests = (driver: DbDriver, dropTable: (table: Table<any>) => Pr
     afterAll(async () => {
       await dropTable(new EmployeeTable());
 
-      if (driver.stop) await driver.stop();
+      if (driver.stop) {
+        await driver.stop();
+      }
     });
 
     test('Insert', async () => {

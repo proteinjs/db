@@ -11,7 +11,11 @@ export const getTables = <T extends Record = any>() => SourceRepository.get().ob
 
 export const tableByName = (name: string) => {
   const tables = getTables();
-  for (const table of tables) if (table.name == name) return table;
+  for (const table of tables) {
+    if (table.name == name) {
+      return table;
+    }
+  }
 
   throw new Error(`Unable to find table: ${name}`);
 };
@@ -19,7 +23,9 @@ export const tableByName = (name: string) => {
 export const getColumnPropertyName = (table: Table<any>, columnName: string) => {
   for (const columnPropertyName in table.columns) {
     const column = table.columns[columnPropertyName];
-    if (column.name == columnName) return columnPropertyName;
+    if (column.name == columnName) {
+      return columnPropertyName;
+    }
   }
 
   return null;
@@ -28,7 +34,9 @@ export const getColumnPropertyName = (table: Table<any>, columnName: string) => 
 export const getColumnByName = (table: Table<any>, columnName: string) => {
   for (const columnPropertyName in table.columns) {
     const column = table.columns[columnPropertyName];
-    if (column.name == columnName) return column;
+    if (column.name == columnName) {
+      return column;
+    }
   }
 
   return null;

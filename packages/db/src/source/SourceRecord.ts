@@ -9,7 +9,11 @@ export const getSourceRecordLoaders = <T extends SourceRecord = SourceRecord>() 
 export function getSourceRecordTables() {
   const tables = getTables();
   const sourceRecordTables: Table<any>[] = [];
-  for (const table of tables) if (isSourceRecordTable(table)) sourceRecordTables.push(table);
+  for (const table of tables) {
+    if (isSourceRecordTable(table)) {
+      sourceRecordTables.push(table);
+    }
+  }
 
   return sourceRecordTables;
 }
@@ -17,7 +21,9 @@ export function getSourceRecordTables() {
 export function isSourceRecordTable(table: Table<any>) {
   for (const columnPropertyName in table.columns) {
     const column = table.columns[columnPropertyName];
-    if (column.name == getSourceRecordColumns().isLoadedFromSource.name) return true;
+    if (column.name == getSourceRecordColumns().isLoadedFromSource.name) {
+      return true;
+    }
   }
 
   return false;

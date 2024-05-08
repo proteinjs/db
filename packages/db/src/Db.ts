@@ -85,7 +85,9 @@ export class Db<R extends Record = Record> implements DbService<R> {
   }
 
   async insert<T extends R>(table: Table<T>, record: Omit<T, keyof R>): Promise<T> {
-    if (!this.ignoreAuth) this.auth.canInsert(table);
+    if (!this.ignoreAuth) {
+      this.auth.canInsert(table);
+    }
 
     const recordCopy = Object.assign({}, record);
     await this.addDefaultFieldValues(table, recordCopy);
@@ -104,23 +106,29 @@ export class Db<R extends Record = Record> implements DbService<R> {
   private async addDefaultFieldValues<T extends R>(table: Table<T>, record: any) {
     for (const columnPropertyName in table.columns) {
       const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
-      if (column.options?.defaultValue && typeof record[columnPropertyName] === 'undefined')
+      if (column.options?.defaultValue && typeof record[columnPropertyName] === 'undefined') {
         record[columnPropertyName] = await column.options.defaultValue(record);
+      }
     }
   }
 
   async update<T extends R>(table: Table<T>, record: Partial<T>, query?: Query<T>): Promise<number> {
-    if (!this.ignoreAuth) this.auth.canUpdate(table);
+    if (!this.ignoreAuth) {
+      this.auth.canUpdate(table);
+    }
 
-    if (!query && !record.id)
+    if (!query && !record.id) {
       throw new Error(`Update must be called with either a QueryBuilder or a record with an id property`);
+    }
 
     const recordCopy = Object.assign({}, record);
     await this.addUpdateFieldValues(table, recordCopy);
     const recordSearializer = new RecordSerializer<T>(table);
     const serializedRecord = await recordSearializer.serialize(recordCopy);
     const qb = new QueryBuilderFactory().getQueryBuilder(table, query);
-    if (!query) qb.condition({ field: 'id', operator: '=', value: recordCopy.id as T[keyof T] });
+    if (!query) {
+      qb.condition({ field: 'id', operator: '=', value: recordCopy.id as T[keyof T] });
+    }
 
     delete serializedRecord['id'];
     const generateUpdate = (config: DbDriverStatementConfig) =>
@@ -136,15 +144,21 @@ export class Db<R extends Record = Record> implements DbService<R> {
   private async addUpdateFieldValues<T extends R>(table: Table<T>, record: any) {
     for (const columnPropertyName in table.columns) {
       const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
-      if (column.options?.updateValue) record[columnPropertyName] = await column.options.updateValue(record);
+      if (column.options?.updateValue) {
+        record[columnPropertyName] = await column.options.updateValue(record);
+      }
     }
   }
 
   async delete<T extends R>(table: Table<T>, query: Query<T>): Promise<number> {
-    if (!this.ignoreAuth) this.auth.canDelete(table);
+    if (!this.ignoreAuth) {
+      this.auth.canDelete(table);
+    }
 
     const recordsToDelete = await this.query(table, query);
-    if (recordsToDelete.length == 0) return 0;
+    if (recordsToDelete.length == 0) {
+      return 0;
+    }
 
     const recordsToDeleteIds = recordsToDelete.map((record) => record.id);
     const deleteQb = new QueryBuilderFactory().getQueryBuilder(table);
@@ -160,13 +174,16 @@ export class Db<R extends Record = Record> implements DbService<R> {
   private async beforeDelete(table: Table<any>, recordsToDelete: Record[]) {
     for (const columnPropertyName in table.columns) {
       const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
-      if (typeof column.beforeDelete !== 'undefined')
+      if (typeof column.beforeDelete !== 'undefined') {
         await column.beforeDelete(table, columnPropertyName, recordsToDelete);
+      }
     }
   }
 
   private async cascadeDeletions(table: Table<any>, deletedRecordIds: string[]) {
-    if (table.cascadeDeleteReferences().length < 1) return;
+    if (table.cascadeDeleteReferences().length < 1) {
+      return;
+    }
 
     for (const cascadeDeleteReference of table.cascadeDeleteReferences()) {
       const referenceTable = tableByName(cascadeDeleteReference.table);
@@ -186,7 +203,9 @@ export class Db<R extends Record = Record> implements DbService<R> {
   }
 
   async query<T extends R>(table: Table<T>, query: Query<T>): Promise<T[]> {
-    if (!this.ignoreAuth) this.auth.canQuery(table);
+    if (!this.ignoreAuth) {
+      this.auth.canQuery(table);
+    }
 
     const qb = new QueryBuilderFactory().getQueryBuilder(table, query);
     this.addColumnQueries(table, qb);
@@ -200,7 +219,9 @@ export class Db<R extends Record = Record> implements DbService<R> {
   }
 
   async getRowCount<T extends R>(table: Table<T>, query?: Query<T>): Promise<number> {
-    if (!this.ignoreAuth) this.auth.canQuery(table);
+    if (!this.ignoreAuth) {
+      this.auth.canQuery(table);
+    }
 
     const qb = new QueryBuilderFactory().getQueryBuilder(table, query);
     qb.aggregate({ function: 'COUNT', resultProp: 'count' });
@@ -214,7 +235,9 @@ export class Db<R extends Record = Record> implements DbService<R> {
   private async addColumnQueries<T extends R>(table: Table<T>, qb: QueryBuilder<T>) {
     for (const columnPropertyName in table.columns) {
       const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
-      if (column.options?.addToQuery) column.options.addToQuery(qb);
+      if (column.options?.addToQuery) {
+        column.options.addToQuery(qb);
+      }
     }
   }
 }

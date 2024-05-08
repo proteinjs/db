@@ -31,7 +31,9 @@ export class TableManager {
 
   async loadTables(): Promise<void> {
     const tables = getTables();
-    for (const table of tables) await this.loadTable(table);
+    for (const table of tables) {
+      await this.loadTable(table);
+    }
   }
 
   async loadTable(table: Table<any>): Promise<void> {
@@ -58,8 +60,9 @@ export class TableManager {
       tableChanges.columnsWithUniqueConstraintsToDrop.length == 0 &&
       tableChanges.indexesToCreate.length == 0 &&
       tableChanges.indexesToDrop.length == 0
-    )
+    ) {
       return false;
+    }
 
     return true;
   }
@@ -139,7 +142,9 @@ export class TableManager {
           alter = true;
         }
 
-        if (alter) tableChanges.columnsToAlter.push(columnPropertyName);
+        if (alter) {
+          tableChanges.columnsToAlter.push(columnPropertyName);
+        }
 
         continue;
       }
@@ -169,14 +174,17 @@ export class TableManager {
     }[] = [];
     const currentIndexMap: { [serializedColumns: string]: boolean } = {};
     const existingIndexMap: { [serializedColumns: string]: boolean } = {};
-    for (const keyName in existingIndexes) existingIndexMap[JSON.stringify(existingIndexes[keyName])] = true;
+    for (const keyName in existingIndexes) {
+      existingIndexMap[JSON.stringify(existingIndexes[keyName])] = true;
+    }
 
     if (table.indexes) {
       for (const index of table.indexes) {
         const serializedColumns = JSON.stringify(index.columns);
         currentIndexMap[serializedColumns] = true;
-        if (!existingIndexMap[serializedColumns])
+        if (!existingIndexMap[serializedColumns]) {
           indexesToCreate.push({ name: index.name, columns: index.columns as string[] });
+        }
       }
     }
 
@@ -190,8 +198,9 @@ export class TableManager {
         !keyName.endsWith('_unique') &&
         !keyName.endsWith('_foreign') &&
         !keyName.startsWith('IDX_')
-      )
+      ) {
         indexesToDrop.push({ name: keyName, columns: existingIndex });
+      }
     }
 
     return { indexesToCreate, indexesToDrop };

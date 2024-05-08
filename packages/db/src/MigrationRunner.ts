@@ -19,7 +19,9 @@ export class MigrationRunner implements MigrationRunnerService {
   async runMigration(id: string): Promise<void> {
     const migrationTable: Table<Migration> = new MigrationTable();
     const migration = new SourceRecordRepo().getSourceRecord<Migration>(migrationTable.name, id);
-    if (!migration) throw new Error(`Unable to find migration source record for id: ${id}`);
+    if (!migration) {
+      throw new Error(`Unable to find migration source record for id: ${id}`);
+    }
 
     const db = getDb();
     migration.status = 'running';
@@ -53,11 +55,21 @@ export class MigrationRunner implements MigrationRunnerService {
     const seconds = duration.seconds();
     const milliseconds = duration.milliseconds();
 
-    if (days > 0) parts.push(`${days} day${days > 1 ? 's' : ''}`);
-    if (hours > 0) parts.push(`${hours} hour${hours > 1 ? 's' : ''}`);
-    if (minutes > 0) parts.push(`${minutes} min${minutes > 1 ? 's' : ''}`);
-    if (seconds > 0) parts.push(`${seconds} sec${seconds > 1 ? 's' : ''}`);
-    if (days == 0 && hours == 0 && minutes == 0 && seconds == 0) parts.push(`${milliseconds} ms`);
+    if (days > 0) {
+      parts.push(`${days} day${days > 1 ? 's' : ''}`);
+    }
+    if (hours > 0) {
+      parts.push(`${hours} hour${hours > 1 ? 's' : ''}`);
+    }
+    if (minutes > 0) {
+      parts.push(`${minutes} min${minutes > 1 ? 's' : ''}`);
+    }
+    if (seconds > 0) {
+      parts.push(`${seconds} sec${seconds > 1 ? 's' : ''}`);
+    }
+    if (days == 0 && hours == 0 && minutes == 0 && seconds == 0) {
+      parts.push(`${milliseconds} ms`);
+    }
 
     return parts.join(' ');
   }

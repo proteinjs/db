@@ -42,8 +42,9 @@ export class SchemaMetadata {
     const generateStatement = (config: ParameterizationConfig) => qb.toSql({ dbName: 'INFORMATION_SCHEMA', ...config });
     const results = await this.dbDriver.runQuery(generateStatement);
     const columnMetadata: { [columnName: string]: { type: string; isNullable: boolean } } = {};
-    for (const row of results)
+    for (const row of results) {
       columnMetadata[row['COLUMN_NAME']] = { type: row['DATA_TYPE'], isNullable: row['IS_NULLABLE'] === 'YES' };
+    }
 
     return columnMetadata;
   }
@@ -60,7 +61,9 @@ export class SchemaMetadata {
     const generateStatement = (config: ParameterizationConfig) => qb.toSql({ dbName: 'INFORMATION_SCHEMA' });
     const results = await this.dbDriver.runQuery(generateStatement);
     const primaryKey: string[] = [];
-    for (const row of results) primaryKey.push(row['COLUMN_NAME']);
+    for (const row of results) {
+      primaryKey.push(row['COLUMN_NAME']);
+    }
 
     return primaryKey;
   }
@@ -79,7 +82,9 @@ export class SchemaMetadata {
     const results = await this.dbDriver.runQuery(generateStatement);
     const foreignKeys: { [columnName: string]: { referencedTableName: string; referencedColumnName: string } } = {};
     for (const row of results) {
-      if (!row['REFERENCED_TABLE_NAME']) continue;
+      if (!row['REFERENCED_TABLE_NAME']) {
+        continue;
+      }
 
       foreignKeys[row['COLUMN_NAME']] = {
         referencedTableName: row['REFERENCED_TABLE_NAME'],
@@ -102,7 +107,9 @@ export class SchemaMetadata {
     const results = await this.dbDriver.runQuery(generateStatement);
     const uniqueColumns: string[] = [];
     for (const row of results) {
-      if (!(row['CONSTRAINT_NAME'] as string).endsWith('_unique')) continue;
+      if (!(row['CONSTRAINT_NAME'] as string).endsWith('_unique')) {
+        continue;
+      }
 
       uniqueColumns.push(row['COLUMN_NAME']);
     }
@@ -119,7 +126,9 @@ export class SchemaMetadata {
     const results: any[] = await this.dbDriver.runQuery(generateStatement);
     const indexes: { [keyName: string]: string[] } = {};
     for (const row of results) {
-      if (!indexes[row['INDEX_NAME']]) indexes[row['INDEX_NAME']] = [];
+      if (!indexes[row['INDEX_NAME']]) {
+        indexes[row['INDEX_NAME']] = [];
+      }
 
       indexes[row['INDEX_NAME']].push(row['COLUMN_NAME']);
     }
