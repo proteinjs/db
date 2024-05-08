@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/db-query",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "A sql query builder",
   "publishConfig": {
     "access": "public"
@@ -22,7 +22,7 @@
     "test": "jest"
   },
   "dependencies": {
-    "@proteinjs/serializer": "1.0.6",
+    "@proteinjs/serializer": "1.0.7",
     "@proteinjs/util": "1.1.0"
   },
   "devDependencies": {
