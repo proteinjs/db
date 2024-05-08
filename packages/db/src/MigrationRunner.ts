@@ -7,7 +7,8 @@ import { Migration, MigrationTable } from './tables/MigrationTable';
 import { Service } from '@proteinjs/service';
 import { Logger } from '@proteinjs/util';
 
-export const getMigrationRunner = () => typeof self === 'undefined' ? new MigrationRunner() : getMigrationRunnerService() as MigrationRunner;
+export const getMigrationRunner = () =>
+  typeof self === 'undefined' ? new MigrationRunner() : (getMigrationRunnerService() as MigrationRunner);
 
 export class MigrationRunner implements MigrationRunnerService {
   private logger = new Logger(this.constructor.name);
@@ -18,8 +19,7 @@ export class MigrationRunner implements MigrationRunnerService {
   async runMigration(id: string): Promise<void> {
     const migrationTable: Table<Migration> = new MigrationTable();
     const migration = new SourceRecordRepo().getSourceRecord<Migration>(migrationTable.name, id);
-    if (!migration)
-      throw new Error(`Unable to find migration source record for id: ${id}`);
+    if (!migration) throw new Error(`Unable to find migration source record for id: ${id}`);
 
     const db = getDb();
     migration.status = 'running';
@@ -38,12 +38,14 @@ export class MigrationRunner implements MigrationRunnerService {
     }
     migration.duration = this.duration(migration.startTime, migration.endTime);
     await db.update(migrationTable, migration);
-    this.logger.info(`[${migration.status}] (${migration.duration}) Finished running migration (${migration.id}) ${migration.description}`);
+    this.logger.info(
+      `[${migration.status}] (${migration.duration}) Finished running migration (${migration.id}) ${migration.description}`
+    );
   }
 
   private duration(start: Moment, end: Moment): string {
     const duration = moment.duration(end.diff(start));
-    let parts: string[] = [];
+    const parts: string[] = [];
 
     const days = duration.days();
     const hours = duration.hours();

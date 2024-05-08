@@ -7,7 +7,7 @@ export interface SchemaOperations {
 
 interface Index {
   name?: string;
-  columns: string|string[];
+  columns: string | string[];
   unique?: boolean;
 }
 

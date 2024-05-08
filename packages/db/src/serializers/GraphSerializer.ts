@@ -2,12 +2,12 @@ import { ThirdPartyLibCustomSerializer } from '@proteinjs/serializer';
 import { graphSerializer, Graph, isInstanceOf } from '@proteinjs/util';
 
 type SerializedGraph = {
-  value: string,
-}
+  value: string;
+};
 
 export class GraphSerializer implements ThirdPartyLibCustomSerializer {
   id = '@proteinjs/serializer/GraphSerializer';
-  
+
   matches(obj: any) {
     return isInstanceOf(obj, Graph);
   }

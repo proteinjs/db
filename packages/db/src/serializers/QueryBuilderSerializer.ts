@@ -3,21 +3,21 @@ import { Graph } from '@proteinjs/util';
 import { QueryBuilder } from '@proteinjs/db-query';
 
 type SerializedQueryBuilder = {
-  tableName: string,
-  graph: Graph,
-  idCounter: number,
-  rootId: string,
-  currentContextIds: string[],
-  paginationNodeId?: string,
-}
+  tableName: string;
+  graph: Graph;
+  idCounter: number;
+  rootId: string;
+  currentContextIds: string[];
+  paginationNodeId?: string;
+};
 
 export const QueryBuilderSerializerId = '@proteinjs/db/QueryBuilderSerializer';
 
 export class QueryBuilderSerializer implements CustomSerializer {
   id = QueryBuilderSerializerId;
-  
+
   serialize(qb: QueryBuilder<any>): SerializedQueryBuilder {
-    return { 
+    return {
       tableName: qb.tableName,
       graph: qb.graph,
       idCounter: qb.idCounter,
@@ -26,7 +26,7 @@ export class QueryBuilderSerializer implements CustomSerializer {
       paginationNodeId: qb.paginationNodeId,
     };
   }
-  
+
   deserialize(serializedQb: SerializedQueryBuilder): QueryBuilder<any> {
     const qb = new QueryBuilder(serializedQb.tableName);
     qb.graph = serializedQb.graph;

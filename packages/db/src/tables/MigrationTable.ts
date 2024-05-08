@@ -5,19 +5,19 @@ import { SourceRecord, withSourceRecordColumns } from '../source/SourceRecord';
 
 export interface Migration extends SourceRecord {
   description: string;
-  status?: 'proposed'|'running'|'success'|'failure';
+  status?: 'proposed' | 'running' | 'success' | 'failure';
   failureMessage?: string;
   failureStack?: string;
   startTime?: Moment;
   endTime?: Moment;
   duration?: string;
   output?: any;
-  run: () => Promise<any|void>;
+  run: () => Promise<any | void>;
 }
 
 export class MigrationTable extends Table<Migration> {
   public name = 'migration';
-	public columns = withSourceRecordColumns<Migration>({
+  public columns = withSourceRecordColumns<Migration>({
     description: new StringColumn('description', {}, 4000),
     status: new StringColumn('status', { defaultValue: async () => 'proposed' }),
     failureMessage: new StringColumn('failure_message', {}, 4000),
@@ -26,7 +26,7 @@ export class MigrationTable extends Table<Migration> {
     endTime: new DateTimeColumn('end_time'),
     duration: new StringColumn('duration'),
     output: new ObjectColumn('output'),
-	});
+  });
   public sourceRecordOptions = {
     doNotDeleteSourceRecordsFromDb: true,
     ui: {

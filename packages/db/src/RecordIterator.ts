@@ -26,17 +26,11 @@ export class RecordIterator<T extends Record> implements AsyncIterable<T> {
       this.query.paginate(pagination);
       const results = await this.db.query(this.table, this.query);
 
-      if (results.length === 0) {
-        return;
-      }
+      if (results.length === 0) return;
 
-      for (const item of results) {
-        yield item;
-      }
+      for (const item of results) yield item;
 
-      if (results.length < this.pageSize) {
-        return;
-      }
+      if (results.length < this.pageSize) return;
 
       this.currentPage++;
     }

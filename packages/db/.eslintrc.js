@@ -14,5 +14,6 @@ module.exports = {
     '@typescript-eslint/no-var-requires': 'off',
     '@typescript-eslint/no-explicit-any': 'off',
     '@typescript-eslint/prefer-as-const': 'off',
+    '@typescript-eslint/ban-types': 'off',
   },
 };
