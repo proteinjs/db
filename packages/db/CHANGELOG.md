@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.15](https://github.com/proteinjs/db/compare/@proteinjs/db@1.0.14...@proteinjs/db@1.0.15) (2024-05-09)
+
+
+### Bug Fixes
+
+* `SpannerColumnTypeFactory` a `DateColumn` should also be a `TIMESTAMP` in spanner ([29e8b36](https://github.com/proteinjs/db/commit/29e8b36edf2911e0188180d73fa11116482f42ac))
+
+
+
+
+
 ## [1.0.13](https://github.com/proteinjs/db/compare/@proteinjs/db@1.0.12...@proteinjs/db@1.0.13) (2024-05-03)
 
 **Note:** Version bump only for package @proteinjs/db

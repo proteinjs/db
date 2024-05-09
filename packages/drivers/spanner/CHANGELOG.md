@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.1.2](https://github.com/brentbahry/db/compare/@proteinjs/db-driver-spanner@1.1.1...@proteinjs/db-driver-spanner@1.1.2) (2024-05-09)
+
+
+### Bug Fixes
+
+* `SpannerColumnTypeFactory` a `DateColumn` should also be a `TIMESTAMP` in spanner ([29e8b36](https://github.com/brentbahry/db/commit/29e8b36edf2911e0188180d73fa11116482f42ac))
+
+
+
+
+
 # [1.1.0](https://github.com/brentbahry/db/compare/@proteinjs/db-driver-spanner@1.0.11...@proteinjs/db-driver-spanner@1.1.0) (2024-05-03)
 
 
