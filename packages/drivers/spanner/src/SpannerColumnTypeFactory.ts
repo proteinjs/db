@@ -15,7 +15,7 @@ export class SpannerColumnTypeFactory {
     else if (isInstanceOf(column, BooleanColumn))
       return 'BOOL';
     else if (isInstanceOf(column, DateColumn))
-      return 'DATE';
+      return 'TIMESTAMP';
     else if (isInstanceOf(column, DateTimeColumn))
       return 'TIMESTAMP';
     else if (isInstanceOf(column, BinaryColumn))

@@ -74,7 +74,7 @@ export class SpannerDriver implements DbDriver {
 			return rows.map(row => row.toJSON());
 			// return JSON.parse(JSON.stringify((await this.getSpannerDb().run({ sql, params: namedParams?.params }))[0]));
 		} catch(error: any) {
-			this.logger.error(`Failed when executing query: ${sql}\nreason: ${error.details}`);
+			this.logger.error(`Failed when executing query: ${sql}\nparams: ${JSON.stringify(namedParams, null, 2)}\nreason: ${error.details}`);
 			throw error;
 		}
 	}
@@ -97,7 +97,7 @@ export class SpannerDriver implements DbDriver {
 				return rowCount;
 			});
 		} catch(error: any) {
-			this.logger.error(`Failed when executing dml: ${sql}\nreason: ${error.details}`);
+			this.logger.error(`Failed when executing dml: ${sql}\nparams: ${JSON.stringify(namedParams, null, 2)}\nreason: ${error.details}`);
 			throw error;
 		}
 	}

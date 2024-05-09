@@ -7,6 +7,7 @@ import { Table } from '../src/Table';
 export interface Employee extends Record {
 	name: string;
   department?: string;
+  object?: string;
 }
 
 export class EmployeeTable extends Table<Employee> {
@@ -14,6 +15,7 @@ export class EmployeeTable extends Table<Employee> {
 	columns = withRecordColumns<Employee>({
 		name: new StringColumn('name'),
     department: new StringColumn('department'),
+    object: new StringColumn('object'),
 	});
 }
 
@@ -58,9 +60,14 @@ export const crudTests = (
       const testEmployee: Omit<Employee, keyof Record> = { name: 'Veronica' };
       const emplyeeTable: Table<Employee> = new EmployeeTable();
       const insertedEmployee = await db.insert(emplyeeTable, testEmployee);
-      const updateCount = await db.update(emplyeeTable, { department: 'Cake Factory' }, { id: insertedEmployee.id });
+      const updateCount = await db.update(emplyeeTable, { 
+        name: 'Veronican', 
+        department: 'Cake Factory',
+        object: "{\"cookie\":{\"originalMaxAge\":5184000000,\"expires\":\"2024-07-08T06:16:07.134Z\",\"httpOnly\":true,\"path\":\"/\"},\"passport\":{\"user\":\"brent@n3xa.io\"}}",
+      }, { id: insertedEmployee.id });
       expect(updateCount).toBe(1);
       const fetchedEmployee = await db.get(emplyeeTable, { id: insertedEmployee.id });
+      expect(fetchedEmployee.name).toBe('Veronican');
       expect(fetchedEmployee.department).toBe('Cake Factory');
       await db.delete(emplyeeTable, { id: fetchedEmployee.id });
     });
