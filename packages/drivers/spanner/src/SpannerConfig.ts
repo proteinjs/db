@@ -1,8 +1,8 @@
-import { SpannerOptions } from '@google-cloud/spanner'
+import { SpannerOptions } from '@google-cloud/spanner';
 
 export type SpannerConfig = {
-  projectId: string,
-  instanceName: string,
-  databaseName: string,
-  spannerOptions?: SpannerOptions,
-}
+  projectId: string;
+  instanceName: string;
+  databaseName: string;
+  spannerOptions?: SpannerOptions;
+};

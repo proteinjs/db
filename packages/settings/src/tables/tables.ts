@@ -3,4 +3,4 @@ import { Setting, SettingTable } from './SettingTable';
 
 export const tables = {
   Setting: new SettingTable() as Table<Setting>,
-}
+};

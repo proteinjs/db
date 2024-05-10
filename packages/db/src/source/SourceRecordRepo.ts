@@ -1,7 +1,7 @@
 import { SourceRecord } from './SourceRecord';
 
 export class SourceRecordRepo {
-  private static SOURCE_RECORD_MAP: {[key: string]: SourceRecord} = {};
+  private static SOURCE_RECORD_MAP: { [key: string]: SourceRecord } = {};
 
   private getKey(tableName: string, recordId: string) {
     return `${tableName}:${recordId}`;
@@ -11,7 +11,7 @@ export class SourceRecordRepo {
     SourceRecordRepo.SOURCE_RECORD_MAP[this.getKey(tableName, sourceRecord.id)] = sourceRecord;
   }
 
-  getSourceRecord<T extends SourceRecord = SourceRecord>(tableName: string, sourceRecordId: string): T|undefined {
+  getSourceRecord<T extends SourceRecord = SourceRecord>(tableName: string, sourceRecordId: string): T | undefined {
     return SourceRecordRepo.SOURCE_RECORD_MAP[this.getKey(tableName, sourceRecordId)] as T;
   }
 }
