@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.1.4](https://github.com/brentbahry/db/compare/@proteinjs/db-driver-spanner@1.1.3...@proteinjs/db-driver-spanner@1.1.4) (2024-05-10)
+
+
+### Bug Fixes
+
+* add .md file type to lint ignore files ([9460a31](https://github.com/brentbahry/db/commit/9460a313cd418250115922f687277f1b01dce238))
+
+
+
+
+
 ## [1.1.3](https://github.com/brentbahry/db/compare/@proteinjs/db-driver-spanner@1.1.2...@proteinjs/db-driver-spanner@1.1.3) (2024-05-10)
 
 

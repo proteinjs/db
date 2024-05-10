@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.18](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.0.17...@proteinjs/db-ui@1.0.18) (2024-05-10)
+
+
+### Bug Fixes
+
+* add .md file type to lint ignore files ([9460a31](https://github.com/proteinjs/db/commit/9460a313cd418250115922f687277f1b01dce238))
+
+
+
+
+
 ## [1.0.17](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.0.16...@proteinjs/db-ui@1.0.17) (2024-05-10)
 
 
