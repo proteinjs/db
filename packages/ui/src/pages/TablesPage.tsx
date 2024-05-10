@@ -1,7 +1,7 @@
-import React from 'react'
-import { FormPage, Page, TableLoader, Table as TableComponent, RowWindow } from '@proteinjs/ui'
-import { getTables, getDbService, Table } from '@proteinjs/db'
-import { recordTableLinkByName } from './RecordTablePage'
+import React from 'react';
+import { FormPage, Page, TableLoader, Table as TableComponent, RowWindow } from '@proteinjs/ui';
+import { getTables, getDbService, Table } from '@proteinjs/db';
+import { recordTableLinkByName } from './RecordTablePage';
 
 export const tablesPage: Page = {
   name: 'Tables',
@@ -10,13 +10,13 @@ export const tablesPage: Page = {
     <FormPage>
       <Tables />
     </FormPage>
-  )
-}
+  ),
+};
 
 type TableSummary = {
-  name: string,
-  rowCount: number,
-}
+  name: string;
+  rowCount: number;
+};
 
 class TableSummaryLoader implements TableLoader<TableSummary> {
   constructor(private tables: Table<any>[]) {}
@@ -25,7 +25,7 @@ class TableSummaryLoader implements TableLoader<TableSummary> {
     const page: RowWindow<TableSummary> = { rows: [], totalCount: this.tables.length };
     const tables = this.tables.slice(startIndex, endIndex);
     const dbService = getDbService();
-    for (let table of tables) {
+    for (const table of tables) {
       const rowCount = await dbService.getRowCount(table);
       page.rows.push({ name: table.name, rowCount });
     }
@@ -45,4 +45,4 @@ const Tables = () => {
       }}
     />
   );
-}
+};

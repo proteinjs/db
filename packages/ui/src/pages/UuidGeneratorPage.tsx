@@ -1,6 +1,6 @@
-import React from 'react'
-import { FormPage, Page, Form, Fields, textField, FormButtons } from '@proteinjs/ui'
-import { v1 as uuidv1 } from 'uuid'
+import React from 'react';
+import { FormPage, Page, Form, Fields, textField, FormButtons } from '@proteinjs/ui';
+import { v1 as uuidv1 } from 'uuid';
 
 export const uuidGeneratorPage: Page = {
   name: 'Uuid Generator',
@@ -14,24 +14,24 @@ export const uuidGeneratorPage: Page = {
         buttons={buttons}
       />
     </FormPage>
-  )
-}
+  ),
+};
 
 class UuidFields extends Fields {
   uuid = textField<UuidFields>({
-    name: 'uuid'
+    name: 'uuid',
   });
 }
 
 const buttons: FormButtons<UuidFields> = {
-	generate: {
-		name: 'Generate',
-		style: {
-			color: 'primary',
-			variant: 'contained',
-		},
-		onClick: async (fields: UuidFields, buttons: FormButtons<UuidFields>) => {
-			fields.uuid.field.value = uuidv1();
-		},
-	},
+  generate: {
+    name: 'Generate',
+    style: {
+      color: 'primary',
+      variant: 'contained',
+    },
+    onClick: async (fields: UuidFields, buttons: FormButtons<UuidFields>) => {
+      fields.uuid.field.value = uuidv1();
+    },
+  },
 };

@@ -1,22 +1,22 @@
-import React from 'react'
-import { Delete, Add } from '@mui/icons-material'
-import S from 'string'
-import { TableButton, Table as TableComponent, TableLoader, TableProps } from '@proteinjs/ui'
-import { Column, QueryBuilderFactory, Record, Table, getDb } from '@proteinjs/db'
-import { QueryTableLoader } from './QueryTableLoader'
-import { newRecordFormLink, recordFormLink } from '../pages/RecordFormPage'
-import { recordTableLink } from '../pages/RecordTablePage'
+import React from 'react';
+import { Delete, Add } from '@mui/icons-material';
+import S from 'string';
+import { TableButton, Table as TableComponent, TableLoader, TableProps } from '@proteinjs/ui';
+import { Column, QueryBuilderFactory, Record, Table, getDb } from '@proteinjs/db';
+import { QueryTableLoader } from './QueryTableLoader';
+import { newRecordFormLink, recordFormLink } from '../pages/RecordFormPage';
+import { recordTableLink } from '../pages/RecordTablePage';
 
 export type RecordTableProps<T extends Record> = {
-  table: Table<T>,
-  tableLoader?: TableLoader<T>,
-  title?: TableProps<T>['title'],
-  description?: TableProps<T>['description'],
-  columns?: TableProps<T>['columns'],
-  defaultRowsPerPage?: TableProps<T>['defaultRowsPerPage'],
-  buttons?: TableProps<T>['buttons'],
-  rowOnClickRedirectUrl?: TableProps<T>['rowOnClickRedirectUrl'],
-}
+  table: Table<T>;
+  tableLoader?: TableLoader<T>;
+  title?: TableProps<T>['title'];
+  description?: TableProps<T>['description'];
+  columns?: TableProps<T>['columns'];
+  defaultRowsPerPage?: TableProps<T>['defaultRowsPerPage'];
+  buttons?: TableProps<T>['buttons'];
+  rowOnClickRedirectUrl?: TableProps<T>['rowOnClickRedirectUrl'];
+};
 
 function deleteButton<T extends Record>(table: Table<T>): TableButton<T> {
   return {
@@ -27,9 +27,9 @@ function deleteButton<T extends Record>(table: Table<T>): TableButton<T> {
       showWhenNoRowsSelected: false,
     },
     onClick: async (selectedRows, navigate) => {
-      const qb = new QueryBuilderFactory().getQueryBuilder(table)
-        .condition({ field: 'id', operator: 'IN', value: selectedRows.map(row => row.id) as T[keyof T][] })
-      ;
+      const qb = new QueryBuilderFactory()
+        .getQueryBuilder(table)
+        .condition({ field: 'id', operator: 'IN', value: selectedRows.map((row) => row.id) as T[keyof T][] });
       await getDb().delete(table, qb);
       navigate(recordTableLink(table));
     },
@@ -53,19 +53,23 @@ function createButton<T extends Record>(table: Table<T>): TableButton<T> {
 export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
   function defaultColumns() {
     const columnProperties: (keyof T)[] = [];
-    if ((props.table.columns as any)['name'])
+    if ((props.table.columns as any)['name']) {
       columnProperties.push('name' as keyof T);
+    }
 
-    for (let columnProperty of Object.keys(props.table.columns)) {
-      if (columnProperties.length >= 5)
+    for (const columnProperty of Object.keys(props.table.columns)) {
+      if (columnProperties.length >= 5) {
         break;
+      }
 
-      if (columnProperty == 'name' || columnProperty == 'created' || columnProperty == 'updated')
+      if (columnProperty == 'name' || columnProperty == 'created' || columnProperty == 'updated') {
         continue;
+      }
 
       const column: Column<T, any> = (props.table.columns as any)[columnProperty];
-      if (column.options?.ui?.hidden)
+      if (column.options?.ui?.hidden) {
         continue;
+      }
 
       columnProperties.push(columnProperty as keyof T);
     }
@@ -86,15 +90,16 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
 
   function buttons() {
     const buttons: TableButton<T>[] = [];
-    if (props.buttons)
+    if (props.buttons) {
       buttons.push(...props.buttons);
+    }
 
     buttons.push(deleteButton(props.table));
     buttons.push(createButton(props.table));
 
     return buttons;
   }
-  
+
   return (
     <TableComponent
       title={props.title ? props.title : `${S(props.table.name).humanize().toString()} Table`}
