@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.15](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.0.14...@proteinjs/db-driver-knex@1.0.15) (2024-05-10)
+
+
+### Bug Fixes
+
+* add linting and lint all files ([f9859a3](https://github.com/proteinjs/db/commit/f9859a39882376fe7b93aa3b4281b22b2c02b7d5))
+
+
+
+
+
 ## [1.0.14](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.0.13...@proteinjs/db-driver-knex@1.0.14) (2024-05-09)
 
 **Note:** Version bump only for package @proteinjs/db-driver-knex

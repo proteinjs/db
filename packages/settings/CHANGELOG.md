@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.14](https://github.com/brentbahry/db/compare/@proteinjs/db-settings@1.0.13...@proteinjs/db-settings@1.0.14) (2024-05-10)
+
+
+### Bug Fixes
+
+* add linting and lint all files ([f9859a3](https://github.com/brentbahry/db/commit/f9859a39882376fe7b93aa3b4281b22b2c02b7d5))
+
+
+
+
+
 ## [1.0.13](https://github.com/brentbahry/db/compare/@proteinjs/db-settings@1.0.12...@proteinjs/db-settings@1.0.13) (2024-05-09)
 
 **Note:** Version bump only for package @proteinjs/db-settings

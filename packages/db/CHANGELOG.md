@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.16](https://github.com/proteinjs/db/compare/@proteinjs/db@1.0.15...@proteinjs/db@1.0.16) (2024-05-10)
+
+
+### Bug Fixes
+
+* add linting and lint all files ([f9859a3](https://github.com/proteinjs/db/commit/f9859a39882376fe7b93aa3b4281b22b2c02b7d5))
+
+
+
+
+
 ## [1.0.15](https://github.com/proteinjs/db/compare/@proteinjs/db@1.0.14...@proteinjs/db@1.0.15) (2024-05-09)
 
 ### Bug Fixes
