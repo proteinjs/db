@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/db-driver-spanner",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "description": "Db driver for Google Spanner",
   "publishConfig": {
     "access": "public"
@@ -23,13 +23,13 @@
   },
   "dependencies": {
     "@google-cloud/spanner": "7.5.0",
-    "@proteinjs/db": "^1.0.17",
-    "@proteinjs/db-query": "^1.0.10",
-    "@proteinjs/reflection": "1.1.1",
-    "@proteinjs/util": "1.1.0"
+    "@proteinjs/db": "^1.0.18",
+    "@proteinjs/db-query": "^1.0.11",
+    "@proteinjs/reflection": "1.1.5",
+    "@proteinjs/util": "1.1.2"
   },
   "devDependencies": {
-    "@proteinjs/reflection-build": "1.0.16",
+    "@proteinjs/reflection-build": "1.0.19",
     "@types/jest": "29.5.5",
     "@types/node": "14.0.27",
     "@typescript-eslint/eslint-plugin": "7.8.0",
