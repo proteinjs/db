@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.19](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.0.18...@proteinjs/db-driver-knex@1.0.19) (2024-05-17)
+
+
+### Bug Fixes
+
+* update settings table to be a scoped table ([db57b82](https://github.com/proteinjs/db/commit/db57b82dafe32b1111592837696216c9bb45b4fc))
+
+
+
+
+
 ## [1.0.16](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.0.15...@proteinjs/db-driver-knex@1.0.16) (2024-05-10)
 
 

@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.1.7](https://github.com/brentbahry/db/compare/@proteinjs/db-driver-spanner@1.1.6...@proteinjs/db-driver-spanner@1.1.7) (2024-05-17)
+
+
+### Bug Fixes
+
+* update settings table to be a scoped table ([db57b82](https://github.com/brentbahry/db/commit/db57b82dafe32b1111592837696216c9bb45b4fc))
+
+
+
+
+
 ## [1.1.4](https://github.com/brentbahry/db/compare/@proteinjs/db-driver-spanner@1.1.3...@proteinjs/db-driver-spanner@1.1.4) (2024-05-10)
 
 

@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.18](https://github.com/brentbahry/db/compare/@proteinjs/db-settings@1.0.17...@proteinjs/db-settings@1.0.18) (2024-05-17)
+
+
+### Bug Fixes
+
+* update settings table to be a scoped table ([db57b82](https://github.com/brentbahry/db/commit/db57b82dafe32b1111592837696216c9bb45b4fc))
+* update version of proteinjs/user ([1146e5e](https://github.com/brentbahry/db/commit/1146e5edb0eca8d53780fd02c2d13e8ff681c9e5))
+
+
+
+
+
 ## [1.0.15](https://github.com/brentbahry/db/compare/@proteinjs/db-settings@1.0.14...@proteinjs/db-settings@1.0.15) (2024-05-10)
 
 

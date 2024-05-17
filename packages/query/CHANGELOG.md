@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.12](https://github.com/proteinjs/db/compare/@proteinjs/db-query@1.0.11...@proteinjs/db-query@1.0.12) (2024-05-17)
+
+
+### Bug Fixes
+
+* update settings table to be a scoped table ([db57b82](https://github.com/proteinjs/db/commit/db57b82dafe32b1111592837696216c9bb45b4fc))
+
+
+
+
+
 ## [1.0.10](https://github.com/proteinjs/db/compare/@proteinjs/db-query@1.0.9...@proteinjs/db-query@1.0.10) (2024-05-10)
 
 
