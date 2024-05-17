@@ -1,4 +1,3 @@
-import { getDb } from '@proteinjs/db';
 import { Logger } from '@proteinjs/util';
 import { SettingsService, getSettingsService } from './services/SettingsService';
 import { tables } from './tables/tables';
