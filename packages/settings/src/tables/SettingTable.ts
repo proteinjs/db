@@ -1,6 +1,7 @@
-import { Table, StringColumn, Record, withRecordColumns, ObjectColumn } from '@proteinjs/db';
+import { Table, StringColumn, ObjectColumn } from '@proteinjs/db';
+import { ScopedRecord, withScopedRecordColumns } from '@proteinjs/user';
 
-export interface Setting extends Record {
+export interface Setting extends ScopedRecord {
   name: string;
   value: any;
 }
@@ -15,7 +16,7 @@ export class SettingTable extends Table<Setting> {
       all: 'authenticated',
     },
   };
-  public columns = withRecordColumns<Setting>({
+  public columns = withScopedRecordColumns<Setting>({
     name: new StringColumn('name'),
     value: new ObjectColumn('value'),
   });
