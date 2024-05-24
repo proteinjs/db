@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.23](https://github.com/proteinjs/db/compare/@proteinjs/db@1.0.22...@proteinjs/db@1.0.23) (2024-05-24)
+
+
+### Bug Fixes
+
+* `Db.update` should add column queries to its update query ([d1ebb77](https://github.com/proteinjs/db/commit/d1ebb777a13472f2968acc44a4ca0b32c08a5969))
+
+
+
+
+
 ## [1.0.20](https://github.com/proteinjs/db/compare/@proteinjs/db@1.0.19...@proteinjs/db@1.0.20) (2024-05-17)
 
 
