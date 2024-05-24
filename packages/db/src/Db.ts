@@ -118,7 +118,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     }
 
     if (!query && !record.id) {
-      throw new Error(`Update must be called with either a QueryBuilder or a record with an id property`);
+      throw new Error(`Update must be called with either a Query or a record with an id property`);
     }
 
     const recordCopy = Object.assign({}, record);
@@ -126,6 +126,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     const recordSearializer = new RecordSerializer<T>(table);
     const serializedRecord = await recordSearializer.serialize(recordCopy);
     const qb = new QueryBuilderFactory().getQueryBuilder(table, query);
+    this.addColumnQueries(table, qb);
     if (!query) {
       qb.condition({ field: 'id', operator: '=', value: recordCopy.id as T[keyof T] });
     }
