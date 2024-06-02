@@ -2,7 +2,7 @@ import { Logger } from '@proteinjs/util';
 import { QueryBuilder } from '@proteinjs/db-query';
 import { getSourceRecordLoaders, SourceRecord, getSourceRecordTables } from './SourceRecord';
 import { Table } from '../Table';
-import { getSystemDb } from '../Db';
+import { getDbAsSystem } from '../Db';
 import { SourceRecordRepo } from './SourceRecordRepo';
 
 type SourceRecordsMap = {
@@ -14,7 +14,7 @@ export class SourceRecordLoader {
 
   async load() {
     const sourceRecordsMap = await this.getSourceRecordsMap();
-    const db = getSystemDb();
+    const db = getDbAsSystem();
     for (const tableName in sourceRecordsMap) {
       let insertCount = 0;
       let updateCount = 0;

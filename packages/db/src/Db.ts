@@ -14,7 +14,7 @@ import { TableServiceAuth } from './auth/TableServiceAuth';
 
 export const getDb = <R extends Record = Record>() =>
   typeof self === 'undefined' ? new Db<R>() : (getDbService() as Db<R>);
-export const getSystemDb = <R extends Record = Record>() => new Db<R>(undefined, undefined, true);
+export const getDbAsSystem = <R extends Record = Record>() => new Db<R>(undefined, undefined, true);
 
 export type DbDriverStatementConfig = ParameterizationConfig & { prefixTablesWithDb?: boolean };
 
@@ -47,7 +47,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
   constructor(
     dbDriver?: DbDriver,
     getTable?: (tableName: string) => Table<any>,
-    private ignoreAuth?: boolean
+    private runAsSystem: boolean = false
   ) {
     this.dbDriver = dbDriver ? dbDriver : this.getDefaultDbDriver();
     this.statementConfigFactory = new StatementConfigFactory(this.dbDriver.getDbName(), getTable);
@@ -85,7 +85,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
   }
 
   async insert<T extends R>(table: Table<T>, record: Omit<T, keyof R>): Promise<T> {
-    if (!this.ignoreAuth) {
+    if (!this.runAsSystem) {
       this.auth.canInsert(table);
     }
 
@@ -113,7 +113,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
   }
 
   async update<T extends R>(table: Table<T>, record: Partial<T>, query?: Query<T>): Promise<number> {
-    if (!this.ignoreAuth) {
+    if (!this.runAsSystem) {
       this.auth.canUpdate(table);
     }
 
@@ -152,7 +152,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
   }
 
   async delete<T extends R>(table: Table<T>, query: Query<T>): Promise<number> {
-    if (!this.ignoreAuth) {
+    if (!this.runAsSystem) {
       this.auth.canDelete(table);
     }
 
@@ -204,7 +204,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
   }
 
   async query<T extends R>(table: Table<T>, query: Query<T>): Promise<T[]> {
-    if (!this.ignoreAuth) {
+    if (!this.runAsSystem) {
       this.auth.canQuery(table);
     }
 
@@ -220,7 +220,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
   }
 
   async getRowCount<T extends R>(table: Table<T>, query?: Query<T>): Promise<number> {
-    if (!this.ignoreAuth) {
+    if (!this.runAsSystem) {
       this.auth.canQuery(table);
     }
 
@@ -237,7 +237,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     for (const columnPropertyName in table.columns) {
       const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
       if (column.options?.addToQuery) {
-        column.options.addToQuery(qb);
+        column.options.addToQuery(qb, this.runAsSystem);
       }
     }
   }
