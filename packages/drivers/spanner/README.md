@@ -108,8 +108,8 @@ export class DbDriverFactory implements DefaultDbDriverFactory {
 
       const credentials = JSON.parse(Buffer.from(encodedCredentials, 'base64').toString('utf-8'));
       return new SpannerDriver({
-        projectId: 'n3xa-app',
-        instanceName: 'n3xa-prod',
+        projectId: 'your-project-id',
+        instanceName: 'your-instance-name',
         databaseName: devDbName,
         spannerOptions: {
           credentials,
