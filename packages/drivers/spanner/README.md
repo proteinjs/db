@@ -4,15 +4,15 @@ Follow these steps to setup a development Spanner database for your app.
 
 1. In Google Cloud Spanner dashboard, create a new database, one per developer to avoid affecting each other's data. Note: you can alternatively run the Spanner Emulator locally in Docker (described below in the Test Environment Setup); however every time the container is restarted the data will be wiped.
 2. Create a new access key, or use a previously downloaded key if you have one, in Google Cloud Service Accounts. This is found in the IAM & Admin section of Google Cloud. Creating a new key will automatically download the file.
-4. Once the key is downloaded, navigate to the file location in your terminal to encode it.
+3. Once the key is downloaded, navigate to the file location in your terminal to encode it.
 `cat your-app-abcde123456.json | base64`
 Keep the string that is returned to save as an environment variable on your machine.
-5. Edit your environment variables. On Mac for example:
+4. Edit your environment variables. On Mac for example:
 `nano ~/.zshrc`
 Add these two lines:
 `export DEV_DB_NAME="name-of-your-dev-db"`
 `export GCP_SPANNER_SA_KEY="paste the long string that you retrieved from encoding here"`
-6. You can then utilize this information when implementing a spanner driver like this. Note: `DbDriverFactory` is a convenience api for setting the default driver instantiated within `Db`.
+5. You can then utilize this information when implementing a spanner driver like this. Note: `DefaultDbDriverFactory` is a convenience api for setting the default driver instantiated within Protein Js' `Db`. You do not need to explicitly register `DbDriverFactory` anywhere; the Protein Js dependency injection system [Reflection](https://github.com/proteinjs/reflection) handles that automatically. Alternatively, you can instantiate `Db` with a `SpannerDriver` manually.
 ```
 import { DbDriver, DefaultDbDriverFactory } from '@proteinjs/db';
 import { SpannerDriver } from '@proteinjs/db-driver-spanner';
@@ -87,8 +87,8 @@ Follow these steps to setup a production Spanner database for your app. This ass
 
 1. In Google Cloud Spanner dashboard, create a new database to be used as your prod database.
 2. Create a prod sa key
-2. Set your prod db name and prod Spanner SA key as secrets in your CI system.
-6. Update your `DbDriverFactory` implementation to use different drivers based on environemnt.
+3. Set your prod db name and prod Spanner SA key as secrets in your CI system.
+4. Update your `DbDriverFactory` implementation to use different drivers based on environemnt.
 ```
 import { DbDriver, DefaultDbDriverFactory } from '@proteinjs/db';
 import { SpannerDriver } from '@proteinjs/db-driver-spanner';
