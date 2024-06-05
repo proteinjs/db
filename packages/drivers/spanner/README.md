@@ -1,4 +1,51 @@
+# Dev Environment Setup
+
+Follow these steps to setup a development Spanner database for your app.
+
+1. In Google Cloud Spanner dashboard, create a new database, one per developer to avoid affecting each other's data. Note: you can alternatively run the Spanner Emulator locally in Docker (described below in the Test Environment Setup); however every time the container is restarted the data will be wiped.
+2. Create a new access key, or use a previously downloaded key if you have one, in Google Cloud Service Accounts. This is found in the IAM & Admin section of Google Cloud. Creating a new key will automatically download the file.
+4. Once the key is downloaded, navigate to the file location in your terminal to encode it.
+`cat your-app-abcde123456.json | base64`
+Keep the string that is returned to save as an environment variable on your machine.
+5. Edit your environment variables. On Mac for example:
+`nano ~/.zshrc`
+Add these two lines:
+`export DEV_DB_NAME="name-of-your-dev-db"`
+`export GCP_SPANNER_SA_KEY="paste the long string that you retrieved from encoding here"`
+6. You can then utilize this information when implementing a spanner driver like this. Note: `DbDriverFactory` is a convenience api for setting the default driver instantiated within `Db`.
+```
+import { DbDriver, DefaultDbDriverFactory } from '@proteinjs/db';
+import { SpannerDriver } from '@proteinjs/db-driver-spanner';
+
+export class DbDriverFactory implements DefaultDbDriverFactory {
+  getDbDriver(): DbDriver {
+    const devDbName = process.env.DEV_DB_NAME;
+    if (!devDbName) {
+      throw new Error('Unable to instantiate SpannerDriver. The DEV_DB_NAME environment variable is not set.');
+    }
+
+    const encodedCredentials = process.env.GCP_SPANNER_SA_KEY;
+    if (!encodedCredentials) {
+      throw new Error('Unable to instantiate SpannerDriver. The GCP_SPANNER_SA_KEY environment variable is not set.');
+    }
+
+    const credentials = JSON.parse(Buffer.from(encodedCredentials, 'base64').toString('utf-8'));
+    return new SpannerDriver({
+      projectId: 'your-project-id',
+      instanceName: 'your-instance-name',
+      databaseName: devDbName,
+      spannerOptions: {
+        credentials,
+      },
+    });
+  }
+}
+```
+
+
 # Test Environment Setup
+
+Follow these steps to setup a test Spanner Database to be used with running automated tests for code that interacts with a Spanner database.
 
 1. [Install Docker](https://docs.docker.com/desktop/install/mac-install/)
 2. [Install gcloud cli](https://cloud.google.com/sdk/docs/install)
@@ -31,22 +78,24 @@
          --instance='proteinjs-test' \
          --sql='select table_name from information_schema.tables'
      ```
-4. Note: every time you restart the emulator, you need to re-create state (like the instance and the db). Continue reading if you want to set up a database in Google Cloud Spanner to retain your state.
+4. Note: every time you restart the emulator, you need to re-create state (like the instance and the db).
 
-## Set up Google Cloud Spanner DB
-1. In Google Cloud Spanner dashboard, create a new database, one per developer to avoid affecting each other's data.
-2. Create a new key, or use a previously downloaded key if you have one, in Google Cloud Service Accounts. This is found in the IAM & Admin section of Google Cloud. Creating a new key will automatically download the file.
-4. Once the key is downloaded, navigate to the file location in your terminal to encode it.
-`cat your-app-abcde123456.json | base64`
-Keep the string that is returned to save as an environment variable on your machine.
-5. Edit your environment variables. On Mac for example:
-`nano ~/.zshrc`
-Add these two lines:
-`export DEV_DB_NAME="name-of-your-dev-db"`
-`export GCP_SPANNER_SA_KEY="paste the long string that you retrieved from encoding here"`
-6. You can then utilize this information when implementing a spanner driver like this.
+
+# Prod Environment Setup
+
+Follow these steps to setup a production Spanner database for your app. This assumes you already implemented Dev Environment Setup above.
+
+1. In Google Cloud Spanner dashboard, create a new database to be used as your prod database.
+2. Create a prod sa key
+2. Set your prod db name and prod Spanner SA key as secrets in your CI system.
+6. Update your `DbDriverFactory` implementation to use different drivers based on environemnt.
 ```
-if (process.env.DEVELOPMENT) {
+import { DbDriver, DefaultDbDriverFactory } from '@proteinjs/db';
+import { SpannerDriver } from '@proteinjs/db-driver-spanner';
+
+export class DbDriverFactory implements DefaultDbDriverFactory {
+  getDbDriver(): DbDriver {
+    if (process.env.DEVELOPMENT) { // or however you check environment
       const devDbName = process.env.DEV_DB_NAME;
       if (!devDbName) {
         throw new Error('Unable to instantiate SpannerDriver. The DEV_DB_NAME environment variable is not set.');
@@ -59,12 +108,34 @@ if (process.env.DEVELOPMENT) {
 
       const credentials = JSON.parse(Buffer.from(encodedCredentials, 'base64').toString('utf-8'));
       return new SpannerDriver({
-        projectId: 'your-project-name',
-        instanceName: 'your-instance-name',
+        projectId: 'n3xa-app',
+        instanceName: 'n3xa-prod',
         databaseName: devDbName,
         spannerOptions: {
           credentials,
         },
       });
     }
+
+    const prodDbName = process.env.PROD_DB_NAME;
+    if (!prodDbName) {
+      throw new Error('Unable to instantiate SpannerDriver. The PROD_DB_NAME environment variable is not set.');
+    }
+
+    const encodedCredentials = process.env.GCP_SPANNER_SA_KEY;
+    if (!encodedCredentials) {
+      throw new Error('Unable to instantiate SpannerDriver. The GCP_SPANNER_SA_KEY environment variable is not set.');
+    }
+
+    const credentials = JSON.parse(Buffer.from(encodedCredentials, 'base64').toString('utf-8'));
+    return new SpannerDriver({
+      projectId: 'your-project-id',
+      instanceName: 'your-instance-name',
+      databaseName: prodDbName,
+      spannerOptions: {
+        credentials,
+      },
+    });
+  }
+}
 ```
