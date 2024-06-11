@@ -1,5 +1,5 @@
 import { StatementConfig } from '@proteinjs/db-query';
-import { Table, tableByName } from './Table';
+import { Column, Table, tableByName } from './Table';
 import { DbDriverStatementConfig } from './Db';
 
 export class StatementConfigFactory {
@@ -17,6 +17,7 @@ export class StatementConfigFactory {
       resolveFieldName: this.getResolveFieldName(),
       useParams: config.useParams,
       useNamedParams: config.useNamedParams,
+      getColumnType: config.getColumnType,
     };
   }
 
@@ -29,6 +30,18 @@ export class StatementConfigFactory {
       }
 
       return column.name;
+    };
+  }
+
+  private getColumnTypeFunc() {
+    return (tableName: string, propertyName: string): Column<any, any> => {
+      const table = this.getTable(tableName);
+      const column = table.columns[propertyName];
+      if (!column) {
+        throw new Error(`(${table.name}) Column does not exist for property: ${propertyName}`);
+      }
+
+      return column;
     };
   }
 }

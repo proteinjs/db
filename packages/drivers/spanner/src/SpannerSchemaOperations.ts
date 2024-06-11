@@ -6,7 +6,6 @@ import {
   StatementFactory,
   AlterTableParams,
   StatementUtil,
-  getColumnByName,
 } from '@proteinjs/db';
 import { SpannerDriver } from './SpannerDriver';
 import { SpannerColumnTypeFactory } from './SpannerColumnTypeFactory';

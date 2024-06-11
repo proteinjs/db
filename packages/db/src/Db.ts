@@ -16,7 +16,10 @@ export const getDb = <R extends Record = Record>() =>
   typeof self === 'undefined' ? new Db<R>() : (getDbService() as Db<R>);
 export const getDbAsSystem = <R extends Record = Record>() => new Db<R>(undefined, undefined, true);
 
-export type DbDriverStatementConfig = ParameterizationConfig & { prefixTablesWithDb?: boolean };
+export type DbDriverStatementConfig = ParameterizationConfig & {
+  prefixTablesWithDb?: boolean;
+  getColumnType?: (tableName: string, columnPropertyName: string) => string;
+};
 
 export interface DefaultDbDriverFactory extends Loadable {
   getDbDriver(): DbDriver;

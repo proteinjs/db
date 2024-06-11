@@ -1,5 +1,5 @@
 import { Database, Instance, Spanner } from '@google-cloud/spanner';
-import { DbDriver, DbDriverStatementConfig, TableManager } from '@proteinjs/db';
+import { Column, DbDriver, DbDriverStatementConfig, Table, TableManager, tableByName } from '@proteinjs/db';
 import { SpannerConfig } from './SpannerConfig';
 import { Logger } from '@proteinjs/util';
 import { Statement } from '@proteinjs/db-query';
@@ -13,9 +13,11 @@ export class SpannerDriver implements DbDriver {
   private static SPANNER_DB: Database;
   private logger = new Logger(this.constructor.name);
   private config: SpannerConfig;
+  private getTable: ((name: string) => Table<any>) | undefined;
 
-  constructor(config: SpannerConfig) {
+  constructor(config: SpannerConfig, getTable?: (name: string) => Table<any>) {
     this.config = config;
+    this.getTable = getTable;
   }
 
   private getSpanner(): Spanner {
@@ -57,6 +59,17 @@ export class SpannerDriver implements DbDriver {
     const schemaOperations = new SpannerSchemaOperations(this);
     const schemaMetadata = new SpannerSchemaMetadata(this, false);
     return new TableManager(this, columnTypeFactory, schemaOperations, schemaMetadata);
+  }
+
+  getColumnType(tableName: string, columnPropertyName: string): string {
+    const table = this.getTable ? this.getTable(tableName) : tableByName(tableName);
+    const column = Object.values(table.columns).find((col) => col.name === columnPropertyName);
+
+    if (!column) {
+      throw new Error(`(${table.name}) Column does not exist for property: ${columnPropertyName}`);
+    }
+
+    return new SpannerColumnTypeFactory().getType(column, true);
   }
 
   async createDbIfNotExists(): Promise<void> {
@@ -101,6 +114,7 @@ export class SpannerDriver implements DbDriver {
       useParams: true,
       useNamedParams: true,
       prefixTablesWithDb: false,
+      getColumnType: this.getColumnType,
     });
     try {
       return await this.getSpannerDb().runTransactionAsync(async (transaction) => {
@@ -108,6 +122,7 @@ export class SpannerDriver implements DbDriver {
         const [rowCount] = await transaction.runUpdate({
           sql,
           params: namedParams?.params,
+          types: namedParams?.types,
         });
         await transaction.commit();
         return rowCount;
