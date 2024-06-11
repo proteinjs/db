@@ -1,5 +1,5 @@
 import { Database, Instance, Spanner } from '@google-cloud/spanner';
-import { Column, DbDriver, DbDriverStatementConfig, Table, TableManager, tableByName } from '@proteinjs/db';
+import { DbDriver, DbDriverStatementConfig, Table, TableManager, tableByName } from '@proteinjs/db';
 import { SpannerConfig } from './SpannerConfig';
 import { Logger } from '@proteinjs/util';
 import { Statement } from '@proteinjs/db-query';
@@ -13,11 +13,13 @@ export class SpannerDriver implements DbDriver {
   private static SPANNER_DB: Database;
   private logger = new Logger(this.constructor.name);
   private config: SpannerConfig;
-  private getTable: ((name: string) => Table<any>) | undefined;
+  public getTable: ((name: string) => Table<any>) | undefined;
 
   constructor(config: SpannerConfig, getTable?: (name: string) => Table<any>) {
     this.config = config;
     this.getTable = getTable;
+    const logger = new Logger('SpannerDriver');
+    logger.info(`getTable from constructor: ${this.getTable}`);
   }
 
   private getSpanner(): Spanner {
@@ -62,6 +64,8 @@ export class SpannerDriver implements DbDriver {
   }
 
   getColumnType(tableName: string, columnPropertyName: string): string {
+    const logger = new Logger('getColumnType');
+    logger.info(`getTable: ${this.getTable}`);
     const table = this.getTable ? this.getTable(tableName) : tableByName(tableName);
     const column = Object.values(table.columns).find((col) => col.name === columnPropertyName);
 
@@ -114,7 +118,7 @@ export class SpannerDriver implements DbDriver {
       useParams: true,
       useNamedParams: true,
       prefixTablesWithDb: false,
-      getColumnType: this.getColumnType,
+      getColumnType: this.getColumnType.bind(this),
     });
     try {
       return await this.getSpannerDb().runTransactionAsync(async (transaction) => {

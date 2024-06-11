@@ -19,16 +19,17 @@ export class EmployeeTable extends Table<Employee> {
   });
 }
 
+export const getTable = (tableName: string) => {
+  const employeeTable = new EmployeeTable();
+  if (employeeTable.name == tableName) {
+    return employeeTable;
+  }
+
+  throw new Error('Cannot find test table');
+};
+
 export const crudTests = (driver: DbDriver, dropTable: (table: Table<any>) => Promise<void>) => {
   return () => {
-    const getTable = (tableName: string) => {
-      const employeeTable = new EmployeeTable();
-      if (employeeTable.name == tableName) {
-        return employeeTable;
-      }
-
-      throw new Error('Cannot find test table');
-    };
     const db = new Db(driver, getTable);
 
     beforeAll(async () => {
