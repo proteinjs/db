@@ -3,7 +3,6 @@ import { DbDriver, Db } from '../src/Db';
 import { withRecordColumns, Record } from '../src/Record';
 import { BooleanColumn, StringColumn } from '../src/Columns';
 import { Table } from '../src/Table';
-import { log } from 'console';
 
 export interface Employee extends Record {
   name: string;
@@ -173,7 +172,13 @@ export const crudTests = (driver: DbDriver, dropTable: (table: Table<any>) => Pr
       const emplyeeTable: Table<Employee> = new EmployeeTable();
       const insertedEmployee = await db.insert(emplyeeTable, testEmployee);
 
-      const rows = await db.query(emplyeeTable, { departmentArea: null, id: insertedEmployee.id });
+      const qb = new QueryBuilder<Employee>(emplyeeTable.name)
+        .condition({
+          field: 'departmentArea',
+          operator: 'IS NULL',
+        })
+        .condition({ field: 'id', operator: '=', value: insertedEmployee.id });
+      const rows = await db.query(emplyeeTable, qb);
       expect(rows.length).toEqual(1);
       await db.delete(emplyeeTable, { id: insertedEmployee.id });
     });
