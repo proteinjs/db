@@ -19,7 +19,10 @@ export class EmployeeTable extends Table<Employee> {
   });
 }
 
-export const getTable = (tableName: string) => {
+/**
+ * Used for testing purposes only.
+ *  */
+export const getTestTable = (tableName: string) => {
   const employeeTable = new EmployeeTable();
   if (employeeTable.name == tableName) {
     return employeeTable;
@@ -30,7 +33,7 @@ export const getTable = (tableName: string) => {
 
 export const crudTests = (driver: DbDriver, dropTable: (table: Table<any>) => Promise<void>) => {
   return () => {
-    const db = new Db(driver, getTable);
+    const db = new Db(driver, getTestTable);
 
     beforeAll(async () => {
       if (driver.start) {
