@@ -203,7 +203,7 @@ export class StatementParamManager {
     } else if (this.config.useParams) {
       if (this.config.useNamedParams) {
         const paramName = `param${this.paramCounter++}`;
-        this.paramNames[paramName] = value || null;
+        this.paramNames[paramName] = value;
         this.paramTypes[paramName] = valueType;
         return `@${paramName}`;
       } else {
