@@ -13,13 +13,13 @@ import {
 
 // max size of a row in spanner is 10mb
 export class SpannerColumnTypeFactory {
-  getType(column: Column<any, any>, isDml?: boolean): string {
+  getType(column: Column<any, any>, isQueryOrDml?: boolean): string {
     let type: string;
 
     if (isInstanceOf(column, IntegerColumn)) {
       type = 'INT64';
     } else if (isInstanceOf(column, StringColumn)) {
-      type = isDml ? 'string' : `STRING(${(column as StringColumn).maxLength})`;
+      type = isQueryOrDml ? 'string' : `STRING(${(column as StringColumn).maxLength})`;
     } else if (isInstanceOf(column, FloatColumn)) {
       type = 'FLOAT64';
     } else if (isInstanceOf(column, DecimalColumn)) {
@@ -31,13 +31,13 @@ export class SpannerColumnTypeFactory {
     } else if (isInstanceOf(column, DateTimeColumn)) {
       type = 'TIMESTAMP';
     } else if (isInstanceOf(column, BinaryColumn)) {
-      type = isDml
+      type = isQueryOrDml
         ? 'bytes'
         : `BYTES(${!(column as BinaryColumn).maxLength ? 'MAX' : (column as BinaryColumn).maxLength})`;
     } else {
       throw new Error(`Invalid column type: ${column.constructor.name}, must extend a base column`);
     }
 
-    return isDml ? type.toLowerCase() : type;
+    return isQueryOrDml ? type.toLowerCase() : type;
   }
 }
