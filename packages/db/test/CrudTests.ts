@@ -3,10 +3,11 @@ import { DbDriver, Db } from '../src/Db';
 import { withRecordColumns, Record } from '../src/Record';
 import { BooleanColumn, StringColumn } from '../src/Columns';
 import { Table } from '../src/Table';
+import { log } from 'console';
 
 export interface Employee extends Record {
   name: string;
-  department?: string | null;
+  departmentArea?: string | null;
   isRemote?: boolean;
   object?: string;
 }
@@ -15,8 +16,8 @@ export class EmployeeTable extends Table<Employee> {
   name = 'db_test_employee';
   columns = withRecordColumns<Employee>({
     name: new StringColumn('name'),
-    department: new StringColumn('department'),
-    isRemote: new BooleanColumn('isRemote'),
+    departmentArea: new StringColumn('department_area'),
+    isRemote: new BooleanColumn('is_remote'),
     object: new StringColumn('object'),
   });
 }
@@ -30,7 +31,7 @@ export const getTestTable = (tableName: string) => {
     return employeeTable;
   }
 
-  throw new Error('Cannot find test table');
+  throw new Error(`Cannot find test table: ${tableName}`);
 };
 
 export const crudTests = (driver: DbDriver, dropTable: (table: Table<any>) => Promise<void>) => {
@@ -70,7 +71,7 @@ export const crudTests = (driver: DbDriver, dropTable: (table: Table<any>) => Pr
         emplyeeTable,
         {
           name: 'Veronican',
-          department: 'Cake Factory',
+          departmentArea: 'Cake Factory',
           object:
             '{"cookie":{"originalMaxAge":5184000000,"expires":"2024-07-08T06:16:07.134Z","httpOnly":true,"path":"/"},"passport":{"user":"brent@n3xa.io"}}',
         },
@@ -79,7 +80,7 @@ export const crudTests = (driver: DbDriver, dropTable: (table: Table<any>) => Pr
       expect(updateCount).toBe(1);
       const fetchedEmployee = await db.get(emplyeeTable, { id: insertedEmployee.id });
       expect(fetchedEmployee.name).toBe('Veronican');
-      expect(fetchedEmployee.department).toBe('Cake Factory');
+      expect(fetchedEmployee.departmentArea).toBe('Cake Factory');
       await db.delete(emplyeeTable, { id: fetchedEmployee.id });
     });
 
@@ -96,14 +97,14 @@ export const crudTests = (driver: DbDriver, dropTable: (table: Table<any>) => Pr
     });
 
     test('Query', async () => {
-      const testEmployee1: Omit<Employee, keyof Record> = { name: 'Veronica', department: 'Cake Factory' };
-      const testEmployee2: Omit<Employee, keyof Record> = { name: 'Brent', department: 'Cake Factory' };
-      const testEmployee3: Omit<Employee, keyof Record> = { name: 'Sean', department: 'Pug Playhouse' };
+      const testEmployee1: Omit<Employee, keyof Record> = { name: 'Veronica', departmentArea: 'Cake Factory' };
+      const testEmployee2: Omit<Employee, keyof Record> = { name: 'Brent', departmentArea: 'Cake Factory' };
+      const testEmployee3: Omit<Employee, keyof Record> = { name: 'Sean', departmentArea: 'Pug Playhouse' };
       const emplyeeTable: Table<Employee> = new EmployeeTable();
       const fetchedEmployee1 = await db.insert(emplyeeTable, testEmployee1);
       const fetchedEmployee2 = await db.insert(emplyeeTable, testEmployee2);
       const fetchedEmployee3 = await db.insert(emplyeeTable, testEmployee3);
-      const fetchedEmployees = await db.query(emplyeeTable, { department: 'Cake Factory' });
+      const fetchedEmployees = await db.query(emplyeeTable, { departmentArea: 'Cake Factory' });
       expect(fetchedEmployees.length).toBe(2);
       expect(fetchedEmployees[0].name).toBe('Veronica');
       expect(fetchedEmployees[1].name).toBe('Brent');
@@ -116,14 +117,14 @@ export const crudTests = (driver: DbDriver, dropTable: (table: Table<any>) => Pr
     });
 
     test('Get row count', async () => {
-      const testEmployee1: Omit<Employee, keyof Record> = { name: 'Veronica', department: 'Cake Factory' };
-      const testEmployee2: Omit<Employee, keyof Record> = { name: 'Brent', department: 'Cake Factory' };
-      const testEmployee3: Omit<Employee, keyof Record> = { name: 'Sean', department: 'Pug Playhouse' };
+      const testEmployee1: Omit<Employee, keyof Record> = { name: 'Veronica', departmentArea: 'Cake Factory' };
+      const testEmployee2: Omit<Employee, keyof Record> = { name: 'Brent', departmentArea: 'Cake Factory' };
+      const testEmployee3: Omit<Employee, keyof Record> = { name: 'Sean', departmentArea: 'Pug Playhouse' };
       const emplyeeTable: Table<Employee> = new EmployeeTable();
       const fetchedEmployee1 = await db.insert(emplyeeTable, testEmployee1);
       const fetchedEmployee2 = await db.insert(emplyeeTable, testEmployee2);
       const fetchedEmployee3 = await db.insert(emplyeeTable, testEmployee3);
-      const rowCount = await db.getRowCount(emplyeeTable, { department: 'Cake Factory' });
+      const rowCount = await db.getRowCount(emplyeeTable, { departmentArea: 'Cake Factory' });
       expect(rowCount).toBe(2);
       const qb = new QueryBuilder<Employee>(emplyeeTable.name).condition({
         field: 'id',
@@ -134,22 +135,23 @@ export const crudTests = (driver: DbDriver, dropTable: (table: Table<any>) => Pr
     });
 
     test('Insert with null values', async () => {
-      const testEmployee: Omit<Employee, keyof Record> = { name: 'Zenyatta', department: null, isRemote: false };
+      const testEmployee: Omit<Employee, keyof Record> = { name: 'Zenyatta', departmentArea: null, isRemote: false };
       const emplyeeTable: Table<Employee> = new EmployeeTable();
       const insertedEmployee = await db.insert(emplyeeTable, testEmployee);
       const fetchedEmployee = await db.get(emplyeeTable, { id: insertedEmployee.id });
 
       expect(fetchedEmployee).toBeTruthy();
-      expect(fetchedEmployee.department).toBeNull();
+      expect(fetchedEmployee.departmentArea).toBeNull();
 
-      const nullUpdateCount = await db.update(emplyeeTable, { department: null }, { id: insertedEmployee.id });
+      const nullUpdateCount = await db.update(emplyeeTable, { departmentArea: null }, { id: insertedEmployee.id });
       expect(nullUpdateCount).toBe(1);
+      await db.delete(emplyeeTable, { id: fetchedEmployee.id });
     });
 
     test('Update with null values', async () => {
       const testEmployee: Omit<Employee, keyof Record> = {
         name: 'Cassidy',
-        department: 'Sharpshooting Cowboys',
+        departmentArea: 'Sharpshooting Cowboys',
         isRemote: false,
       };
       const emplyeeTable: Table<Employee> = new EmployeeTable();
@@ -157,20 +159,23 @@ export const crudTests = (driver: DbDriver, dropTable: (table: Table<any>) => Pr
       const fetchedEmployee = await db.get(emplyeeTable, { id: insertedEmployee.id });
       expect(fetchedEmployee).toBeTruthy();
 
-      const nullUpdateCount = await db.update(emplyeeTable, { department: null }, { id: insertedEmployee.id });
+      const nullUpdateCount = await db.update(emplyeeTable, { departmentArea: null }, { id: insertedEmployee.id });
       expect(nullUpdateCount).toBe(1);
+      await db.delete(emplyeeTable, { id: fetchedEmployee.id });
     });
 
     test('Query with null values', async () => {
       const testEmployee: Omit<Employee, keyof Record> = {
         name: 'Cassidy',
-        department: null,
+        departmentArea: null,
         isRemote: false,
       };
       const emplyeeTable: Table<Employee> = new EmployeeTable();
-      await db.insert(emplyeeTable, testEmployee);
-      const fetchedEmployees = await db.query(emplyeeTable, { department: null });
-      expect(fetchedEmployees).toHaveLength(1);
+      const insertedEmployee = await db.insert(emplyeeTable, testEmployee);
+
+      const rows = await db.query(emplyeeTable, { departmentArea: null, id: insertedEmployee.id });
+      expect(rows.length).toEqual(1);
+      await db.delete(emplyeeTable, { id: insertedEmployee.id });
     });
   };
 };
