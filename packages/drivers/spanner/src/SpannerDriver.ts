@@ -61,15 +61,21 @@ export class SpannerDriver implements DbDriver {
     return new TableManager(this, columnTypeFactory, schemaOperations, schemaMetadata);
   }
 
-  getColumnType(tableName: string, columnPropertyName: string): string {
+  getColumnType(tableName: string, columnName: string): string {
     const table = this.getTable ? this.getTable(tableName) : tableByName(tableName);
-    const column = Object.values(table.columns).find((col) => col.name === columnPropertyName);
+    const column = Object.values(table.columns).find((col) => col.name === columnName);
 
     if (!column) {
-      throw new Error(`(${table.name}) Column does not exist for property: ${columnPropertyName}`);
+      throw new Error(`Column ${columnName} does not exist in table ${table.name}`);
     }
 
-    return new SpannerColumnTypeFactory().getType(column, true);
+    const type = new SpannerColumnTypeFactory().getType(column, true);
+
+    if (!type) {
+      throw new Error(`Type was not resolved for column ${columnName} in table ${table.name}`);
+    }
+
+    return type;
   }
 
   async createDbIfNotExists(): Promise<void> {
