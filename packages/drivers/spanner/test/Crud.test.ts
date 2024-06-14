@@ -1,6 +1,7 @@
 import { crudTests, getTestTable } from '@proteinjs/db';
 import { SpannerDriver } from '../src/SpannerDriver';
 import { getDropTable } from './dropTable';
+import { Logger } from '@proteinjs/util';
 
 const spannerDriver = new SpannerDriver(
   {

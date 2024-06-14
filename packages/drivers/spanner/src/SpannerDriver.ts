@@ -18,8 +18,6 @@ export class SpannerDriver implements DbDriver {
   constructor(config: SpannerConfig, getTable?: (name: string) => Table<any>) {
     this.config = config;
     this.getTable = getTable;
-    const logger = new Logger('SpannerDriver');
-    logger.info(`getTable from constructor: ${this.getTable}`);
   }
 
   private getSpanner(): Spanner {
@@ -64,8 +62,6 @@ export class SpannerDriver implements DbDriver {
   }
 
   getColumnType(tableName: string, columnPropertyName: string): string {
-    const logger = new Logger('getColumnType');
-    logger.info(`getTable: ${this.getTable}`);
     const table = this.getTable ? this.getTable(tableName) : tableByName(tableName);
     const column = Object.values(table.columns).find((col) => col.name === columnPropertyName);
 
