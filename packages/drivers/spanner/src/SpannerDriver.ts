@@ -94,10 +94,11 @@ export class SpannerDriver implements DbDriver {
       useParams: true,
       useNamedParams: true,
       prefixTablesWithDb: false,
+      getColumnType: this.getColumnType.bind(this),
     });
     try {
       this.logger.debug(`Executing query: ${sql}`);
-      const [rows] = await this.getSpannerDb().run({ sql, params: namedParams?.params });
+      const [rows] = await this.getSpannerDb().run({ sql, params: namedParams?.params, types: namedParams?.types });
       return rows.map((row) => row.toJSON());
       // return JSON.parse(JSON.stringify((await this.getSpannerDb().run({ sql, params: namedParams?.params }))[0]));
     } catch (error: any) {
