@@ -1,12 +1,13 @@
 import { QueryBuilder } from '@proteinjs/db-query';
 import { DbDriver, Db } from '../src/Db';
 import { withRecordColumns, Record } from '../src/Record';
-import { StringColumn } from '../src/Columns';
+import { BooleanColumn, StringColumn } from '../src/Columns';
 import { Table } from '../src/Table';
 
 export interface Employee extends Record {
   name: string;
-  department?: string;
+  department?: string | null;
+  isRemote?: boolean;
   object?: string;
 }
 
@@ -15,6 +16,7 @@ export class EmployeeTable extends Table<Employee> {
   columns = withRecordColumns<Employee>({
     name: new StringColumn('name'),
     department: new StringColumn('department'),
+    isRemote: new BooleanColumn('isRemote'),
     object: new StringColumn('object'),
   });
 }
@@ -129,6 +131,46 @@ export const crudTests = (driver: DbDriver, dropTable: (table: Table<any>) => Pr
         value: [fetchedEmployee1.id, fetchedEmployee2.id, fetchedEmployee3.id],
       });
       await db.delete(emplyeeTable, qb);
+    });
+
+    test('Insert with null values', async () => {
+      const testEmployee: Omit<Employee, keyof Record> = { name: 'Zenyatta', department: null, isRemote: false };
+      const emplyeeTable: Table<Employee> = new EmployeeTable();
+      const insertedEmployee = await db.insert(emplyeeTable, testEmployee);
+      const fetchedEmployee = await db.get(emplyeeTable, { id: insertedEmployee.id });
+
+      expect(fetchedEmployee).toBeTruthy();
+      expect(fetchedEmployee.department).toBeNull();
+
+      const nullUpdateCount = await db.update(emplyeeTable, { department: null }, { id: insertedEmployee.id });
+      expect(nullUpdateCount).toBe(1);
+    });
+
+    test('Update with null values', async () => {
+      const testEmployee: Omit<Employee, keyof Record> = {
+        name: 'Cassidy',
+        department: 'Sharpshooting Cowboys',
+        isRemote: false,
+      };
+      const emplyeeTable: Table<Employee> = new EmployeeTable();
+      const insertedEmployee = await db.insert(emplyeeTable, testEmployee);
+      const fetchedEmployee = await db.get(emplyeeTable, { id: insertedEmployee.id });
+      expect(fetchedEmployee).toBeTruthy();
+
+      const nullUpdateCount = await db.update(emplyeeTable, { department: null }, { id: insertedEmployee.id });
+      expect(nullUpdateCount).toBe(1);
+    });
+
+    test('Query with null values', async () => {
+      const testEmployee: Omit<Employee, keyof Record> = {
+        name: 'Cassidy',
+        department: null,
+        isRemote: false,
+      };
+      const emplyeeTable: Table<Employee> = new EmployeeTable();
+      await db.insert(emplyeeTable, testEmployee);
+      const fetchedEmployees = await db.query(emplyeeTable, { department: null });
+      expect(fetchedEmployees).toHaveLength(1);
     });
   };
 };
