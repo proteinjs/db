@@ -269,6 +269,15 @@ export class QueryBuilder<T = any> {
             const valueStr = paramManager.parameterize(node.value, 'subquery');
             return `${resolvedFieldName} ${node.operator} ${valueStr}`;
           } else if (node.operator === 'IN' || node.operator === 'NOT IN') {
+            if (config.useNamedParams) {
+              const valuesStr = Array.isArray(node.value)
+                ? paramManager.parameterize(
+                    node.value,
+                    getColumnType(config, this.tableName, node.field, node.value[0])
+                  )
+                : paramManager.parameterize(node.value, getColumnType(config, this.tableName, node.field, node.value));
+              return `${resolvedFieldName} ${node.operator} UNNEST(${valuesStr})`;
+            }
             const valuesStr = Array.isArray(node.value)
               ? node.value.map((val: any) => paramManager.parameterize(val, typeof val)).join(', ')
               : paramManager.parameterize(node.value, typeof node.value);

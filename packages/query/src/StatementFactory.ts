@@ -176,7 +176,7 @@ export class StatementUtil {
 export class StatementParamManager {
   private params: any[] = [];
   private paramNames: Record<string, any> = {};
-  private paramTypes: Record<string, string> = {};
+  private paramTypes: Record<string, any> = {};
   private paramCounter = 0;
 
   constructor(private config: StatementConfig) {}
@@ -206,8 +206,13 @@ export class StatementParamManager {
     } else if (this.config.useParams) {
       if (this.config.useNamedParams) {
         const paramName = `param${this.paramCounter++}`;
-        this.paramNames[paramName] = value;
-        this.paramTypes[paramName] = valueType;
+        if (Array.isArray(value)) {
+          this.paramNames[paramName] = value;
+          this.paramTypes[paramName] = { type: 'array', child: { type: valueType } };
+        } else {
+          this.paramNames[paramName] = value;
+          this.paramTypes[paramName] = valueType;
+        }
         return `@${paramName}`;
       } else {
         this.params.push(value);
