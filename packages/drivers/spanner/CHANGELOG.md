@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.1.13](https://github.com/brentbahry/db/compare/@proteinjs/db-driver-spanner@1.1.12...@proteinjs/db-driver-spanner@1.1.13) (2024-06-15)
+
+
+### Bug Fixes
+
+* Allow null values to be passed into Spanner DML ([#1](https://github.com/brentbahry/db/issues/1)) ([db1def2](https://github.com/brentbahry/db/commit/db1def2610298309911e8edc1e1c1497dbf2f7a7))
+
+
+
+
+
 ## [1.1.12](https://github.com/brentbahry/db/compare/@proteinjs/db-driver-spanner@1.1.11...@proteinjs/db-driver-spanner@1.1.12) (2024-06-02)
 
 **Note:** Version bump only for package @proteinjs/db-driver-spanner

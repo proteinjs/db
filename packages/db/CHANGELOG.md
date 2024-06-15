@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.26](https://github.com/proteinjs/db/compare/@proteinjs/db@1.0.25...@proteinjs/db@1.0.26) (2024-06-15)
+
+
+### Bug Fixes
+
+* Allow null values to be passed into Spanner DML ([#1](https://github.com/proteinjs/db/issues/1)) ([db1def2](https://github.com/proteinjs/db/commit/db1def2610298309911e8edc1e1c1497dbf2f7a7))
+
+
+
+
+
 ## [1.0.25](https://github.com/proteinjs/db/compare/@proteinjs/db@1.0.24...@proteinjs/db@1.0.25) (2024-06-02)
 
 **Note:** Version bump only for package @proteinjs/db

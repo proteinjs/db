@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/db-query",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "description": "A sql query builder",
   "publishConfig": {
     "access": "public"
