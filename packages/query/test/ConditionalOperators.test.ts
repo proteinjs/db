@@ -100,9 +100,9 @@ describe('QueryBuilder - Conditional Operator Support', () => {
 
     // SQL output with named parameters and types
     result = qb.toSql({ dbName, useParams: true, useNamedParams: true });
-    expect(result.sql).toContain('SELECT * FROM test.Employee WHERE id IN (@param0, @param1, @param2)');
-    expect(result.namedParams?.params).toEqual({ param0: 1, param1: 2, param2: 3 });
-    expect(result.namedParams?.types).toEqual({ param0: 'number', param1: 'number', param2: 'number' });
+    expect(result.sql).toContain('SELECT * FROM test.Employee WHERE id IN UNNEST(@param0)');
+    expect(result.namedParams?.params).toEqual({ param0: [1, 2, 3] });
+    expect(result.namedParams?.types).toEqual({ param0: { type: 'array', child: { type: 'number' } } });
   });
 
   test('LIKE operator', () => {

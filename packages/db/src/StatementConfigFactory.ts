@@ -17,6 +17,7 @@ export class StatementConfigFactory {
       resolveFieldName: this.getResolveFieldName(),
       useParams: config.useParams,
       useNamedParams: config.useNamedParams,
+      getColumnType: config.getColumnType,
     };
   }
 

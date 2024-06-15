@@ -19,6 +19,7 @@ export interface ParameterizationConfig {
 export interface StatementConfig extends ParameterizationConfig {
   dbName?: string;
   resolveFieldName?: (tableName: string, propertyName: string) => string;
+  getColumnType?: (tableName: string, columnPropertyName: string) => string;
 }
 
 interface Column {
@@ -56,7 +57,12 @@ export class StatementFactory<T> {
   insert(tableName: string, data: Partial<T>, config: StatementConfig): Statement {
     const paramManager = new StatementParamManager(config);
     const props = Object.keys(data);
-    const values = props.map((prop) => paramManager.parameterize(data[prop as keyof T], typeof data[prop as keyof T]));
+    const values = props.map((prop) =>
+      paramManager.parameterize(
+        data[prop as keyof T],
+        config.getColumnType ? config.getColumnType(tableName, prop) : typeof data[prop as keyof T]
+      )
+    );
     const sql = `INSERT INTO ${config.dbName ? `${config.dbName}.` : ''}${tableName} (${props.join(', ')}) VALUES (${values.join(', ')});`;
     return { sql, ...paramManager.getParams() };
   }
@@ -65,7 +71,13 @@ export class StatementFactory<T> {
     const paramManager = new StatementParamManager(config);
     const props = Object.keys(data);
     const setClauses = props
-      .map((prop) => `${prop} = ${paramManager.parameterize(data[prop as keyof T], typeof data[prop as keyof T])}`)
+      .map(
+        (prop) =>
+          `${prop} = ${paramManager.parameterize(
+            data[prop as keyof T],
+            config.getColumnType ? config.getColumnType(tableName, prop) : typeof data[prop as keyof T]
+          )}`
+      )
       .join(', ');
     const whereClause = queryBuilder.toWhereClause(config, paramManager);
     const sql = `UPDATE ${config.dbName ? `${config.dbName}.` : ''}${tableName} SET ${setClauses} ${whereClause.sql};`;
@@ -164,7 +176,7 @@ export class StatementUtil {
 export class StatementParamManager {
   private params: any[] = [];
   private paramNames: Record<string, any> = {};
-  private paramTypes: Record<string, string> = {};
+  private paramTypes: Record<string, any> = {};
   private paramCounter = 0;
 
   constructor(private config: StatementConfig) {}
@@ -194,8 +206,13 @@ export class StatementParamManager {
     } else if (this.config.useParams) {
       if (this.config.useNamedParams) {
         const paramName = `param${this.paramCounter++}`;
-        this.paramNames[paramName] = value;
-        this.paramTypes[paramName] = valueType;
+        if (Array.isArray(value)) {
+          this.paramNames[paramName] = value;
+          this.paramTypes[paramName] = { type: 'array', child: { type: valueType } };
+        } else {
+          this.paramNames[paramName] = value;
+          this.paramTypes[paramName] = valueType;
+        }
         return `@${paramName}`;
       } else {
         this.params.push(value);

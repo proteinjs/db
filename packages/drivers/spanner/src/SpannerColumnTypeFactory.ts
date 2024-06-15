@@ -13,25 +13,31 @@ import {
 
 // max size of a row in spanner is 10mb
 export class SpannerColumnTypeFactory {
-  getType(column: Column<any, any>): string {
+  getType(column: Column<any, any>, isQueryOrDml?: boolean): string {
+    let type: string;
+
     if (isInstanceOf(column, IntegerColumn)) {
-      return 'INT64';
+      type = 'INT64';
     } else if (isInstanceOf(column, StringColumn)) {
-      return `STRING(${(column as StringColumn).maxLength})`;
+      type = isQueryOrDml ? 'string' : `STRING(${(column as StringColumn).maxLength})`;
     } else if (isInstanceOf(column, FloatColumn)) {
-      return 'FLOAT64';
+      type = 'FLOAT64';
     } else if (isInstanceOf(column, DecimalColumn)) {
-      return (column as DecimalColumn).large ? 'BIGNUMERIC' : 'NUMERIC';
+      type = (column as DecimalColumn).large ? 'BIGNUMERIC' : 'NUMERIC';
     } else if (isInstanceOf(column, BooleanColumn)) {
-      return 'BOOL';
+      type = 'BOOL';
     } else if (isInstanceOf(column, DateColumn)) {
-      return 'TIMESTAMP';
+      type = 'TIMESTAMP';
     } else if (isInstanceOf(column, DateTimeColumn)) {
-      return 'TIMESTAMP';
+      type = 'TIMESTAMP';
     } else if (isInstanceOf(column, BinaryColumn)) {
-      return `BYTES(${!(column as BinaryColumn).maxLength ? 'MAX' : (column as BinaryColumn).maxLength})`;
+      type = isQueryOrDml
+        ? 'bytes'
+        : `BYTES(${!(column as BinaryColumn).maxLength ? 'MAX' : (column as BinaryColumn).maxLength})`;
+    } else {
+      throw new Error(`Invalid column type: ${column.constructor.name}, must extend a base column`);
     }
 
-    throw new Error(`Invalid column type: ${column.constructor.name}, must extend a base column`);
+    return isQueryOrDml ? type.toLowerCase() : type;
   }
 }

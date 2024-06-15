@@ -1,5 +1,5 @@
 import { Database, Instance, Spanner } from '@google-cloud/spanner';
-import { DbDriver, DbDriverStatementConfig, TableManager } from '@proteinjs/db';
+import { DbDriver, DbDriverStatementConfig, Table, TableManager, tableByName } from '@proteinjs/db';
 import { SpannerConfig } from './SpannerConfig';
 import { Logger } from '@proteinjs/util';
 import { Statement } from '@proteinjs/db-query';
@@ -13,9 +13,11 @@ export class SpannerDriver implements DbDriver {
   private static SPANNER_DB: Database;
   private logger = new Logger(this.constructor.name);
   private config: SpannerConfig;
+  public getTable: ((name: string) => Table<any>) | undefined;
 
-  constructor(config: SpannerConfig) {
+  constructor(config: SpannerConfig, getTable?: (name: string) => Table<any>) {
     this.config = config;
+    this.getTable = getTable;
   }
 
   private getSpanner(): Spanner {
@@ -59,6 +61,23 @@ export class SpannerDriver implements DbDriver {
     return new TableManager(this, columnTypeFactory, schemaOperations, schemaMetadata);
   }
 
+  getColumnType(tableName: string, columnName: string): string {
+    const table = this.getTable ? this.getTable(tableName) : tableByName(tableName);
+    const column = Object.values(table.columns).find((col) => col.name === columnName);
+
+    if (!column) {
+      throw new Error(`Column ${columnName} does not exist in table ${table.name}`);
+    }
+
+    const type = new SpannerColumnTypeFactory().getType(column, true);
+
+    if (!type) {
+      throw new Error(`Type was not resolved for column ${columnName} in table ${table.name}`);
+    }
+
+    return type;
+  }
+
   async createDbIfNotExists(): Promise<void> {
     if (await this.dbExists(this.getDbName())) {
       return;
@@ -77,10 +96,11 @@ export class SpannerDriver implements DbDriver {
       useParams: true,
       useNamedParams: true,
       prefixTablesWithDb: false,
+      getColumnType: this.getColumnType.bind(this),
     });
     try {
       this.logger.debug(`Executing query: ${sql}`);
-      const [rows] = await this.getSpannerDb().run({ sql, params: namedParams?.params });
+      const [rows] = await this.getSpannerDb().run({ sql, params: namedParams?.params, types: namedParams?.types });
       return rows.map((row) => row.toJSON());
       // return JSON.parse(JSON.stringify((await this.getSpannerDb().run({ sql, params: namedParams?.params }))[0]));
     } catch (error: any) {
@@ -101,6 +121,7 @@ export class SpannerDriver implements DbDriver {
       useParams: true,
       useNamedParams: true,
       prefixTablesWithDb: false,
+      getColumnType: this.getColumnType.bind(this),
     });
     try {
       return await this.getSpannerDb().runTransactionAsync(async (transaction) => {
@@ -108,6 +129,7 @@ export class SpannerDriver implements DbDriver {
         const [rowCount] = await transaction.runUpdate({
           sql,
           params: namedParams?.params,
+          types: namedParams?.types,
         });
         await transaction.commit();
         return rowCount;
