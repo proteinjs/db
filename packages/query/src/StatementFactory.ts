@@ -73,7 +73,10 @@ export class StatementFactory<T> {
     const setClauses = props
       .map(
         (prop) =>
-          `${prop} = ${paramManager.parameterize(data[prop as keyof T], config.getColumnType ? config.getColumnType(tableName, prop) : typeof data[prop as keyof T])}`
+          `${prop} = ${paramManager.parameterize(
+            data[prop as keyof T],
+            config.getColumnType ? config.getColumnType(tableName, prop) : typeof data[prop as keyof T]
+          )}`
       )
       .join(', ');
     const whereClause = queryBuilder.toWhereClause(config, paramManager);
