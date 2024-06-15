@@ -285,8 +285,12 @@ export class QueryBuilder<T = any> {
           } else if (node.operator === 'BETWEEN') {
             // Ensure BETWEEN values are provided as an array of two elements
             const valuesStr = Array.isArray(node.value)
-              ? node.value.map((val: any) => paramManager.parameterize(val, typeof val)).join(' AND ')
-              : paramManager.parameterize(node.value, typeof node.value);
+              ? node.value
+                  .map((val: any) =>
+                    paramManager.parameterize(val, getColumnType(config, this.tableName, node.field, val))
+                  )
+                  .join(' AND ')
+              : paramManager.parameterize(node.value, getColumnType(config, this.tableName, node.field, node.value));
             return `${resolvedFieldName} ${node.operator} ${valuesStr}`;
           } else if (node.operator === 'IS NULL' || node.operator === 'IS NOT NULL') {
             return `${resolvedFieldName} ${node.operator}`;
@@ -366,7 +370,7 @@ export class QueryBuilder<T = any> {
             const cases = byValues
               .map(
                 (value: string, index: number) =>
-                  `WHEN ${resolvedSortFieldName} = ${paramManager.parameterize(value, typeof value)} THEN ${index}`
+                  `WHEN ${resolvedSortFieldName} = ${paramManager.parameterize(value, getColumnType(config, this.tableName, node.field, value))} THEN ${index}`
               )
               .join(' ');
             const orderByCase = `CASE ${cases} ELSE ${byValues.length} END`;

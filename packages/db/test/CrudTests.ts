@@ -1,7 +1,7 @@
 import { QueryBuilder } from '@proteinjs/db-query';
 import { DbDriver, Db } from '../src/Db';
 import { withRecordColumns, Record } from '../src/Record';
-import { BooleanColumn, StringColumn } from '../src/Columns';
+import { BooleanColumn, DateColumn, StringColumn } from '../src/Columns';
 import { Table } from '../src/Table';
 import { log } from 'console';
 
@@ -10,6 +10,7 @@ export interface Employee extends Record {
   department?: string;
   jobTitle?: string | null;
   isRemote?: boolean;
+  startDate?: Date;
   object?: string;
 }
 
@@ -20,6 +21,7 @@ export class EmployeeTable extends Table<Employee> {
     department: new StringColumn('department'),
     isRemote: new BooleanColumn('is_remote'),
     jobTitle: new StringColumn('job_title'),
+    startDate: new DateColumn('start_date'),
     object: new StringColumn('object'),
   });
 }
@@ -222,6 +224,86 @@ export const crudTests = (driver: DbDriver, dropTable: (table: Table<any>) => Pr
         value: [insertedEmployee1.id, insertedEmployee2.id, insertedEmployee3.id],
       });
       await db.delete(emplyeeTable, qb);
+    });
+
+    test('Query with BETWEEN operator', async () => {
+      const testEmployee1: Omit<Employee, keyof Record> = {
+        name: 'Veronica',
+        jobTitle: 'Engineer',
+        startDate: new Date('1997-10-24T00:00:00Z'),
+      };
+      const testEmployee2: Omit<Employee, keyof Record> = {
+        name: 'Kiriko',
+        jobTitle: null,
+        startDate: new Date('2022-10-04T00:00:00Z'),
+      };
+      const testEmployee3: Omit<Employee, keyof Record> = {
+        name: 'Cassidy',
+        jobTitle: 'Cowboy',
+        startDate: new Date('2016-05-24T00:00:00Z'),
+      };
+      const employeeTable: Table<Employee> = new EmployeeTable();
+
+      const insertedEmployee1 = await db.insert(employeeTable, testEmployee1);
+      const insertedEmployee2 = await db.insert(employeeTable, testEmployee2);
+      const insertedEmployee3 = await db.insert(employeeTable, testEmployee3);
+
+      const betweenQuery = new QueryBuilder<Employee>(employeeTable.name).condition({
+        field: 'startDate',
+        operator: 'BETWEEN',
+        value: ['2000-06-05T00:00:00Z', '2024-06-05T00:00:00Z'],
+      });
+      const betweenResults = await db.query(employeeTable, betweenQuery);
+      expect(betweenResults.length).toBe(2);
+      expect(betweenResults.some((emp) => emp.name === 'Kiriko')).toBe(true);
+      expect(betweenResults.some((emp) => emp.name === 'Cassidy')).toBe(true);
+
+      // Clean up
+      const qb = new QueryBuilder<Employee>(employeeTable.name).condition({
+        field: 'id',
+        operator: 'IN',
+        value: [insertedEmployee1.id, insertedEmployee2.id, insertedEmployee3.id],
+      });
+      await db.delete(employeeTable, qb);
+    });
+
+    test('Query with sort', async () => {
+      const testEmployee1: Omit<Employee, keyof Record> = {
+        name: 'Veronica',
+        jobTitle: 'Engineer',
+      };
+      const testEmployee2: Omit<Employee, keyof Record> = {
+        name: 'Kiriko',
+        jobTitle: null,
+      };
+      const testEmployee3: Omit<Employee, keyof Record> = {
+        name: 'Cassidy',
+        jobTitle: 'Cowboy',
+      };
+      const employeeTable: Table<Employee> = new EmployeeTable();
+
+      const insertedEmployee1 = await db.insert(employeeTable, testEmployee1);
+      const insertedEmployee2 = await db.insert(employeeTable, testEmployee2);
+      const insertedEmployee3 = await db.insert(employeeTable, testEmployee3);
+
+      const sortQuery = new QueryBuilder<Employee>(employeeTable.name).sort([
+        { field: 'name', byValues: ['Cassidy', 'Veronica', 'Kiriko'] },
+      ]);
+      const sortResults = await db.query(employeeTable, sortQuery);
+
+      // Assertions
+      expect(sortResults.length).toBe(3);
+      expect(sortResults[0].name).toBe('Cassidy');
+      expect(sortResults[1].name).toBe('Veronica');
+      expect(sortResults[2].name).toBe('Kiriko');
+
+      // Clean up
+      const qb = new QueryBuilder<Employee>(employeeTable.name).condition({
+        field: 'id',
+        operator: 'IN',
+        value: [insertedEmployee1.id, insertedEmployee2.id, insertedEmployee3.id],
+      });
+      await db.delete(employeeTable, qb);
     });
   };
 };
