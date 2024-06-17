@@ -280,16 +280,16 @@ export const crudTests = (driver: DbDriver, dropTable: (table: Table<any>) => Pr
         name: 'Cassidy',
         jobTitle: 'Cowboy',
       };
-      const employeeTable: Table<Employee> = new EmployeeTable();
+      const emplyeeTable: Table<Employee> = new EmployeeTable();
 
-      const insertedEmployee1 = await db.insert(employeeTable, testEmployee1);
-      const insertedEmployee2 = await db.insert(employeeTable, testEmployee2);
-      const insertedEmployee3 = await db.insert(employeeTable, testEmployee3);
+      const insertedEmployee1 = await db.insert(emplyeeTable, testEmployee1);
+      const insertedEmployee2 = await db.insert(emplyeeTable, testEmployee2);
+      const insertedEmployee3 = await db.insert(emplyeeTable, testEmployee3);
 
-      const sortQuery = new QueryBuilder<Employee>(employeeTable.name).sort([
+      const sortQuery = new QueryBuilder<Employee>(emplyeeTable.name).sort([
         { field: 'name', byValues: ['Cassidy', 'Veronica', 'Kiriko'] },
       ]);
-      const sortResults = await db.query(employeeTable, sortQuery);
+      const sortResults = await db.query(emplyeeTable, sortQuery);
 
       // Assertions
       expect(sortResults.length).toBe(3);
@@ -298,12 +298,66 @@ export const crudTests = (driver: DbDriver, dropTable: (table: Table<any>) => Pr
       expect(sortResults[2].name).toBe('Kiriko');
 
       // Clean up
-      const qb = new QueryBuilder<Employee>(employeeTable.name).condition({
+      const qb = new QueryBuilder<Employee>(emplyeeTable.name).condition({
         field: 'id',
         operator: 'IN',
         value: [insertedEmployee1.id, insertedEmployee2.id, insertedEmployee3.id],
       });
-      await db.delete(employeeTable, qb);
+      await db.delete(emplyeeTable, qb);
+    });
+
+    test('CRUD operations with undefined values', async () => {
+      const testEmployee1: Omit<Employee, keyof Record> = {
+        name: 'Veronica',
+        jobTitle: 'Software Engineer',
+      };
+      const testEmployee2: Omit<Employee, keyof Record> = {
+        name: 'Brent',
+        jobTitle: undefined,
+      };
+
+      const emplyeeTable: Table<Employee> = new EmployeeTable();
+      const insertedEmployee1 = await db.insert(emplyeeTable, testEmployee1);
+      const insertedEmployee2 = await db.insert(emplyeeTable, testEmployee2);
+
+      // Querying undefined should result in querying for null
+      const queryUndefined = new QueryBuilder<Employee>(emplyeeTable.name).condition({
+        field: 'jobTitle',
+        operator: '=',
+        value: undefined,
+      });
+      const employees = await db.query(emplyeeTable, queryUndefined);
+      expect(employees.length).toBe(1);
+
+      // Update employee with undefined jobTitle
+      const updatedEmployee = { ...insertedEmployee1, jobTitle: undefined };
+      await db.update(emplyeeTable, updatedEmployee);
+
+      // Read the updated employee to verify no change occurred
+      const updatedEmployeeQuery = new QueryBuilder<Employee>(emplyeeTable.name).condition({
+        field: 'id',
+        operator: '=',
+        value: updatedEmployee.id,
+      });
+      const updatedEmployees = await db.query(emplyeeTable, updatedEmployeeQuery);
+      expect(updatedEmployees.length).toBe(1);
+      expect(updatedEmployees[0].jobTitle).toBe('Software Engineer');
+
+      // Delete inserted employees
+      const deleteUndefinedQuery = new QueryBuilder<Employee>(emplyeeTable.name).condition({
+        field: 'jobTitle',
+        operator: '=',
+        value: undefined,
+      });
+      const deletedEmployees = await db.delete(emplyeeTable, deleteUndefinedQuery);
+      expect(deletedEmployees).toBe(1);
+
+      const deleteQuery = new QueryBuilder<Employee>(emplyeeTable.name).condition({
+        field: 'id',
+        operator: '=',
+        value: insertedEmployee2.id,
+      });
+      await db.delete(emplyeeTable, deleteQuery);
     });
   };
 };
