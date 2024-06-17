@@ -335,7 +335,7 @@ export const crudTests = (driver: DbDriver, dropTable: (table: Table<any>) => Pr
         });
       }).toThrow();
 
-      // Clean up: Delete the inserted employee
+      // Clean up
       const deleteValidQuery = new QueryBuilder<Employee>(emplyeeTable.name).condition({
         field: 'id',
         operator: 'IN',

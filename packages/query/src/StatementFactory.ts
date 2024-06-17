@@ -56,7 +56,7 @@ export interface AlterTableParams {
 export class StatementFactory<T> {
   insert(tableName: string, data: Partial<T>, config: StatementConfig): Statement {
     const paramManager = new StatementParamManager(config);
-    const props = Object.keys(data).filter((prop) => data[prop as keyof T] !== undefined);
+    const props = Object.keys(data);
     const values = props.map((prop) =>
       paramManager.parameterize(
         data[prop as keyof T],
@@ -69,7 +69,7 @@ export class StatementFactory<T> {
 
   update(tableName: string, data: Partial<T>, queryBuilder: QueryBuilder<T>, config: StatementConfig): Statement {
     const paramManager = new StatementParamManager(config);
-    const props = Object.keys(data).filter((prop) => data[prop as keyof T] !== undefined);
+    const props = Object.keys(data);
     const setClauses = props
       .map(
         (prop) =>

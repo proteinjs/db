@@ -1,4 +1,3 @@
-import { Logger } from '@proteinjs/util';
 import { DateTimeColumn, UuidColumn } from './Columns';
 import { Column, Table, Columns } from './Table';
 import { moment } from './opt/moment';
