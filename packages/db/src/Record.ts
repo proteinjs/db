@@ -1,3 +1,4 @@
+import { Logger } from '@proteinjs/util';
 import { DateTimeColumn, UuidColumn } from './Columns';
 import { Column, Table, Columns } from './Table';
 import { moment } from './opt/moment';
@@ -51,6 +52,9 @@ export class RecordSerializer<T extends Record> {
       }
 
       const fieldValue = await record[fieldPropertyName];
+      if (typeof fieldValue === 'undefined') {
+        throw new Error(`Must not pass in undefined. Undefined was found for field: ${fieldPropertyName}`);
+      }
       const { columnName, serializedFieldValue } = await fieldSerializer.serialize(fieldPropertyName, fieldValue);
       serialized[columnName] = serializedFieldValue;
     }

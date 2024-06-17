@@ -200,6 +200,11 @@ export class QueryBuilder<T = any> {
     }
 
     if (typeof resolvedCondition.value === 'undefined') {
+      if (condition.operator === '=') {
+        throw new Error(
+          `Must not pass in undefined for value in condition. Undefined was found when checking value property in this condition: ${JSON.stringify(condition)}`
+        );
+      }
       resolvedCondition.value = null;
     }
 
