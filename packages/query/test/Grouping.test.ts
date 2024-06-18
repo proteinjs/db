@@ -223,4 +223,25 @@ describe('QueryBuilder - GROUP BY Support', () => {
     expect(result.namedParams?.params).toEqual({ param0: 'Engineering', param1: 50, param2: 20 });
     expect(result.namedParams?.types).toEqual({ param0: 'string', param1: 'number', param2: 'number' });
   });
+
+  test('Logical group condition with undefined value', () => {
+    expect(() => {
+      new QueryBuilder<Employee>(tableName)
+        .logicalGroup('AND', [
+          { field: 'age', operator: '>', value: undefined },
+          { field: 'yearsOfService', operator: '<', value: 10 },
+        ])
+        .aggregate({ function: 'SUM', field: 'salary' })
+        .groupBy(['department']);
+    }).toThrow();
+
+    expect(() => {
+      new QueryBuilder<Employee>(tableName)
+        .condition({ field: 'department', operator: '=', value: 'Engineering' })
+        .logicalGroup('OR', [
+          { field: 'age', operator: '>', value: undefined },
+          { field: 'yearsOfService', operator: '>=', value: 20 },
+        ]);
+    }).toThrow();
+  });
 });
