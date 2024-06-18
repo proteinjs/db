@@ -97,10 +97,6 @@ export class QueryBuilder<T = any> {
   static fromObject<T extends Object>(obj: Partial<T>, tableName: string): QueryBuilder<T> {
     const qb = new QueryBuilder<T>(tableName);
     for (const prop of Object.keys(obj)) {
-      if (typeof obj[prop as keyof T] === 'undefined') {
-        continue;
-      }
-
       qb.condition({ field: prop as keyof T, operator: '=', value: obj[prop as keyof T] as T[keyof T] });
     }
     return qb;
@@ -196,11 +192,11 @@ export class QueryBuilder<T = any> {
       (Array.isArray(condition.value) && condition.value.length == 0) ||
       ((condition.operator === 'IN' || condition.operator === 'NOT IN') && !condition.value)
     ) {
-      resolvedCondition = Object.assign(resolvedCondition, { empty: true }) as InternalCondition<T>;
+      resolvedCondition = Object.assign(resolvedCondition, { value: null, empty: true }) as InternalCondition<T>;
     }
 
     if (typeof resolvedCondition.value === 'undefined') {
-      if (condition.operator === '=') {
+      if (condition.operator !== 'IS NULL' && condition.operator !== 'IS NOT NULL') {
         throw new Error(
           `Must not pass in undefined for value in condition. Undefined was found when checking value property in this condition: ${JSON.stringify(condition)}`
         );
