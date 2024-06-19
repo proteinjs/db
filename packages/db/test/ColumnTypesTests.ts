@@ -69,7 +69,7 @@ export const getColumnTypeTestTable = (tableName: string) => {
   throw new Error(`Cannot find test table: ${tableName}`);
 };
 
-export const columnTypeTests = (driver: DbDriver, dropTable: (table: TestTable) => Promise<void>) => {
+export const columnTypeTests = (driver: DbDriver, dropTable: (table: Table<any>) => Promise<void>) => {
   return () => {
     const db = new Db(driver, getColumnTypeTestTable);
 
@@ -83,10 +83,6 @@ export const columnTypeTests = (driver: DbDriver, dropTable: (table: TestTable) 
 
     afterAll(async () => {
       await dropTable(new TestTable());
-
-      if (driver.stop) {
-        await driver.stop();
-      }
     });
 
     test('Insert record with all null values', async () => {

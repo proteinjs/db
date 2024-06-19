@@ -14,13 +14,6 @@ const knexDriver = new KnexDriver({
   dbName: 'test',
 });
 
+describe('Column Type Tests', columnTypeTests(knexDriver, dropTable));
+
 describe('CRUD Tests', crudTests(knexDriver, dropTable));
-
-const knexDriverColumnTypeTests = new KnexDriver({
-  host: 'localhost',
-  user: 'root',
-  password: '',
-  dbName: 'test',
-});
-
-describe('Column Type Tests', columnTypeTests(knexDriverColumnTypeTests, dropTable));
