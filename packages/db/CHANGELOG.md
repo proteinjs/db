@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.27](https://github.com/proteinjs/db/compare/@proteinjs/db@1.0.26...@proteinjs/db@1.0.27) (2024-06-19)
+
+
+### Bug Fixes
+
+* handle undefined values when building a condition, querying, inserting, updating, or deleting and allow null in all column types ([#2](https://github.com/proteinjs/db/issues/2)) ([7edda4e](https://github.com/proteinjs/db/commit/7edda4e6e39a4c75fc70122daeb205a79eccc173))
+
+
+
+
+
 ## [1.0.26](https://github.com/proteinjs/db/compare/@proteinjs/db@1.0.25...@proteinjs/db@1.0.26) (2024-06-15)
 
 

@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.1.14](https://github.com/brentbahry/db/compare/@proteinjs/db-driver-spanner@1.1.13...@proteinjs/db-driver-spanner@1.1.14) (2024-06-19)
+
+
+### Bug Fixes
+
+* handle undefined values when building a condition, querying, inserting, updating, or deleting and allow null in all column types ([#2](https://github.com/brentbahry/db/issues/2)) ([7edda4e](https://github.com/brentbahry/db/commit/7edda4e6e39a4c75fc70122daeb205a79eccc173))
+
+
+
+
+
 ## [1.1.13](https://github.com/brentbahry/db/compare/@proteinjs/db-driver-spanner@1.1.12...@proteinjs/db-driver-spanner@1.1.13) (2024-06-15)
 
 
