@@ -240,9 +240,9 @@ export class ReferenceArrayColumn<T extends Record> extends ObjectColumn<Referen
   }
 
   async deserialize(serializedFieldValue: string): Promise<ReferenceArray<T> | null> {
-    const ids = (await super.deserialize(serializedFieldValue)) as string[] | null;
+    let ids = (await super.deserialize(serializedFieldValue)) as string[] | null;
     if (ids === null) {
-      return null;
+      ids = [];
     }
 
     return new ReferenceArray(this.referenceTable, ids);
