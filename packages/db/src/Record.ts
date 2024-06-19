@@ -51,6 +51,9 @@ export class RecordSerializer<T extends Record> {
       }
 
       const fieldValue = await record[fieldPropertyName];
+      if (fieldValue === undefined) {
+        throw new Error(`Must not pass in undefined. Undefined was found for field: ${fieldPropertyName}`);
+      }
       const { columnName, serializedFieldValue } = await fieldSerializer.serialize(fieldPropertyName, fieldValue);
       serialized[columnName] = serializedFieldValue;
     }

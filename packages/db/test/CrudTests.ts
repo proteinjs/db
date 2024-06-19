@@ -3,7 +3,6 @@ import { DbDriver, Db } from '../src/Db';
 import { withRecordColumns, Record } from '../src/Record';
 import { BooleanColumn, DateColumn, StringColumn } from '../src/Columns';
 import { Table } from '../src/Table';
-import { log } from 'console';
 
 export interface Employee extends Record {
   name: string;
@@ -32,7 +31,7 @@ export class EmployeeTable extends Table<Employee> {
 export const getTestTable = (tableName: string) => {
   const employeeTable = new EmployeeTable();
   if (employeeTable.name == tableName) {
-    return employeeTable;
+    return new EmployeeTable();
   }
 
   throw new Error(`Cannot find test table: ${tableName}`);
@@ -280,16 +279,16 @@ export const crudTests = (driver: DbDriver, dropTable: (table: Table<any>) => Pr
         name: 'Cassidy',
         jobTitle: 'Cowboy',
       };
-      const employeeTable: Table<Employee> = new EmployeeTable();
+      const emplyeeTable: Table<Employee> = new EmployeeTable();
 
-      const insertedEmployee1 = await db.insert(employeeTable, testEmployee1);
-      const insertedEmployee2 = await db.insert(employeeTable, testEmployee2);
-      const insertedEmployee3 = await db.insert(employeeTable, testEmployee3);
+      const insertedEmployee1 = await db.insert(emplyeeTable, testEmployee1);
+      const insertedEmployee2 = await db.insert(emplyeeTable, testEmployee2);
+      const insertedEmployee3 = await db.insert(emplyeeTable, testEmployee3);
 
-      const sortQuery = new QueryBuilder<Employee>(employeeTable.name).sort([
+      const sortQuery = new QueryBuilder<Employee>(emplyeeTable.name).sort([
         { field: 'name', byValues: ['Cassidy', 'Veronica', 'Kiriko'] },
       ]);
-      const sortResults = await db.query(employeeTable, sortQuery);
+      const sortResults = await db.query(emplyeeTable, sortQuery);
 
       // Assertions
       expect(sortResults.length).toBe(3);
@@ -298,12 +297,46 @@ export const crudTests = (driver: DbDriver, dropTable: (table: Table<any>) => Pr
       expect(sortResults[2].name).toBe('Kiriko');
 
       // Clean up
-      const qb = new QueryBuilder<Employee>(employeeTable.name).condition({
+      const qb = new QueryBuilder<Employee>(emplyeeTable.name).condition({
         field: 'id',
         operator: 'IN',
         value: [insertedEmployee1.id, insertedEmployee2.id, insertedEmployee3.id],
       });
-      await db.delete(employeeTable, qb);
+      await db.delete(emplyeeTable, qb);
+    });
+
+    test('CRUD operations with undefined values', async () => {
+      const testEmployee1: Omit<Employee, keyof Record> = { name: 'Veronica', jobTitle: 'Software Engineer' };
+      const testEmployee2: Omit<Employee, keyof Record> = { name: 'Brent', jobTitle: undefined };
+      const emplyeeTable: Table<Employee> = new EmployeeTable();
+
+      // Insert operation with undefined values
+      await expect(db.insert(emplyeeTable, testEmployee2)).rejects.toThrow();
+
+      // Insert valid employee
+      const insertedEmployee1 = await db.insert(emplyeeTable, testEmployee1);
+
+      // Attempt to build query with undefined value
+      expect(() => {
+        new QueryBuilder<Employee>(emplyeeTable.name).condition({ field: 'jobTitle', operator: '=', value: undefined });
+      }).toThrow();
+
+      // Attempt to query
+      await expect(db.query(emplyeeTable, { id: insertedEmployee1, jobTitle: undefined })).rejects.toThrow();
+
+      // Update operation with undefined values
+      await expect(db.update(emplyeeTable, { id: insertedEmployee1.id, jobTitle: undefined })).rejects.toThrow();
+
+      // Attempt to delete
+      await expect(db.delete(emplyeeTable, { id: insertedEmployee1, jobTitle: undefined })).rejects.toThrow();
+
+      // Clean up
+      const deleteValidQuery = new QueryBuilder<Employee>(emplyeeTable.name).condition({
+        field: 'id',
+        operator: 'IN',
+        value: [insertedEmployee1.id],
+      });
+      await db.delete(emplyeeTable, deleteValidQuery);
     });
   };
 };

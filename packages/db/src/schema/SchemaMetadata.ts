@@ -20,9 +20,9 @@ export class SchemaMetadata {
   async columnExists(columnName: string, table: Table<any>): Promise<boolean> {
     const qb = QueryBuilder.fromObject(
       {
-        TABLE_SCHEMA: this.multiDbSupported ? this.dbDriver.getDbName() : undefined,
         TABLE_NAME: table.name,
         COLUMN_NAME: columnName,
+        ...(this.multiDbSupported ? { TABLE_SCHEMA: this.dbDriver.getDbName() } : {}),
       },
       'COLUMNS'
     );
@@ -34,8 +34,8 @@ export class SchemaMetadata {
   async getColumnMetadata(table: Table<any>): Promise<{ [columnName: string]: { type: string; isNullable: boolean } }> {
     const qb = QueryBuilder.fromObject(
       {
-        TABLE_SCHEMA: this.multiDbSupported ? this.dbDriver.getDbName() : undefined,
         TABLE_NAME: table.name,
+        ...(this.multiDbSupported ? { TABLE_SCHEMA: this.dbDriver.getDbName() } : {}),
       },
       'COLUMNS'
     );
@@ -52,9 +52,9 @@ export class SchemaMetadata {
   async getPrimaryKey(table: Table<any>): Promise<string[]> {
     const qb = QueryBuilder.fromObject(
       {
-        TABLE_SCHEMA: this.multiDbSupported ? this.dbDriver.getDbName() : undefined,
         TABLE_NAME: table.name,
         CONSTRAINT_NAME: 'PRIMARY',
+        ...(this.multiDbSupported ? { TABLE_SCHEMA: this.dbDriver.getDbName() } : {}),
       },
       'KEY_COLUMN_USAGE'
     );
@@ -73,8 +73,8 @@ export class SchemaMetadata {
   ): Promise<{ [columnName: string]: { referencedTableName: string; referencedColumnName: string } }> {
     const qb = QueryBuilder.fromObject(
       {
-        TABLE_SCHEMA: this.multiDbSupported ? this.dbDriver.getDbName() : undefined,
         TABLE_NAME: table.name,
+        ...(this.multiDbSupported ? { TABLE_SCHEMA: this.dbDriver.getDbName() } : {}),
       },
       'KEY_COLUMN_USAGE'
     );
@@ -98,8 +98,8 @@ export class SchemaMetadata {
   async getUniqueColumns(table: Table<any>): Promise<string[]> {
     const qb = QueryBuilder.fromObject(
       {
-        TABLE_SCHEMA: this.multiDbSupported ? this.dbDriver.getDbName() : undefined,
         TABLE_NAME: table.name,
+        ...(this.multiDbSupported ? { TABLE_SCHEMA: this.dbDriver.getDbName() } : {}),
       },
       'KEY_COLUMN_USAGE'
     );

@@ -28,6 +28,20 @@ describe('QueryBuilder - Conditional Operator Support', () => {
     expect(result.sql).toContain('SELECT * FROM test.Employee WHERE id = @param0');
     expect(result.namedParams?.params).toEqual({ param0: 1 });
     expect(result.namedParams?.types).toEqual({ param0: 'number' });
+
+    // Error thrown with undefined value passed in
+    expect(() => {
+      new QueryBuilder<Employee>(tableName)
+        .condition({ field: 'id', operator: '=', value: undefined })
+        .toSql({ dbName });
+    }).toThrow();
+
+    // Operator '=' with null is properly converted to IS NULL
+    const qbNull = new QueryBuilder<Employee>(tableName).condition({ field: 'id', operator: '=', value: null });
+    result = qbNull.toSql({ dbName, useParams: true, useNamedParams: true });
+    expect(result.sql).toContain('SELECT * FROM test.Employee WHERE id IS NULL');
+    expect(result.namedParams?.params).toEqual({});
+    expect(result.namedParams?.types).toEqual({});
   });
 
   ['<>', '!='].forEach((operator) => {
@@ -86,6 +100,56 @@ describe('QueryBuilder - Conditional Operator Support', () => {
     });
   });
 
+  test('NOT operator', () => {
+    const qb = new QueryBuilder<Employee>(tableName).condition({ field: 'country', operator: 'NOT', value: 'Canada' });
+
+    // Standard SQL output
+    let result = qb.toSql({ dbName });
+    expect(result.sql).toBe("SELECT * FROM test.Employee WHERE country NOT 'Canada';");
+
+    // SQL output with positional parameters
+    result = qb.toSql({ dbName, useParams: true });
+    expect(result.sql).toContain('SELECT * FROM test.Employee WHERE country NOT ?');
+    expect(result.params).toEqual(['Canada']);
+
+    // SQL output with named parameters and types
+    result = qb.toSql({ dbName, useParams: true, useNamedParams: true });
+    expect(result.sql).toContain('SELECT * FROM test.Employee WHERE country NOT @param0');
+    expect(result.namedParams?.params).toEqual({ param0: 'Canada' });
+    expect(result.namedParams?.types).toEqual({ param0: 'string' });
+
+    const qbOr = new QueryBuilder<Employee>(tableName)
+      .condition({ field: 'country', operator: 'NOT', value: 'Canada' })
+      .logicalGroup('OR', [
+        { field: 'age', operator: '=', value: 25 },
+        { field: 'age', operator: '=', value: 30 },
+      ]);
+
+    // Standard SQL output with NOT and OR conditions
+    result = qbOr.toSql({ dbName });
+    expect(result.sql).toBe("SELECT * FROM test.Employee WHERE country NOT 'Canada' AND (age = 25 OR age = 30);");
+
+    // SQL output with positional parameters with NOT and OR conditions
+    result = qbOr.toSql({ dbName, useParams: true });
+    expect(result.sql).toContain('SELECT * FROM test.Employee WHERE country NOT ? AND (age = ? OR age = ?)');
+    expect(result.params).toEqual(['Canada', 25, 30]);
+
+    // SQL output with named parameters and types with NOT and OR conditions
+    result = qbOr.toSql({ dbName, useParams: true, useNamedParams: true });
+    expect(result.sql).toContain(
+      'SELECT * FROM test.Employee WHERE country NOT @param0 AND (age = @param1 OR age = @param2)'
+    );
+    expect(result.namedParams?.params).toEqual({ param0: 'Canada', param1: 25, param2: 30 });
+    expect(result.namedParams?.types).toEqual({ param0: 'string', param1: 'number', param2: 'number' });
+
+    // Undefined value should throw an error
+    expect(() => {
+      new QueryBuilder<Employee>(tableName)
+        .condition({ field: 'country', operator: 'NOT', value: undefined })
+        .toSql({ dbName });
+    }).toThrow();
+  });
+
   test('IN operator', () => {
     const qb = new QueryBuilder<Employee>(tableName).condition({ field: 'id', operator: 'IN', value: [1, 2, 3] });
 
@@ -122,6 +186,43 @@ describe('QueryBuilder - Conditional Operator Support', () => {
     expect(result.sql).toContain('SELECT * FROM test.Employee WHERE name LIKE @param0');
     expect(result.namedParams?.params).toEqual({ param0: '%John%' });
     expect(result.namedParams?.types).toEqual({ param0: 'string' });
+
+    // Undefined value should throw error
+    expect(() => {
+      new QueryBuilder<Employee>(tableName)
+        .condition({ field: 'name', operator: 'LIKE', value: undefined })
+        .toSql({ dbName });
+    }).toThrow();
+  });
+
+  test('NOT LIKE operator', () => {
+    const qb = new QueryBuilder<Employee>(tableName).condition({
+      field: 'name',
+      operator: 'NOT LIKE',
+      value: '%John%',
+    });
+
+    // Standard SQL output
+    let result = qb.toSql({ dbName });
+    expect(result.sql).toBe("SELECT * FROM test.Employee WHERE name NOT LIKE '%John%';");
+
+    // SQL output with positional parameters
+    result = qb.toSql({ dbName, useParams: true });
+    expect(result.sql).toContain('SELECT * FROM test.Employee WHERE name NOT LIKE ?');
+    expect(result.params).toEqual(['%John%']);
+
+    // SQL output with named parameters and types
+    result = qb.toSql({ dbName, useParams: true, useNamedParams: true });
+    expect(result.sql).toContain('SELECT * FROM test.Employee WHERE name NOT LIKE @param0');
+    expect(result.namedParams?.params).toEqual({ param0: '%John%' });
+    expect(result.namedParams?.types).toEqual({ param0: 'string' });
+
+    // Undefined value should throw an error
+    expect(() => {
+      new QueryBuilder<Employee>(tableName)
+        .condition({ field: 'name', operator: 'NOT LIKE', value: undefined })
+        .toSql({ dbName });
+    }).toThrow();
   });
 
   test('BETWEEN operator', () => {
@@ -141,6 +242,13 @@ describe('QueryBuilder - Conditional Operator Support', () => {
     expect(result.sql).toContain('SELECT * FROM test.Employee WHERE age BETWEEN @param0 AND @param1');
     expect(result.namedParams?.params).toEqual({ param0: 18, param1: 30 });
     expect(result.namedParams?.types).toEqual({ param0: 'number', param1: 'number' });
+
+    // Undefined value should throw error
+    expect(() => {
+      new QueryBuilder<Employee>(tableName)
+        .condition({ field: 'age', operator: 'BETWEEN', value: undefined })
+        .toSql({ dbName });
+    }).toThrow();
   });
 
   test('IS NULL operator', () => {

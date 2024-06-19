@@ -35,4 +35,16 @@ describe('QueryBuilder - Factory tests', () => {
     expect(result.namedParams?.params).toEqual({ param0: 'John Doe', param1: 'USA' });
     expect(result.namedParams?.types).toEqual({ param0: 'string', param1: 'string' });
   });
+
+  test('fromObject API with undefined value', () => {
+    const queryObject = {
+      name: 'John Doe',
+      country: 'USA',
+      city: undefined,
+    };
+
+    expect(() => {
+      QueryBuilder.fromObject<Employee>(queryObject, tableName);
+    }).toThrow();
+  });
 });
