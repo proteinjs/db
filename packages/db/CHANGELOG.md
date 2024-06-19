@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.28](https://github.com/proteinjs/db/compare/@proteinjs/db@1.0.27...@proteinjs/db@1.0.28) (2024-06-19)
+
+
+### Bug Fixes
+
+* adjust tests for ReferenceArrayColumn ([c333960](https://github.com/proteinjs/db/commit/c3339605d3184c265142dbfabb8e9e854dd3c27c))
+* set empty array instead of null for reference array col ([719a768](https://github.com/proteinjs/db/commit/719a768307dd75d61d02d11053b6b743132fc50d))
+
+
+
+
+
 ## [1.0.27](https://github.com/proteinjs/db/compare/@proteinjs/db@1.0.26...@proteinjs/db@1.0.27) (2024-06-19)
 
 
