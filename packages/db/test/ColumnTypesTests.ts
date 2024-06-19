@@ -120,8 +120,8 @@ export const columnTypeTests = (driver: DbDriver, dropTable: (table: Table<any>)
       expect(fetchedRecord.passwordColumn).toBeNull();
       expect(fetchedRecord.objectColumn).toBeNull();
       expect(fetchedRecord.arrayColumn).toBeNull();
-      expect(fetchedRecord.referenceArrayColumn).toBeNull();
       expect(fetchedRecord.referenceColumn).toBeNull();
+      expect(fetchedRecord.referenceArrayColumn).toHaveProperty('_ids', []);
 
       // Clean up
       await db.delete(testTable, { id: fetchedRecord.id });
