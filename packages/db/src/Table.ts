@@ -96,8 +96,8 @@ export type Column<T, Serialized> = {
    */
   oldName?: string;
   options?: ColumnOptions;
-  serialize?: (fieldValue: T | undefined) => Promise<Serialized | undefined>;
-  deserialize?: (serializedFieldValue: Serialized) => Promise<T | void>;
+  serialize?: (fieldValue: T | null | undefined) => Promise<Serialized | null | undefined>;
+  deserialize?: (serializedFieldValue: Serialized | null) => Promise<T | null | void>;
   beforeDelete?: (table: Table<any>, columnPropertyName: string, records: any[]) => Promise<void>;
 };
 

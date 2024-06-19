@@ -3,7 +3,6 @@ import { DbDriver, Db } from '../src/Db';
 import { withRecordColumns, Record } from '../src/Record';
 import { BooleanColumn, DateColumn, StringColumn } from '../src/Columns';
 import { Table } from '../src/Table';
-import { log } from 'console';
 
 export interface Employee extends Record {
   name: string;
@@ -32,7 +31,7 @@ export class EmployeeTable extends Table<Employee> {
 export const getTestTable = (tableName: string) => {
   const employeeTable = new EmployeeTable();
   if (employeeTable.name == tableName) {
-    return employeeTable;
+    return new EmployeeTable();
   }
 
   throw new Error(`Cannot find test table: ${tableName}`);
@@ -322,18 +321,14 @@ export const crudTests = (driver: DbDriver, dropTable: (table: Table<any>) => Pr
         new QueryBuilder<Employee>(emplyeeTable.name).condition({ field: 'jobTitle', operator: '=', value: undefined });
       }).toThrow();
 
-      // Update operation with undefined values
-      const updatedEmployee = { ...insertedEmployee1, jobTitle: undefined };
-      await expect(db.update(emplyeeTable, updatedEmployee)).rejects.toThrow();
+      // Attempt to query
+      await expect(db.query(emplyeeTable, { id: insertedEmployee1, jobTitle: undefined })).rejects.toThrow();
 
-      // Attempt to build query for delete operation with undefined values
-      expect(() => {
-        new QueryBuilder<Employee>(emplyeeTable.name).condition({
-          field: 'jobTitle',
-          operator: '=',
-          value: undefined,
-        });
-      }).toThrow();
+      // Update operation with undefined values
+      await expect(db.update(emplyeeTable, { id: insertedEmployee1.id, jobTitle: undefined })).rejects.toThrow();
+
+      // Attempt to delete
+      await expect(db.delete(emplyeeTable, { id: insertedEmployee1, jobTitle: undefined })).rejects.toThrow();
 
       // Clean up
       const deleteValidQuery = new QueryBuilder<Employee>(emplyeeTable.name).condition({

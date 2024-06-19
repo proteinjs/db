@@ -21,5 +21,6 @@ export * from './src/services/MigrationRunnerService';
 
 export * from './test/TableManagerTests';
 export * from './test/CrudTests';
+export * from './test/ColumnTypesTests';
 
 export * from '@proteinjs/db-query';
