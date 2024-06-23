@@ -13,9 +13,12 @@ export type RecordTableProps<T extends Record> = {
   title?: TableProps<T>['title'];
   description?: TableProps<T>['description'];
   columns?: TableProps<T>['columns'];
-  defaultRowsPerPage?: TableProps<T>['defaultRowsPerPage'];
+  pagination?: TableProps<T>['pagination'];
+  infiniteScroll?: TableProps<T>['infiniteScroll'];
   buttons?: TableProps<T>['buttons'];
   rowOnClickRedirectUrl?: TableProps<T>['rowOnClickRedirectUrl'];
+  toolbarSx?: TableProps<T>['toolbarSx'];
+  tableContainerSx?: TableProps<T>['tableContainerSx'];
 };
 
 function deleteButton<T extends Record>(table: Table<T>): TableButton<T> {
@@ -107,8 +110,11 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
       columns={props.columns ? props.columns : defaultColumns()}
       tableLoader={props.tableLoader ? props.tableLoader : defaultTableLoader()}
       rowOnClickRedirectUrl={props.rowOnClickRedirectUrl ? props.rowOnClickRedirectUrl : defaultRowOnClickRedirectUrl}
-      defaultRowsPerPage={props.defaultRowsPerPage}
+      pagination={props.pagination}
+      infiniteScroll={props.infiniteScroll}
       buttons={buttons()}
+      toolbarSx={props.toolbarSx}
+      tableContainerSx={props.tableContainerSx}
     />
   );
 }
