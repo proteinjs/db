@@ -5,15 +5,23 @@ import { File } from './tables/FileTable';
 import { tables } from './tables/tables';
 import { DbFileService, getDbFileService } from './services/DbFileService';
 
+/**
+ * A convenience factory function so code using this is portable (can be used in server or browser).
+ * @returns an instance of the `DbFileService` when called from the browser, and an instance of `DbFile` otherwise
+ * */
 export const getDbFile = () => (typeof self === 'undefined' ? new DbFile() : (getDbFileService() as DbFile));
 
+/**
+ * A simple api for reading/writing files to the db.
+ * The storage is defined in `FileTable` and `FileDataTable`.
+ */
 export class DbFile implements DbFileService {
   public serviceMetadata = {
     auth: {
       allUsers: true,
     },
   };
-  
+
   /**
    * Creates a new file record and its associated data chunks.
    * @param fileMetaData - The file metadata (name, type, size).
