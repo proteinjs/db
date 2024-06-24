@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.29](https://github.com/proteinjs/db/compare/@proteinjs/db@1.0.28...@proteinjs/db@1.0.29) (2024-06-24)
+
+
+### Bug Fixes
+
+* `QueryBuilder` and `StatementFactory` should escape values with backticks where appropriate. This allows you to define column or table names that would otherwise conflict with reserved words in the db engine (ie. having a colmn named `order`). ([3745d64](https://github.com/proteinjs/db/commit/3745d644fb0997df6f27f049948f5d9073a1f343))
+
+
+
+
+
 ## [1.0.28](https://github.com/proteinjs/db/compare/@proteinjs/db@1.0.27...@proteinjs/db@1.0.28) (2024-06-19)
 
 
