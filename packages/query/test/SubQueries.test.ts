@@ -27,20 +27,20 @@ describe('QueryBuilder - Sub Query Support', () => {
     // Standard SQL output for subquery
     let result = qb.toSql({ dbName });
     expect(result.sql).toBe(
-      "SELECT * FROM test.Employee WHERE id IN (SELECT * FROM test.Employee WHERE department = 'Engineering');"
+      "SELECT * FROM `test`.`Employee` WHERE `id` IN (SELECT * FROM `test`.`Employee` WHERE `department` = 'Engineering');"
     );
 
     // SQL output with positional parameters for subquery
     result = qb.toSql({ dbName, useParams: true });
     expect(result.sql).toContain(
-      'SELECT * FROM test.Employee WHERE id IN (SELECT * FROM test.Employee WHERE department = ?);'
+      'SELECT * FROM `test`.`Employee` WHERE `id` IN (SELECT * FROM `test`.`Employee` WHERE `department` = ?);'
     );
     expect(result.params).toEqual(['Engineering']);
 
     // SQL output with named parameters and types for subquery
     result = qb.toSql({ dbName, useParams: true, useNamedParams: true });
     expect(result.sql).toContain(
-      'SELECT * FROM test.Employee WHERE id IN (SELECT * FROM test.Employee WHERE department = @param0);'
+      'SELECT * FROM `test`.`Employee` WHERE `id` IN (SELECT * FROM `test`.`Employee` WHERE `department` = @param0);'
     );
     expect(result.namedParams?.params).toEqual({ param0: 'Engineering' });
     expect(result.namedParams?.types).toEqual({ param0: 'string' });
@@ -79,13 +79,14 @@ describe('QueryBuilder - Sub Query Support', () => {
 
     // Standard SQL output for the main query
     let result = mainQuery.toSql({ dbName });
-    const expectedSql = `SELECT * FROM test.Employee WHERE (department = 'Engineering' OR (salary > 50000 AND (yearsOfExperience <= 3 OR id IN (SELECT * FROM test.Employee WHERE (department = 'HR' AND yearsOfExperience > 5 AND salary < 60000) AND (department = 'IT' OR salary >= 80000)))));`;
+    const expectedSql =
+      "SELECT * FROM `test`.`Employee` WHERE (`department` = 'Engineering' OR (`salary` > 50000 AND (`yearsOfExperience` <= 3 OR `id` IN (SELECT * FROM `test`.`Employee` WHERE (`department` = 'HR' AND `yearsOfExperience` > 5 AND `salary` < 60000) AND (`department` = 'IT' OR `salary` >= 80000)))));";
     expect(result.sql).toBe(expectedSql);
 
     // SQL output with positional parameters
     result = mainQuery.toSql({ dbName, useParams: true });
     expect(result.sql).toContain(
-      `SELECT * FROM test.Employee WHERE (department = ? OR (salary > ? AND (yearsOfExperience <= ? OR id IN (SELECT * FROM test.Employee WHERE (department = ? AND yearsOfExperience > ? AND salary < ?) AND (department = ? OR salary >= ?)))));`
+      'SELECT * FROM `test`.`Employee` WHERE (`department` = ? OR (`salary` > ? AND (`yearsOfExperience` <= ? OR `id` IN (SELECT * FROM `test`.`Employee` WHERE (`department` = ? AND `yearsOfExperience` > ? AND `salary` < ?) AND (`department` = ? OR `salary` >= ?)))));'
     );
     expect(result.params).toEqual(['Engineering', 50000, 3, 'HR', 5, 60000, 'IT', 80000]);
 
@@ -102,7 +103,7 @@ describe('QueryBuilder - Sub Query Support', () => {
       param7: 80000,
     };
     expect(result.sql).toContain(
-      `SELECT * FROM test.Employee WHERE (department = @param0 OR (salary > @param1 AND (yearsOfExperience <= @param2 OR id IN (SELECT * FROM test.Employee WHERE (department = @param0 AND yearsOfExperience > @param1 AND salary < @param2) AND (department = @param3 OR salary >= @param4)))));`
+      'SELECT * FROM `test`.`Employee` WHERE (`department` = @param0 OR (`salary` > @param1 AND (`yearsOfExperience` <= @param2 OR `id` IN (SELECT * FROM `test`.`Employee` WHERE (`department` = @param0 AND `yearsOfExperience` > @param1 AND `salary` < @param2) AND (`department` = @param3 OR `salary` >= @param4)))));'
     );
     expect(result.namedParams?.params).toEqual(expectedParams);
     expect(result.namedParams?.types).toEqual({

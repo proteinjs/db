@@ -52,20 +52,20 @@ describe('QueryBuilder - Resolve Field Name Support', () => {
 
     // Standard SQL output
     expect(qb.toSql({ dbName, resolveFieldName }).sql).toBe(
-      "SELECT MAX(employee_age) FROM test.Employee WHERE (((department = 'Engineering' AND employee_name LIKE '%John%') OR department = 'Product') AND (employee_age > 30 AND employee_age < 50) AND (employee_salary > 50000 OR employee_salary <= 100000)) GROUP BY employee_age;"
+      "SELECT MAX(`employee_age`) FROM `test`.`Employee` WHERE (((`department` = 'Engineering' AND `employee_name` LIKE '%John%') OR `department` = 'Product') AND (`employee_age` > 30 AND `employee_age` < 50) AND (`employee_salary` > 50000 OR `employee_salary` <= 100000)) GROUP BY `employee_age`;"
     );
 
     // SQL output with positional parameters
     let result = qb.toSql({ dbName, resolveFieldName, useParams: true });
     expect(result.sql).toBe(
-      'SELECT MAX(employee_age) FROM test.Employee WHERE (((department = ? AND employee_name LIKE ?) OR department = ?) AND (employee_age > ? AND employee_age < ?) AND (employee_salary > ? OR employee_salary <= ?)) GROUP BY employee_age;'
+      'SELECT MAX(`employee_age`) FROM `test`.`Employee` WHERE (((`department` = ? AND `employee_name` LIKE ?) OR `department` = ?) AND (`employee_age` > ? AND `employee_age` < ?) AND (`employee_salary` > ? OR `employee_salary` <= ?)) GROUP BY `employee_age`;'
     );
     expect(result.params).toEqual(['Engineering', '%John%', 'Product', 30, 50, 50000, 100000]);
 
     // SQL output with named parameters and types
     result = qb.toSql({ dbName, resolveFieldName, useParams: true, useNamedParams: true });
     expect(result.sql).toBe(
-      'SELECT MAX(employee_age) FROM test.Employee WHERE (((department = @param0 AND employee_name LIKE @param1) OR department = @param2) AND (employee_age > @param3 AND employee_age < @param4) AND (employee_salary > @param5 OR employee_salary <= @param6)) GROUP BY employee_age;'
+      'SELECT MAX(`employee_age`) FROM `test`.`Employee` WHERE (((`department` = @param0 AND `employee_name` LIKE @param1) OR `department` = @param2) AND (`employee_age` > @param3 AND `employee_age` < @param4) AND (`employee_salary` > @param5 OR `employee_salary` <= @param6)) GROUP BY `employee_age`;'
     );
     expect(result.namedParams?.params).toEqual({
       param0: 'Engineering',
