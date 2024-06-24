@@ -63,7 +63,7 @@ export class StatementFactory<T> {
         config.getColumnType ? config.getColumnType(tableName, prop) : typeof data[prop as keyof T]
       )
     );
-    const sql = `INSERT INTO ${config.dbName ? `${config.dbName}.` : ''}${tableName} (${props.join(', ')}) VALUES (${values.join(', ')});`;
+    const sql = `INSERT INTO ${config.dbName ? `\`${config.dbName}\`.` : ''}\`${tableName}\` (\`${props.join('`, `')}\`) VALUES (${values.join(', ')});`;
     return { sql, ...paramManager.getParams() };
   }
 
@@ -73,21 +73,21 @@ export class StatementFactory<T> {
     const setClauses = props
       .map(
         (prop) =>
-          `${prop} = ${paramManager.parameterize(
+          `\`${prop}\` = ${paramManager.parameterize(
             data[prop as keyof T],
             config.getColumnType ? config.getColumnType(tableName, prop) : typeof data[prop as keyof T]
           )}`
       )
       .join(', ');
     const whereClause = queryBuilder.toWhereClause(config, paramManager);
-    const sql = `UPDATE ${config.dbName ? `${config.dbName}.` : ''}${tableName} SET ${setClauses} ${whereClause.sql};`;
+    const sql = `UPDATE ${config.dbName ? `\`${config.dbName}\`.` : ''}\`${tableName}\` SET ${setClauses} ${whereClause.sql};`;
     return { sql, ...paramManager.getParams() };
   }
 
   delete(tableName: string, queryBuilder: QueryBuilder<T>, config: StatementConfig): Statement {
     const paramManager = new StatementParamManager(config);
     const whereClause = queryBuilder.toWhereClause(config, paramManager);
-    const sql = `DELETE FROM ${config.dbName ? `${config.dbName}.` : ''}${tableName} ${whereClause.sql};`;
+    const sql = `DELETE FROM ${config.dbName ? `\`${config.dbName}\`.` : ''}\`${tableName}\` ${whereClause.sql};`;
     return { sql, ...paramManager.getParams() };
   }
 
@@ -98,25 +98,25 @@ export class StatementFactory<T> {
     foreignKeys?: ForeignKey[]
   ): Statement {
     const columnsSql = columns
-      .map((column) => `${column.name} ${column.type}${column.nullable === false ? ' NOT NULL' : ''}`)
+      .map((column) => `\`${column.name}\` ${column.type}${column.nullable === false ? ' NOT NULL' : ''}`)
       .join(', ');
     const primaryKeySql = primaryKey
       ? typeof primaryKey === 'string'
-        ? `PRIMARY KEY (${primaryKey})`
-        : `PRIMARY KEY (${primaryKey.join(', ')})`
+        ? `PRIMARY KEY (\`${primaryKey}\`)`
+        : `PRIMARY KEY (${primaryKey.map((pk) => `\`${pk}\``).join(', ')})`
       : '';
     const foreignKeysSql = foreignKeys
       ? foreignKeys
           .map(
             (foreignKey) =>
-              `CONSTRAINT ${StatementUtil.getForeignKeyName(tableName, foreignKey)} FOREIGN KEY (${foreignKey.referencedByColumn}) REFERENCES ${foreignKey.table}(${foreignKey.column})`
+              `CONSTRAINT ${StatementUtil.getForeignKeyName(tableName, foreignKey)} FOREIGN KEY (\`${foreignKey.referencedByColumn}\`) REFERENCES \`${foreignKey.table}\`(\`${foreignKey.column}\`)`
           )
           .join(', ')
       : '';
     const sql = `
-      CREATE TABLE ${tableName} (
-        ${columnsSql},
-        ${foreignKeysSql}
+      CREATE TABLE \`${tableName}\` (
+        ${columnsSql}
+        ${foreignKeysSql ? ', ' + foreignKeysSql : ''}
       ) ${primaryKeySql}`;
     return { sql };
   }
@@ -130,15 +130,15 @@ export class StatementFactory<T> {
   }: AlterTableParams): Statement[] {
     const addColumnsSql = columnsToAdd.map(
       (column) =>
-        `ALTER TABLE ${tableName} ADD COLUMN ${column.name} ${column.type}${column.nullable === false ? ' NOT NULL' : ''}`
+        `ALTER TABLE \`${tableName}\` ADD COLUMN \`${column.name}\` ${column.type}${column.nullable === false ? ' NOT NULL' : ''}`
     );
     const dropForeignKeysSql = foreignKeysToDrop.map((foreignKey) => this.dropForeignKey(tableName, foreignKey).sql);
     const addForeignKeysSql = foreignKeysToAdd.map(
       (foreignKey) =>
-        `ALTER TABLE ${tableName} ADD CONSTRAINT ${StatementUtil.getForeignKeyName(tableName, foreignKey)} FOREIGN KEY (${foreignKey.referencedByColumn}) REFERENCES ${foreignKey.table}(${foreignKey.column})`
+        `ALTER TABLE \`${tableName}\` ADD CONSTRAINT ${StatementUtil.getForeignKeyName(tableName, foreignKey)} FOREIGN KEY (\`${foreignKey.referencedByColumn}\`) REFERENCES \`${foreignKey.table}\`(\`${foreignKey.column}\`)`
     );
     const renameColumnsSql = columnRenames.map(
-      (rename) => `ALTER TABLE ${tableName} RENAME COLUMN ${rename.currentName} TO ${rename.newName}`
+      (rename) => `ALTER TABLE \`${tableName}\` RENAME COLUMN \`${rename.currentName}\` TO \`${rename.newName}\``
     );
     const sql = [...addColumnsSql, ...dropForeignKeysSql, ...addForeignKeysSql, ...renameColumnsSql];
     return sql.map((sqlPart) => ({ sql: sqlPart }));
@@ -146,12 +146,12 @@ export class StatementFactory<T> {
 
   dropForeignKey(tableName: string, foreignKey: ForeignKey): Statement {
     return {
-      sql: `ALTER TABLE ${tableName} DROP CONSTRAINT ${StatementUtil.getForeignKeyName(tableName, foreignKey)}`,
+      sql: `ALTER TABLE \`${tableName}\` DROP CONSTRAINT ${StatementUtil.getForeignKeyName(tableName, foreignKey)}`,
     };
   }
 
   createIndex(index: Index, tableName: string): Statement {
-    const sql = `CREATE${index.unique ? ' UNIQUE' : ''} INDEX ${StatementUtil.getIndexName(tableName, index)} ON ${tableName}(${typeof index.columns === 'string' ? index.columns : index.columns.join(', ')})`;
+    const sql = `CREATE${index.unique ? ' UNIQUE' : ''} INDEX ${StatementUtil.getIndexName(tableName, index)} ON \`${tableName}\`(\`${typeof index.columns === 'string' ? index.columns : index.columns.join('`, `')}\`)`;
     return { sql };
   }
 

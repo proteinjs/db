@@ -20,7 +20,7 @@ interface User extends Record {
   active: boolean;
 }
 
-class UserTable extends Table<User> {
+class UserTestTable extends Table<User> {
   name = 'db_test_user';
   columns = withRecordColumns<User>({
     name: new StringColumn('name'),
@@ -87,7 +87,7 @@ export const tableManagerTests = (
 
     afterEach(async () => {
       await dropTable(new ColumnTypesTable());
-      await dropTable(new UserTable());
+      await dropTable(new UserTestTable());
     });
 
     afterAll(async () => {
@@ -97,7 +97,7 @@ export const tableManagerTests = (
     });
 
     test('create primary key', async () => {
-      const userTable = new UserTable();
+      const userTable = new UserTestTable();
       await tableManager.loadTable(userTable);
       expect(await tableManager.tableExists(userTable)).toBeTruthy();
       const primaryKey = await tableManager.schemaMetadata.getPrimaryKey(userTable);
@@ -106,7 +106,7 @@ export const tableManagerTests = (
     });
 
     test('create columns', async () => {
-      const userTable = new UserTable();
+      const userTable = new UserTestTable();
       await tableManager.loadTable(userTable);
       expect(await tableManager.tableExists(userTable)).toBeTruthy();
       expect(await tableManager.schemaMetadata.columnExists(userTable.columns.name.name, userTable)).toBeTruthy();
@@ -115,7 +115,7 @@ export const tableManagerTests = (
     });
 
     test('add column via alter', async () => {
-      const userTable = new UserTable();
+      const userTable = new UserTestTable();
       const dataColumn = new ObjectColumn('data');
       await tableManager.loadTable(userTable);
       expect(await tableManager.tableExists(userTable)).toBeTruthy();
@@ -133,7 +133,7 @@ export const tableManagerTests = (
     });
 
     test('columns created with correct types', async () => {
-      const userTable = new UserTable();
+      const userTable = new UserTestTable();
       const columnTypesTable = new ColumnTypesTable();
       await tableManager.loadTable(userTable);
       await tableManager.loadTable(columnTypesTable);
@@ -178,7 +178,7 @@ export const tableManagerTests = (
     });
 
     test('columns created with correct options', async () => {
-      const userTable = new UserTable();
+      const userTable = new UserTestTable();
       const columnTypesTable = new ColumnTypesTable();
       await tableManager.loadTable(userTable);
       await tableManager.loadTable(columnTypesTable);
@@ -203,7 +203,7 @@ export const tableManagerTests = (
         return;
       }
 
-      const userTable = new UserTable();
+      const userTable = new UserTestTable();
       await tableManager.loadTable(userTable);
       expect(await tableManager.tableExists(userTable)).toBeTruthy();
       expect(await tableManager.schemaMetadata.columnExists(userTable.columns.name.name, userTable)).toBeTruthy();
@@ -219,7 +219,7 @@ export const tableManagerTests = (
         return;
       }
 
-      const userTable = new UserTable();
+      const userTable = new UserTestTable();
       const columnTypesTable = new ColumnTypesTable();
       await tableManager.loadTable(userTable);
       await tableManager.loadTable(columnTypesTable);
@@ -287,7 +287,7 @@ export const tableManagerTests = (
     });
 
     test('alter unique constraint', async () => {
-      const userTable = new UserTable();
+      const userTable = new UserTestTable();
       const columnTypesTable = new ColumnTypesTable();
       await tableManager.loadTable(userTable);
       columnTypesTable.columns.text.options = { defaultValue: async () => 'asdf' };
@@ -409,7 +409,7 @@ export const tableManagerTests = (
         return;
       }
 
-      const userTable = new UserTable();
+      const userTable = new UserTestTable();
       const columnTypesTable = new ColumnTypesTable();
       await tableManager.loadTable(userTable);
       columnTypesTable.columns.text.options = { defaultValue: async () => 'asdf' };
@@ -528,7 +528,7 @@ export const tableManagerTests = (
     });
 
     test('create index', async () => {
-      const userTable = new UserTable();
+      const userTable = new UserTestTable();
       await tableManager.loadTable(userTable);
       expect(await tableManager.tableExists(userTable)).toBeTruthy();
       const indexes = await tableManager.schemaMetadata.getIndexes(userTable);
@@ -537,7 +537,7 @@ export const tableManagerTests = (
     });
 
     test('alter index', async () => {
-      const userTable = new UserTable();
+      const userTable = new UserTestTable();
       await tableManager.loadTable(userTable);
       expect(await tableManager.tableExists(userTable)).toBeTruthy();
       let indexes = await tableManager.schemaMetadata.getIndexes(userTable);

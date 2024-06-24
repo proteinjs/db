@@ -48,20 +48,20 @@ describe('QueryBuilder - Logical Operator Support', () => {
 
     // Standard SQL output
     expect(qb.toSql({ dbName }).sql).toBe(
-      "SELECT MAX(age) FROM test.Employee WHERE (((department = 'Engineering' AND name LIKE '%John%') OR department = 'Product') AND (age > 30 AND age < 50) AND (salary > 50000 OR salary <= 100000)) GROUP BY department;"
+      "SELECT MAX(`age`) FROM `test`.`Employee` WHERE (((`department` = 'Engineering' AND `name` LIKE '%John%') OR `department` = 'Product') AND (`age` > 30 AND `age` < 50) AND (`salary` > 50000 OR `salary` <= 100000)) GROUP BY `department`;"
     );
 
     // SQL output with positional parameters
     let result = qb.toSql({ dbName, useParams: true });
     expect(result.sql).toBe(
-      'SELECT MAX(age) FROM test.Employee WHERE (((department = ? AND name LIKE ?) OR department = ?) AND (age > ? AND age < ?) AND (salary > ? OR salary <= ?)) GROUP BY department;'
+      'SELECT MAX(`age`) FROM `test`.`Employee` WHERE (((`department` = ? AND `name` LIKE ?) OR `department` = ?) AND (`age` > ? AND `age` < ?) AND (`salary` > ? OR `salary` <= ?)) GROUP BY `department`;'
     );
     expect(result.params).toEqual(['Engineering', '%John%', 'Product', 30, 50, 50000, 100000]);
 
     // SQL output with named parameters and types
     result = qb.toSql({ dbName, useParams: true, useNamedParams: true });
     expect(result.sql).toBe(
-      'SELECT MAX(age) FROM test.Employee WHERE (((department = @param0 AND name LIKE @param1) OR department = @param2) AND (age > @param3 AND age < @param4) AND (salary > @param5 OR salary <= @param6)) GROUP BY department;'
+      'SELECT MAX(`age`) FROM `test`.`Employee` WHERE (((`department` = @param0 AND `name` LIKE @param1) OR `department` = @param2) AND (`age` > @param3 AND `age` < @param4) AND (`salary` > @param5 OR `salary` <= @param6)) GROUP BY `department`;'
     );
     expect(result.namedParams?.params).toEqual({
       param0: 'Engineering',
@@ -108,20 +108,20 @@ describe('QueryBuilder - Logical Operator Support', () => {
     // Standard SQL output
     let result = qb.toSql({ dbName });
     expect(result.sql).toBe(
-      "SELECT MAX(age) FROM test.Employee WHERE (((department = 'Engineering' AND name LIKE '%John%') OR department = 'Product') AND (age > 30 AND age < 50) AND (salary > 50000 OR salary <= 100000)) GROUP BY department;"
+      "SELECT MAX(`age`) FROM `test`.`Employee` WHERE (((`department` = 'Engineering' AND `name` LIKE '%John%') OR `department` = 'Product') AND (`age` > 30 AND `age` < 50) AND (`salary` > 50000 OR `salary` <= 100000)) GROUP BY `department`;"
     );
 
     // SQL output with positional parameters
     result = qb.toSql({ dbName, useParams: true });
     expect(result.sql).toBe(
-      'SELECT MAX(age) FROM test.Employee WHERE (((department = ? AND name LIKE ?) OR department = ?) AND (age > ? AND age < ?) AND (salary > ? OR salary <= ?)) GROUP BY department;'
+      'SELECT MAX(`age`) FROM `test`.`Employee` WHERE (((`department` = ? AND `name` LIKE ?) OR `department` = ?) AND (`age` > ? AND `age` < ?) AND (`salary` > ? OR `salary` <= ?)) GROUP BY `department`;'
     );
     expect(result.params).toEqual(['Engineering', '%John%', 'Product', 30, 50, 50000, 100000]);
 
     // SQL output with named parameters and types
     result = qb.toSql({ dbName, useParams: true, useNamedParams: true });
     expect(result.sql).toBe(
-      'SELECT MAX(age) FROM test.Employee WHERE (((department = @param0 AND name LIKE @param1) OR department = @param2) AND (age > @param3 AND age < @param4) AND (salary > @param5 OR salary <= @param6)) GROUP BY department;'
+      'SELECT MAX(`age`) FROM `test`.`Employee` WHERE (((`department` = @param0 AND `name` LIKE @param1) OR `department` = @param2) AND (`age` > @param3 AND `age` < @param4) AND (`salary` > @param5 OR `salary` <= @param6)) GROUP BY `department`;'
     );
     expect(result.namedParams?.params).toEqual({
       param0: 'Engineering',
@@ -168,20 +168,20 @@ describe('QueryBuilder - Logical Operator Support', () => {
     // Standard SQL output
     let result = qb.toSql({ dbName });
     expect(result.sql).toBe(
-      "SELECT MAX(age) FROM test.Employee WHERE (((department = 'Engineering' AND name LIKE '%John%') OR department = 'Product') AND (age > 30 AND age < 50) AND (salary > 50000 OR salary <= 100000)) GROUP BY department;"
+      "SELECT MAX(`age`) FROM `test`.`Employee` WHERE (((`department` = 'Engineering' AND `name` LIKE '%John%') OR `department` = 'Product') AND (`age` > 30 AND `age` < 50) AND (`salary` > 50000 OR `salary` <= 100000)) GROUP BY `department`;"
     );
 
     // SQL output with positional parameters
     result = qb.toSql({ dbName, useParams: true });
     expect(result.sql).toBe(
-      'SELECT MAX(age) FROM test.Employee WHERE (((department = ? AND name LIKE ?) OR department = ?) AND (age > ? AND age < ?) AND (salary > ? OR salary <= ?)) GROUP BY department;'
+      'SELECT MAX(`age`) FROM `test`.`Employee` WHERE (((`department` = ? AND `name` LIKE ?) OR `department` = ?) AND (`age` > ? AND `age` < ?) AND (`salary` > ? OR `salary` <= ?)) GROUP BY `department`;'
     );
     expect(result.params).toEqual(['Engineering', '%John%', 'Product', 30, 50, 50000, 100000]);
 
     // SQL output with named parameters and types
     result = qb.toSql({ dbName, useParams: true, useNamedParams: true });
     expect(result.sql).toBe(
-      'SELECT MAX(age) FROM test.Employee WHERE (((department = @param0 AND name LIKE @param1) OR department = @param2) AND (age > @param3 AND age < @param4) AND (salary > @param5 OR salary <= @param6)) GROUP BY department;'
+      'SELECT MAX(`age`) FROM `test`.`Employee` WHERE (((`department` = @param0 AND `name` LIKE @param1) OR `department` = @param2) AND (`age` > @param3 AND `age` < @param4) AND (`salary` > @param5 OR `salary` <= @param6)) GROUP BY `department`;'
     );
     expect(result.namedParams?.params).toEqual({
       param0: 'Engineering',

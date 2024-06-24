@@ -268,7 +268,7 @@ export class QueryBuilder<T = any> {
             return `1=0`;
           } else if (isInstanceOf(node.value, QueryBuilder)) {
             const valueStr = paramManager.parameterize(node.value, 'subquery');
-            return `${resolvedFieldName} ${node.operator} ${valueStr}`;
+            return `\`${resolvedFieldName}\` ${node.operator} ${valueStr}`;
           } else if (node.operator === 'IN' || node.operator === 'NOT IN') {
             if (config.useNamedParams) {
               const valuesStr = Array.isArray(node.value)
@@ -277,12 +277,12 @@ export class QueryBuilder<T = any> {
                     getColumnType(config, this.tableName, node.field, node.value[0])
                   )
                 : paramManager.parameterize(node.value, getColumnType(config, this.tableName, node.field, node.value));
-              return `${resolvedFieldName} ${node.operator} UNNEST(${valuesStr})`;
+              return `\`${resolvedFieldName}\` ${node.operator} UNNEST(${valuesStr})`;
             }
             const valuesStr = Array.isArray(node.value)
               ? node.value.map((val: any) => paramManager.parameterize(val, typeof val)).join(', ')
               : paramManager.parameterize(node.value, typeof node.value);
-            return `${resolvedFieldName} ${node.operator} (${valuesStr})`;
+            return `\`${resolvedFieldName}\` ${node.operator} (${valuesStr})`;
           } else if (node.operator === 'BETWEEN') {
             // Ensure BETWEEN values are provided as an array of two elements
             const valuesStr = Array.isArray(node.value)
@@ -292,19 +292,19 @@ export class QueryBuilder<T = any> {
                   )
                   .join(' AND ')
               : paramManager.parameterize(node.value, getColumnType(config, this.tableName, node.field, node.value));
-            return `${resolvedFieldName} ${node.operator} ${valuesStr}`;
+            return `\`${resolvedFieldName}\` ${node.operator} ${valuesStr}`;
           } else if (node.operator === 'IS NULL' || node.operator === 'IS NOT NULL') {
-            return `${resolvedFieldName} ${node.operator}`;
+            return `\`${resolvedFieldName}\` ${node.operator}`;
           } else {
             if (node.value === null) {
-              return `${resolvedFieldName} IS NULL`;
+              return `\`${resolvedFieldName}\` IS NULL`;
             }
 
             const conditionValue = paramManager.parameterize(
               node.value,
               getColumnType(config, this.tableName, node.field, node.value)
             );
-            return `${resolvedFieldName} ${node.operator} ${conditionValue}`;
+            return `\`${resolvedFieldName}\` ${node.operator} ${conditionValue}`;
           }
         }
         case 'LOGICAL': {
@@ -342,9 +342,11 @@ export class QueryBuilder<T = any> {
           return '';
         case 'AGGREGATE': {
           const resolvedAggFieldName =
-            config.resolveFieldName && node.field != '*'
-              ? config.resolveFieldName(this.tableName, node.field)
-              : node.field;
+            node.field === '*'
+              ? '*'
+              : config.resolveFieldName
+                ? `\`${config.resolveFieldName(this.tableName, node.field)}\``
+                : `\`${node.field}\``;
           aggregates.push(
             `${node.function}(${resolvedAggFieldName})${node.resultProp ? ` as ${node.resultProp}` : ''}`
           );
@@ -353,7 +355,9 @@ export class QueryBuilder<T = any> {
         case 'GROUP_BY': {
           groupBys.push(
             ...node.fields.map((field: keyof T) =>
-              config.resolveFieldName ? config.resolveFieldName(this.tableName, String(field)) : String(field)
+              config.resolveFieldName
+                ? `\`${config.resolveFieldName(this.tableName, String(field))}\``
+                : `\`${String(field)}\``
             )
           );
           return '';
@@ -364,8 +368,8 @@ export class QueryBuilder<T = any> {
         case 'SORT': {
           const { field, desc, byValues } = node.criteria;
           const resolvedSortFieldName = config.resolveFieldName
-            ? config.resolveFieldName(this.tableName, field)
-            : field;
+            ? `\`${config.resolveFieldName(this.tableName, field)}\``
+            : `\`${field}\``;
           if (byValues && byValues.length > 0) {
             // Constructing a CASE statement for sorting by specific values
             const cases = byValues
@@ -397,8 +401,14 @@ export class QueryBuilder<T = any> {
     // order dependent for parameter value sequencing in paramManager.params
 
     let sql = 'SELECT ';
-    sql += aggregates.length > 0 ? aggregates.join(', ') : select?.fields ? select.fields.join(', ') : '*';
-    sql += ` FROM ${config.dbName ? `${config.dbName}.` : ''}${this.tableName}`;
+    if (select?.fields) {
+      sql += select.fields.map((field) => `\`${String(field)}\``).join(', ');
+    } else if (aggregates.length > 0) {
+      sql += aggregates.join(', ');
+    } else {
+      sql += '*';
+    }
+    sql += ` FROM ${config.dbName ? `\`${config.dbName}\`.` : ''}\`${this.tableName}\``;
 
     if (whereClause.length > 0) {
       sql += ` ${whereClause}`;
