@@ -132,7 +132,7 @@ export class SpannerDriver implements DbDriver {
       handleCaseSensitivity: this.handleCaseSensitivity.bind(this),
     });
     try {
-      this.logger.debug(`Executing query: ${sql}`);
+      this.logger.info(`Executing query: ${sql}, with params: ${JSON.stringify(namedParams)}`, 10000);
       const [rows] = await this.getSpannerDb().run({ sql, params: namedParams?.params, types: namedParams?.types });
       return rows.map((row) => row.toJSON());
       // return JSON.parse(JSON.stringify((await this.getSpannerDb().run({ sql, params: namedParams?.params }))[0]));

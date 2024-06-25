@@ -18,6 +18,7 @@ export type RecordTableProps<T extends Record> = {
   buttons?: TableProps<T>['buttons'];
   rowOnClickRedirectUrl?: TableProps<T>['rowOnClickRedirectUrl'];
   toolbarSx?: TableProps<T>['toolbarSx'];
+  toolbarContent?: TableProps<T>['toolbarContent'];
   tableContainerSx?: TableProps<T>['tableContainerSx'];
 };
 
@@ -114,6 +115,7 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
       infiniteScroll={props.infiniteScroll}
       buttons={buttons()}
       toolbarSx={props.toolbarSx}
+      toolbarContent={props.toolbarContent}
       tableContainerSx={props.tableContainerSx}
     />
   );
