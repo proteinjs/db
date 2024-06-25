@@ -1,5 +1,4 @@
 import { ScopedRecord, getScopedDb } from '@proteinjs/user';
-import { QueryBuilder } from '@proteinjs/db-query';
 import { QueryBuilderFactory, Reference } from '@proteinjs/db';
 import { File } from './tables/FileTable';
 import { tables } from './tables/tables';
@@ -22,18 +21,20 @@ export class DbFile implements DbFileService {
     },
   };
 
+  private chunkSize = 1048576; // Max length of data written to `FileData.data` (1mb)
+
   /**
    * Creates a new file record and its associated data chunks.
    * @param fileMetaData - The file metadata (name, type, size).
-   * @param fileData - An array of data chunks to be associated with the file.
+   * @param fileData - The file data as a string.
    * @returns The created file record.
    */
-  async createFile(fileMetaData: Omit<File, keyof ScopedRecord>, fileData: string[]): Promise<File> {
+  async createFile(fileMetaData: Omit<File, keyof ScopedRecord>, fileData: string): Promise<File> {
     const db = getScopedDb();
     const file = await db.insert(tables.File, fileMetaData);
-
-    for (let index = 0; index < fileData.length; index++) {
-      const chunk = fileData[index];
+    const chunks = this.splitIntoChunks(fileData);
+    for (let index = 0; index < chunks.length; index++) {
+      const chunk = chunks[index];
       await db.insert(tables.FileData, {
         file: new Reference(tables.FileData.name, file.id),
         order: index,
@@ -42,6 +43,19 @@ export class DbFile implements DbFileService {
     }
 
     return file;
+  }
+
+  /**
+   * Splits a string into chunks of a specified size.
+   * @param data - The data string to split.
+   * @returns An array of data chunks.
+   */
+  private splitIntoChunks(data: string): string[] {
+    const chunks = [];
+    for (let i = 0; i < data.length; i += this.chunkSize) {
+      chunks.push(data.substring(i, i + this.chunkSize));
+    }
+    return chunks;
   }
 
   /**
@@ -58,30 +72,33 @@ export class DbFile implements DbFileService {
   /**
    * Retrieves the data chunks associated with a given file.
    * @param fileId - The ID of the file.
-   * @returns An array of data chunks.
+   * @returns The file data as a single string.
    */
-  async getFileData(fileId: string): Promise<string[]> {
+  async getFileData(fileId: string): Promise<string> {
     const db = getScopedDb();
-    const qb = new QueryBuilderFactory().getQueryBuilder(tables.FileData, { file: fileId }).sort([{ field: 'order', desc: false }]);
+    const qb = new QueryBuilderFactory()
+      .getQueryBuilder(tables.FileData, { file: fileId })
+      .sort([{ field: 'order', desc: false }]);
     const fileDataRecords = await db.query(tables.FileData, qb);
-    return fileDataRecords.map((record) => record.data);
+    return fileDataRecords.map((record) => record.data).join('');
   }
 
   /**
    * Updates the data chunks associated with a given file.
    * @param fileId - The ID of the file.
-   * @param data - An array of new data chunks to replace the existing ones.
+   * @param data - The new data string to replace the existing data.
    */
-  async updateFileData(fileId: string, data: string[]): Promise<void> {
+  async updateFileData(fileId: string, data: string): Promise<void> {
     const db = getScopedDb();
 
     // Delete existing data
-    const deleteQuery = new QueryBuilder(tables.FileData.name).condition({ field: 'file', operator: '=', value: fileId });
+    const deleteQuery = new QueryBuilderFactory().getQueryBuilder(tables.FileData, { file: fileId });
     await db.delete(tables.FileData, deleteQuery);
 
-    // Insert new data
-    for (let index = 0; index < data.length; index++) {
-      const chunk = data[index];
+    // Split new data into chunks and insert
+    const chunks = this.splitIntoChunks(data);
+    for (let index = 0; index < chunks.length; index++) {
+      const chunk = chunks[index];
       await db.insert(tables.FileData, {
         file: new Reference(tables.FileData.name, fileId),
         order: index,
