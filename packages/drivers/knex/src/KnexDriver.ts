@@ -1,5 +1,13 @@
 import knex from 'knex';
-import { DbDriver, DbDriverStatementConfig, SerializedRecord, TableManager } from '@proteinjs/db';
+import {
+  DbDriver,
+  DbDriverQueryStatementConfig,
+  DbDriverDmlStatementConfig,
+  SerializedRecord,
+  Table,
+  TableManager,
+  tableByName,
+} from '@proteinjs/db';
 import { KnexConfig } from './KnexConfig';
 import { Logger } from '@proteinjs/util';
 import { Statement } from '@proteinjs/db-query';
@@ -11,8 +19,9 @@ export class KnexDriver implements DbDriver {
   private logger = new Logger(this.constructor.name);
   private config: KnexConfig;
   private knexConfig: any;
+  public getTable: ((name: string) => Table<any>) | undefined;
 
-  constructor(config: KnexConfig) {
+  constructor(config: KnexConfig, getTable?: (name: string) => Table<any>) {
     this.config = config;
     this.knexConfig = {
       client: 'mysql',
@@ -22,6 +31,7 @@ export class KnexDriver implements DbDriver {
         password: this.config.password,
       },
     };
+    this.getTable = getTable;
   }
 
   getKnex(): knex {
@@ -76,8 +86,39 @@ export class KnexDriver implements DbDriver {
     return new TableManager(this, columnTypeFactory, schemaOperations);
   }
 
-  async runQuery(generateStatement: (config: DbDriverStatementConfig) => Statement): Promise<SerializedRecord[]> {
-    const { sql, params } = generateStatement({ useParams: true, prefixTablesWithDb: true });
+  /**
+   * MariaDB is case insensitive by default.
+   * If we want to query with case sensitivity, prepend the column name with the `BINARY` keyword.
+   * @returns identifier to be used in SQL statement, may contain modifier if using case sensitivity
+   */
+  handleCaseSensitivity(tableName: string, columnName: string, caseSensitive: boolean): string {
+    if (!caseSensitive) {
+      return columnName;
+    }
+
+    const table = this.getTable ? this.getTable(tableName) : tableByName(tableName);
+    const column = Object.values(table.columns).find((col) => col.name === columnName);
+
+    if (!column) {
+      throw new Error(`Column ${columnName} does not exist in table ${table.name}`);
+    }
+
+    const stringColTypes = ['char', 'varchar', 'longtext'];
+    const isStringColType = stringColTypes.includes(new KnexColumnTypeFactory().getType(column));
+
+    if (isStringColType) {
+      return `BINARY ${columnName}`;
+    }
+
+    return columnName;
+  }
+
+  async runQuery(generateStatement: (config: DbDriverQueryStatementConfig) => Statement): Promise<SerializedRecord[]> {
+    const { sql, params } = generateStatement({
+      useParams: true,
+      prefixTablesWithDb: true,
+      handleCaseSensitivity: this.handleCaseSensitivity.bind(this),
+    });
     try {
       return (await this.getKnex().raw(sql, params as any))[0]; // returns 2 arrays, first is records, second is metadata per record
     } catch (error: any) {
@@ -86,7 +127,7 @@ export class KnexDriver implements DbDriver {
     }
   }
 
-  async runDml(generateStatement: (config: DbDriverStatementConfig) => Statement): Promise<number> {
+  async runDml(generateStatement: (config: DbDriverDmlStatementConfig) => Statement): Promise<number> {
     const { affectedRows } = (await this.runQuery(generateStatement)) as any;
     return affectedRows;
   }

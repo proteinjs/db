@@ -45,7 +45,7 @@ export class ReservedWordTestTable extends Table<ReservedWordTest> {
 /**
  * Used for testing purposes only.
  *  */
-export const getTestTable = (tableName: string) => {
+export const getCrudTestTable = (tableName: string) => {
   const employeeTable = new EmployeeTestTable();
   if (employeeTable.name == tableName) {
     return new EmployeeTestTable();
@@ -61,7 +61,7 @@ export const getTestTable = (tableName: string) => {
 
 export const crudTests = (driver: DbDriver, dropTable: (table: Table<any>) => Promise<void>) => {
   return () => {
-    const db = new Db(driver, getTestTable);
+    const db = new Db(driver, getCrudTestTable);
 
     beforeAll(async () => {
       if (driver.start) {
@@ -265,29 +265,29 @@ export const crudTests = (driver: DbDriver, dropTable: (table: Table<any>) => Pr
         jobTitle: 'Cowboy',
         startDate: new Date('2016-05-24T00:00:00Z'),
       };
-      const employeeTable: Table<Employee> = new EmployeeTestTable();
+      const emplyeeTable: Table<Employee> = new EmployeeTestTable();
 
-      const insertedEmployee1 = await db.insert(employeeTable, testEmployee1);
-      const insertedEmployee2 = await db.insert(employeeTable, testEmployee2);
-      const insertedEmployee3 = await db.insert(employeeTable, testEmployee3);
+      const insertedEmployee1 = await db.insert(emplyeeTable, testEmployee1);
+      const insertedEmployee2 = await db.insert(emplyeeTable, testEmployee2);
+      const insertedEmployee3 = await db.insert(emplyeeTable, testEmployee3);
 
-      const betweenQuery = new QueryBuilder<Employee>(employeeTable.name).condition({
+      const betweenQuery = new QueryBuilder<Employee>(emplyeeTable.name).condition({
         field: 'startDate',
         operator: 'BETWEEN',
         value: ['2000-06-05T00:00:00Z', '2024-06-05T00:00:00Z'],
       });
-      const betweenResults = await db.query(employeeTable, betweenQuery);
+      const betweenResults = await db.query(emplyeeTable, betweenQuery);
       expect(betweenResults.length).toBe(2);
       expect(betweenResults.some((emp) => emp.name === 'Kiriko')).toBe(true);
       expect(betweenResults.some((emp) => emp.name === 'Cassidy')).toBe(true);
 
       // Clean up
-      const qb = new QueryBuilder<Employee>(employeeTable.name).condition({
+      const qb = new QueryBuilder<Employee>(emplyeeTable.name).condition({
         field: 'id',
         operator: 'IN',
         value: [insertedEmployee1.id, insertedEmployee2.id, insertedEmployee3.id],
       });
-      await db.delete(employeeTable, qb);
+      await db.delete(emplyeeTable, qb);
     });
 
     test('Query with sort', async () => {
@@ -484,5 +484,38 @@ export const crudTests = (driver: DbDriver, dropTable: (table: Table<any>) => Pr
       await db.delete(table, { id: insertedRecord1.id });
       await db.delete(table, { id: insertedRecord2.id });
     }, 10000);
+
+    test('Case sensitivity', async () => {
+      const testEmployee: Omit<Employee, keyof Record> = {
+        name: 'Veronica',
+        jobTitle: 'Software ENGINEER',
+        isRemote: true,
+        startDate: new Date('2024-04-01T00:00:00Z'),
+      };
+      const emplyeeTable: Table<Employee> = new EmployeeTestTable();
+      const insertedEmployee = await db.insert(emplyeeTable, testEmployee);
+
+      const queryNameInsensitive = new QueryBuilder<Employee>(emplyeeTable.name).condition(
+        {
+          field: 'jobTitle',
+          operator: '=',
+          value: 'SOFTWARE engineer',
+        },
+        undefined,
+        false
+      );
+      const nameResultsIns = await db.query(emplyeeTable, queryNameInsensitive);
+      expect(nameResultsIns.length).toBe(1);
+
+      const queryNameSensitive = new QueryBuilder<Employee>(emplyeeTable.name).condition({
+        field: 'jobTitle',
+        operator: '=',
+        value: 'SOFTWARE ENGINEER',
+      });
+      const nameResultsSens = await db.query(emplyeeTable, queryNameSensitive);
+      expect(nameResultsSens.length).toBe(0);
+
+      await db.delete(emplyeeTable, { id: insertedEmployee.id });
+    });
   };
 };

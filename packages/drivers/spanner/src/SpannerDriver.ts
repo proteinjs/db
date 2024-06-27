@@ -1,5 +1,12 @@
 import { Database, Instance, Spanner } from '@google-cloud/spanner';
-import { DbDriver, DbDriverStatementConfig, Table, TableManager, tableByName } from '@proteinjs/db';
+import {
+  DbDriver,
+  DbDriverQueryStatementConfig,
+  DbDriverDmlStatementConfig,
+  Table,
+  TableManager,
+  tableByName,
+} from '@proteinjs/db';
 import { SpannerConfig } from './SpannerConfig';
 import { Logger } from '@proteinjs/util';
 import { Statement } from '@proteinjs/db-query';
@@ -78,6 +85,25 @@ export class SpannerDriver implements DbDriver {
     return type;
   }
 
+  /**
+   * Spanner is case sensitive by default.
+   * If we want to query without case sensitivity, wrap the column name with the `LOWER()` function.
+   * @returns identifier to be used in SQL statement, may instead be an expression if using case insensitivity
+   */
+  handleCaseSensitivity(tableName: string, columnName: string, caseSensitive: boolean): string {
+    if (caseSensitive) {
+      return columnName;
+    }
+
+    const isStringColType = this.getColumnType(tableName, columnName) === 'string';
+
+    if (isStringColType) {
+      return `LOWER(${columnName})`;
+    }
+
+    return columnName;
+  }
+
   async createDbIfNotExists(): Promise<void> {
     if (await this.dbExists(this.getDbName())) {
       return;
@@ -91,12 +117,13 @@ export class SpannerDriver implements DbDriver {
     return exists;
   }
 
-  async runQuery(generateStatement: (config: DbDriverStatementConfig) => Statement): Promise<any[]> {
+  async runQuery(generateStatement: (config: DbDriverQueryStatementConfig) => Statement): Promise<any[]> {
     const { sql, namedParams } = generateStatement({
       useParams: true,
       useNamedParams: true,
       prefixTablesWithDb: false,
-      getColumnType: this.getColumnType.bind(this),
+      getDriverColumnType: this.getColumnType.bind(this),
+      handleCaseSensitivity: this.handleCaseSensitivity.bind(this),
     });
     try {
       this.logger.debug(`Executing query: ${sql}`);
@@ -116,12 +143,12 @@ export class SpannerDriver implements DbDriver {
    *
    * @returns number of affected rows
    */
-  async runDml(generateStatement: (config: DbDriverStatementConfig) => Statement): Promise<number> {
+  async runDml(generateStatement: (config: DbDriverDmlStatementConfig) => Statement): Promise<number> {
     const { sql, namedParams } = generateStatement({
       useParams: true,
       useNamedParams: true,
       prefixTablesWithDb: false,
-      getColumnType: this.getColumnType.bind(this),
+      getDriverColumnType: this.getColumnType.bind(this),
     });
     try {
       return await this.getSpannerDb().runTransactionAsync(async (transaction) => {

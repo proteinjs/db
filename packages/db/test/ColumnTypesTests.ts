@@ -61,7 +61,7 @@ export class TestTable extends Table<TestRecord> {
 /**
  * Used for testing purposes only.
  *  */
-export const getColumnTypeTestTable = (tableName: string) => {
+export const getColTypeTestTable = (tableName: string) => {
   const testTable = new TestTable();
   if (testTable.name === tableName) {
     return new TestTable();
@@ -71,7 +71,7 @@ export const getColumnTypeTestTable = (tableName: string) => {
 
 export const columnTypeTests = (driver: DbDriver, dropTable: (table: Table<any>) => Promise<void>) => {
   return () => {
-    const db = new Db(driver, getColumnTypeTestTable);
+    const db = new Db(driver, getColTypeTestTable);
 
     beforeAll(async () => {
       if (driver.start) {

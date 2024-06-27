@@ -20,6 +20,8 @@ export interface StatementConfig extends ParameterizationConfig {
   dbName?: string;
   resolveFieldName?: (tableName: string, propertyName: string) => string;
   getColumnType?: (tableName: string, columnPropertyName: string) => string;
+  getDriverColumnType?: (tableName: string, columnPropertyName: string) => string;
+  handleCaseSensitivity?: (tableName: string, columnName: string, caseSensitive: boolean) => string;
 }
 
 interface Column {
@@ -60,7 +62,7 @@ export class StatementFactory<T> {
     const values = props.map((prop) =>
       paramManager.parameterize(
         data[prop as keyof T],
-        config.getColumnType ? config.getColumnType(tableName, prop) : typeof data[prop as keyof T]
+        config.getDriverColumnType ? config.getDriverColumnType(tableName, prop) : typeof data[prop as keyof T]
       )
     );
     const sql = `INSERT INTO ${config.dbName ? `\`${config.dbName}\`.` : ''}\`${tableName}\` (\`${props.join('`, `')}\`) VALUES (${values.join(', ')});`;
@@ -75,7 +77,7 @@ export class StatementFactory<T> {
         (prop) =>
           `\`${prop}\` = ${paramManager.parameterize(
             data[prop as keyof T],
-            config.getColumnType ? config.getColumnType(tableName, prop) : typeof data[prop as keyof T]
+            config.getDriverColumnType ? config.getDriverColumnType(tableName, prop) : typeof data[prop as keyof T]
           )}`
       )
       .join(', ');
