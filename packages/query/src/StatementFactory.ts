@@ -12,10 +12,8 @@ export interface Statement {
 }
 
 export interface ParameterizationConfig {
-  // Enable parameterization
-  useParams?: boolean;
-  // Use named parameters (for Spanner), otherwise use '?' (for Knex)
-  useNamedParams?: boolean;
+  useParams?: boolean; // Enable parameterization
+  useNamedParams?: boolean; // Use named parameters (for Spanner), otherwise use '?' (for Knex)
 }
 
 export interface StatementConfig extends ParameterizationConfig {

@@ -84,7 +84,7 @@ export class QueryBuilder<T = any> {
    * @returns {string} The column type specific to the database driver, or `typeof value` if the column type was not found.
    */
   private getDriverColumnType = (config: StatementConfig, columnPropertyName: string, value: any): string => {
-    const logger = new Logger('QueryBuilder getColumnType');
+    const logger = new Logger('QueryBuilder getDriverColumnType');
     try {
       const columnName = config.resolveFieldName
         ? config.resolveFieldName(this.tableName, columnPropertyName)
@@ -220,11 +220,7 @@ export class QueryBuilder<T = any> {
       resolvedCondition.value = null;
     }
 
-    if (caseSensitive) {
-      resolvedCondition = Object.assign(resolvedCondition, { caseSensitive: true }) as InternalCondition<T>;
-    } else {
-      resolvedCondition = Object.assign(resolvedCondition, { caseSensitive: false }) as InternalCondition<T>;
-    }
+    resolvedCondition = Object.assign(resolvedCondition, { caseSensitive }) as InternalCondition<T>;
 
     const logger = new Logger(`${this.constructor.name}.condition`, this.debugLogicalGrouping ? 'debug' : 'info');
     const conditionId = this.generateId();
@@ -277,7 +273,6 @@ export class QueryBuilder<T = any> {
   }
 
   toWhereClause(config: StatementConfig, statementParamManager?: StatementParamManager): Statement {
-    const logger = new Logger('QueryBuilder, toWhereClause');
     const paramManager = statementParamManager ? statementParamManager : new StatementParamManager(config);
 
     // Define a recursive function to process nodes and build condition strings
@@ -302,12 +297,6 @@ export class QueryBuilder<T = any> {
                 processedValue = node.value.toLowerCase();
               }
             }
-          }
-
-          if (this.tableName === 'db_test_employee') {
-            logger.info(
-              `db_test_employee, processedFieldName was resolved to: ${processedFieldName} and proccesedValue: ${processedValue}`
-            );
           }
 
           if (node.empty) {
