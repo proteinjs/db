@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.1.0](https://github.com/proteinjs/db/compare/@proteinjs/db-query@1.0.15...@proteinjs/db-query@1.1.0) (2024-06-27)
+
+
+### Bug Fixes
+
+* updating packages for db changes ([2328d68](https://github.com/proteinjs/db/commit/2328d68865e3315f73ecf4c98c227127bedc699c))
+
+
+### Features
+
+* add case sensitivity control to condition ([#4](https://github.com/proteinjs/db/issues/4)) ([13da747](https://github.com/proteinjs/db/commit/13da7477be6216d4449311ad3a68ef3cde246d45))
+
+
+
+
+
 ## [1.0.15](https://github.com/proteinjs/db/compare/@proteinjs/db-query@1.0.14...@proteinjs/db-query@1.0.15) (2024-06-24)
 
 

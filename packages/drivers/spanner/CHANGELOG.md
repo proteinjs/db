@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.2.0](https://github.com/brentbahry/db/compare/@proteinjs/db-driver-spanner@1.1.16...@proteinjs/db-driver-spanner@1.2.0) (2024-06-27)
+
+
+### Bug Fixes
+
+* updating packages for db changes ([2328d68](https://github.com/brentbahry/db/commit/2328d68865e3315f73ecf4c98c227127bedc699c))
+
+
+### Features
+
+* add case sensitivity control to condition ([#4](https://github.com/brentbahry/db/issues/4)) ([13da747](https://github.com/brentbahry/db/commit/13da7477be6216d4449311ad3a68ef3cde246d45))
+
+
+
+
+
 ## [1.1.16](https://github.com/brentbahry/db/compare/@proteinjs/db-driver-spanner@1.1.15...@proteinjs/db-driver-spanner@1.1.16) (2024-06-24)
 
 **Note:** Version bump only for package @proteinjs/db-driver-spanner

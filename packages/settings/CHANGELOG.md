@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.36](https://github.com/brentbahry/db/compare/@proteinjs/db-settings@1.0.35...@proteinjs/db-settings@1.0.36) (2024-06-27)
+
+
+### Bug Fixes
+
+* updating packages for db changes ([2328d68](https://github.com/brentbahry/db/commit/2328d68865e3315f73ecf4c98c227127bedc699c))
+
+
+
+
+
 ## [1.0.34](https://github.com/brentbahry/db/compare/@proteinjs/db-settings@1.0.33...@proteinjs/db-settings@1.0.34) (2024-06-27)
 
 **Note:** Version bump only for package @proteinjs/db-settings
