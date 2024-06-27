@@ -120,7 +120,6 @@ export class KnexDriver implements DbDriver {
       handleCaseSensitivity: this.handleCaseSensitivity.bind(this),
     });
     try {
-      this.logger.info(`Running query/dml: ${sql} with params: ${JSON.stringify(params)}`, 10000);
       return (await this.getKnex().raw(sql, params as any))[0]; // returns 2 arrays, first is records, second is metadata per record
     } catch (error: any) {
       this.logger.error(`Failed when executing query: ${sql}`);

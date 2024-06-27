@@ -69,7 +69,6 @@ export class SpannerDriver implements DbDriver {
   }
 
   getColumnType(tableName: string, columnName: string): string {
-    const logger = new Logger('spanner driver: getColumnType');
     const table = this.getTable ? this.getTable(tableName) : tableByName(tableName);
     const column = Object.values(table.columns).find((col) => col.name === columnName);
 
@@ -78,10 +77,6 @@ export class SpannerDriver implements DbDriver {
     }
 
     const type = new SpannerColumnTypeFactory().getType(column, true);
-
-    if (tableName === 'db_test_employee') {
-      logger.info(`processing col type for table ${tableName} and column ${columnName}: type resolved to ${type}`);
-    }
 
     if (!type) {
       throw new Error(`Type was not resolved for column ${columnName} in table ${table.name}`);
@@ -157,7 +152,7 @@ export class SpannerDriver implements DbDriver {
     });
     try {
       return await this.getSpannerDb().runTransactionAsync(async (transaction) => {
-        this.logger.info(`Executing dml: ${sql} with params: ${JSON.stringify(namedParams)}`, 10000);
+        this.logger.debug(`Executing dml: ${sql}`);
         const [rowCount] = await transaction.runUpdate({
           sql,
           params: namedParams?.params,

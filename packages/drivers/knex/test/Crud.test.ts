@@ -1,10 +1,4 @@
-import {
-  Table,
-  columnTypeTests,
-  crudTests,
-  getColumnTypeTestTable,
-  getTestTable as getTestEmployeeTable,
-} from '@proteinjs/db';
+import { Table, columnTypeTests, crudTests, getColTypeTestTable, getCrudTestTable } from '@proteinjs/db';
 import { KnexDriver } from '../src/KnexDriver';
 
 const dropTable = async (knexDriver: KnexDriver, table: Table<any>) => {
@@ -20,7 +14,7 @@ const knexDriverColumnTypesTests = new KnexDriver(
     password: '',
     dbName: 'test',
   },
-  getColumnTypeTestTable
+  getColTypeTestTable
 );
 
 describe(
@@ -35,7 +29,7 @@ const knexDriverCrudTests = new KnexDriver(
     password: '',
     dbName: 'test',
   },
-  getTestEmployeeTable
+  getCrudTestTable
 );
 
 describe(

@@ -45,7 +45,7 @@ export class ReservedWordTestTable extends Table<ReservedWordTest> {
 /**
  * Used for testing purposes only.
  *  */
-export const getTestTable = (tableName: string) => {
+export const getCrudTestTable = (tableName: string) => {
   const employeeTable = new EmployeeTestTable();
   if (employeeTable.name == tableName) {
     return new EmployeeTestTable();
@@ -61,7 +61,7 @@ export const getTestTable = (tableName: string) => {
 
 export const crudTests = (driver: DbDriver, dropTable: (table: Table<any>) => Promise<void>) => {
   return () => {
-    const db = new Db(driver, getTestTable);
+    const db = new Db(driver, getCrudTestTable);
 
     beforeAll(async () => {
       if (driver.start) {
