@@ -27,7 +27,7 @@
     "@proteinjs/reflection": "1.1.5",
     "@proteinjs/util": "1.1.2",
     "knex": "0.21.5",
-    "moment": "2.27.0",
+    "moment": "2.29.4",
     "mysql": "2.18.1",
     "uuid": "8.3.0"
   },
