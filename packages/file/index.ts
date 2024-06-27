@@ -7,3 +7,5 @@ export * from './src/tables/FileTable';
 export * from './src/tables/FileDataTable';
 
 export * from './src/services/FileStorageService';
+
+export * from './src/routes/getFileRoute';
