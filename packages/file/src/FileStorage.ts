@@ -2,19 +2,20 @@ import { ScopedRecord, getScopedDb } from '@proteinjs/user';
 import { QueryBuilderFactory, Reference } from '@proteinjs/db';
 import { File } from './tables/FileTable';
 import { tables } from './tables/tables';
-import { DbFileService, getDbFileService } from './services/DbFileService';
+import { FileStorageService, getFileStorageService } from './services/FileStorageService';
 
 /**
  * A convenience factory function so code using this is portable (can be used in server or browser).
- * @returns an instance of the `DbFileService` when called from the browser, and an instance of `DbFile` otherwise
+ * @returns an instance of the `FileStorageService` when called from the browser, and an instance of `FileStorage` otherwise
  * */
-export const getDbFile = () => (typeof self === 'undefined' ? new DbFile() : (getDbFileService() as DbFile));
+export const getFileStorage = () =>
+  typeof self === 'undefined' ? new FileStorage() : (getFileStorageService() as FileStorage);
 
 /**
  * A simple api for reading/writing files to the db.
  * The storage is defined in `FileTable` and `FileDataTable`.
  */
-export class DbFile implements DbFileService {
+export class FileStorage implements FileStorageService {
   public serviceMetadata = {
     auth: {
       allUsers: true,
