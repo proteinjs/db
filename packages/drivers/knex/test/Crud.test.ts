@@ -13,20 +13,20 @@ const dropTable = async (knexDriver: KnexDriver, table: Table<any>) => {
   }
 };
 
-// const knexDriverColumnTypesTests = new KnexDriver(
-//   {
-//     host: 'localhost',
-//     user: 'root',
-//     password: '',
-//     dbName: 'test',
-//   },
-//   getColumnTypeTestTable
-// );
+const knexDriverColumnTypesTests = new KnexDriver(
+  {
+    host: 'localhost',
+    user: 'root',
+    password: '',
+    dbName: 'test',
+  },
+  getColumnTypeTestTable
+);
 
-// describe(
-//   'Column Type Tests',
-//   columnTypeTests(knexDriverColumnTypesTests, (table) => dropTable(knexDriverColumnTypesTests, table))
-// );
+describe(
+  'Column Type Tests',
+  columnTypeTests(knexDriverColumnTypesTests, (table) => dropTable(knexDriverColumnTypesTests, table))
+);
 
 const knexDriverCrudTests = new KnexDriver(
   {

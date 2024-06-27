@@ -11,7 +11,7 @@ import {
   DateTimeColumn,
   BinaryColumn,
 } from './Columns';
-import { Logger, isInstanceOf } from '@proteinjs/util';
+import { isInstanceOf } from '@proteinjs/util';
 
 export class StatementConfigFactory {
   private dbName: string;
@@ -40,11 +40,7 @@ export class StatementConfigFactory {
 
   private getResolveFieldName() {
     return (tableName: string, propertyName: string): string => {
-      const logger = new Logger('getResolveFieldName');
       const table = this.getTable(tableName);
-      if (tableName === 'TABLES') {
-        logger.info(`table ${tableName} retrieved table ${JSON.stringify(table)}`);
-      }
       const column = table.columns[propertyName];
       if (!column) {
         throw new Error(`(${table.name}) Column does not exist for property: ${propertyName}`);
@@ -65,7 +61,6 @@ export class StatementConfigFactory {
   private getColumnType() {
     return (tableName: string, propertyName: string): string => {
       const table = this.getTable(tableName);
-      // const column = table.columns[propertyName];
       const column = Object.values(table.columns).find((col) => col.name === propertyName);
       if (!column) {
         throw new Error(`(${table.name}) Column does not exist for property: ${propertyName}`);

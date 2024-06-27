@@ -87,7 +87,7 @@ export class KnexDriver implements DbDriver {
   }
 
   /**
-   * MySQL is case insensitive by default.
+   * MariaDB is case insensitive by default.
    * If we want to query with case sensitivity, prepend the column name with the `BINARY` keyword.
    * @returns identifier to be used in SQL statement, may contain modifier if using case sensitivity
    */

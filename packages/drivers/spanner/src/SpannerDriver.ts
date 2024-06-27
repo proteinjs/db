@@ -96,13 +96,8 @@ export class SpannerDriver implements DbDriver {
    * @returns identifier to be used in SQL statement, may instead be an expression if using case insensitivity
    */
   handleCaseSensitivity(tableName: string, columnName: string, caseSensitive: boolean): string {
-    const logger = new Logger('handleCaseSensitivity');
     if (caseSensitive) {
       return columnName;
-    }
-
-    if (tableName === 'db_test_employee') {
-      logger.info(`processing case insensitivity for table ${tableName} and column ${columnName}`);
     }
 
     const isStringColType = this.getColumnType(tableName, columnName) === 'string';
