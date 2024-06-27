@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.1.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.0.28...@proteinjs/db-driver-knex@1.1.0) (2024-06-27)
+
+
+### Bug Fixes
+
+* use the same version of moment ([62ffa76](https://github.com/proteinjs/db/commit/62ffa765a84ee0325f7ff5194fc898f74f43cfd8))
+
+
+### Features
+
+* add case sensitivity control to condition ([#4](https://github.com/proteinjs/db/issues/4)) ([13da747](https://github.com/proteinjs/db/commit/13da7477be6216d4449311ad3a68ef3cde246d45))
+
+
+
+
+
 ## [1.0.28](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.0.27...@proteinjs/db-driver-knex@1.0.28) (2024-06-24)
 
 **Note:** Version bump only for package @proteinjs/db-driver-knex
