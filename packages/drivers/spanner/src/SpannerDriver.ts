@@ -68,6 +68,12 @@ export class SpannerDriver implements DbDriver {
     return new TableManager(this, columnTypeFactory, schemaOperations, schemaMetadata);
   }
 
+  /**
+   * Retrieves spanner specific types for columns.
+   * @param tableName Table name as it is represented in the db
+   * @param columnName Column name as it is represented in the db
+   * @returns
+   */
   getColumnType(tableName: string, columnName: string): string {
     const table = this.getTable ? this.getTable(tableName) : tableByName(tableName);
     const column = Object.values(table.columns).find((col) => col.name === columnName);

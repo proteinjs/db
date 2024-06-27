@@ -18,13 +18,13 @@ export const getDbAsSystem = <R extends Record = Record>() => new Db<R>(undefine
 
 export type DbDriverQueryStatementConfig = ParameterizationConfig & {
   prefixTablesWithDb?: boolean;
-  getDriverColumnType?: (tableName: string, columnPropertyName: string) => string;
+  getDriverColumnType?: (tableName: string, columnName: string) => string;
   handleCaseSensitivity: (tableName: string, columnName: string, caseSensitive: boolean) => string;
 };
 
 export type DbDriverDmlStatementConfig = ParameterizationConfig & {
   prefixTablesWithDb?: boolean;
-  getDriverColumnType?: (tableName: string, columnPropertyName: string) => string;
+  getDriverColumnType?: (tableName: string, columnName: string) => string;
 };
 
 export interface DefaultDbDriverFactory extends Loadable {

@@ -195,7 +195,7 @@ export class QueryBuilder<T = any> {
    * Builds a condition.
    * @param condition Condition object, contains field, operator, and optional value.
    * @param parentId Used to set the condition's parent.
-   * @param caseSensitive Used only for operating on string columns. Defaults to true.
+   * @param caseSensitive Used only for querying a string column. Defaults to true.
    * @returns
    */
   condition(condition: Condition<T>, parentId?: string, caseSensitive: boolean = true): this {
