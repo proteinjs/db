@@ -16,9 +16,15 @@ export const getDb = <R extends Record = Record>() =>
   typeof self === 'undefined' ? new Db<R>() : (getDbService() as Db<R>);
 export const getDbAsSystem = <R extends Record = Record>() => new Db<R>(undefined, undefined, true);
 
-export type DbDriverStatementConfig = ParameterizationConfig & {
+export type DbDriverQueryStatementConfig = ParameterizationConfig & {
   prefixTablesWithDb?: boolean;
-  getColumnType?: (tableName: string, columnPropertyName: string) => string;
+  getDriverColumnType?: (tableName: string, columnPropertyName: string) => string;
+  handleCaseSensitivity: (tableName: string, columnName: string, caseSensitive: boolean) => string;
+};
+
+export type DbDriverDmlStatementConfig = ParameterizationConfig & {
+  prefixTablesWithDb?: boolean;
+  getDriverColumnType?: (tableName: string, columnPropertyName: string) => string;
 };
 
 export interface DefaultDbDriverFactory extends Loadable {
@@ -31,8 +37,8 @@ export interface DbDriver {
   start?(): Promise<void>;
   stop?(): Promise<void>;
   getTableManager(): TableManager;
-  runQuery(generateStatement: (config: DbDriverStatementConfig) => Statement): Promise<SerializedRecord[]>;
-  runDml(generateStatement: (config: DbDriverStatementConfig) => Statement): Promise<number>; // returns the number of affected rows
+  runQuery(generateStatement: (config: DbDriverQueryStatementConfig) => Statement): Promise<SerializedRecord[]>;
+  runDml(generateStatement: (config: DbDriverDmlStatementConfig) => Statement): Promise<number>; // returns the number of affected rows
 }
 
 export class Db<R extends Record = Record> implements DbService<R> {
@@ -96,7 +102,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     await this.addDefaultFieldValues(table, recordCopy);
     const recordSearializer = new RecordSerializer(table);
     const serializedRecord = await recordSearializer.serialize(recordCopy);
-    const generateInsert = (config: DbDriverStatementConfig) =>
+    const generateInsert = (config: DbDriverDmlStatementConfig) =>
       new StatementFactory<T>().insert(
         table.name,
         serializedRecord as Partial<T>,
@@ -135,7 +141,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     }
 
     delete serializedRecord['id'];
-    const generateUpdate = (config: DbDriverStatementConfig) =>
+    const generateUpdate = (config: DbDriverDmlStatementConfig) =>
       new StatementFactory<T>().update(
         table.name,
         serializedRecord as Partial<T>,
@@ -167,7 +173,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     const recordsToDeleteIds = recordsToDelete.map((record) => record.id);
     const deleteQb = new QueryBuilderFactory().getQueryBuilder(table);
     deleteQb.condition({ field: 'id', operator: 'IN', value: recordsToDeleteIds as T[keyof T][] });
-    const generateDelete = (config: DbDriverStatementConfig) =>
+    const generateDelete = (config: DbDriverDmlStatementConfig) =>
       new StatementFactory<T>().delete(table.name, deleteQb, this.statementConfigFactory.getStatementConfig(config));
     await this.beforeDelete(table, recordsToDelete);
     const deletedRowCount = await this.dbDriver.runDml(generateDelete);
@@ -213,7 +219,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
 
     const qb = new QueryBuilderFactory().getQueryBuilder(table, query);
     this.addColumnQueries(table, qb);
-    const generateQuery = (config: DbDriverStatementConfig) =>
+    const generateQuery = (config: DbDriverQueryStatementConfig) =>
       qb.toSql(this.statementConfigFactory.getStatementConfig(config));
     const serializedRecords = await this.dbDriver.runQuery(generateQuery);
     const recordSearializer = new RecordSerializer(table);
@@ -230,7 +236,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     const qb = new QueryBuilderFactory().getQueryBuilder(table, query);
     qb.aggregate({ function: 'COUNT', resultProp: 'count' });
     this.addColumnQueries(table, qb);
-    const generateQuery = (config: DbDriverStatementConfig) =>
+    const generateQuery = (config: DbDriverQueryStatementConfig) =>
       qb.toSql(this.statementConfigFactory.getStatementConfig(config));
     const result = await this.dbDriver.runQuery(generateQuery);
     return result[0]['count'];

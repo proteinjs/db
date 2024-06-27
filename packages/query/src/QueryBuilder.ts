@@ -56,19 +56,6 @@ export interface SortCriteria<T> {
   byValues?: string[];
 }
 
-const getColumnType = (config: StatementConfig, tableName: string, columnPropertyName: string, value: any): string => {
-  const logger = new Logger('QueryBuilder getColumnType');
-  try {
-    const columnName = config.resolveFieldName
-      ? config.resolveFieldName(tableName, columnPropertyName)
-      : columnPropertyName;
-    return config.getColumnType ? config.getColumnType(tableName, columnName) : typeof value;
-  } catch (error: any) {
-    logger.debug(`Failed to get column type for ${tableName}.${columnPropertyName}: ${error.message}`);
-    return typeof value;
-  }
-};
-
 export class QueryBuilder<T = any> {
   public __serializerId = '@proteinjs/db/QueryBuilderSerializer';
   public graph: Graph;
@@ -86,6 +73,28 @@ export class QueryBuilder<T = any> {
   private generateId(): string {
     return `node_${this.idCounter++}`;
   }
+
+  /**
+   * This function retrieves the column type specific to the database driver's configuration.
+   * If no function is provided by the driver to retrieve the column type, then the type will be determined using `typeof value`.
+   *
+   * @param {StatementConfig} config The configuration object containing the database driver and other settings.
+   * @param {string} columnPropertyName The property name of the column for which the type is being retrieved.
+   * @param {any} value The value that will be stored in the column, used to infer the type if necessary.
+   * @returns {string} The column type specific to the database driver, or `typeof value` if the column type was not found.
+   */
+  private getDriverColumnType = (config: StatementConfig, columnPropertyName: string, value: any): string => {
+    const logger = new Logger('QueryBuilder getColumnType');
+    try {
+      const columnName = config.resolveFieldName
+        ? config.resolveFieldName(this.tableName, columnPropertyName)
+        : columnPropertyName;
+      return config.getDriverColumnType ? config.getDriverColumnType(this.tableName, columnName) : typeof value;
+    } catch (error: any) {
+      logger.debug(`Failed to get driver's column type for ${this.tableName}.${columnPropertyName}: ${error.message}`);
+      return typeof value;
+    }
+  };
 
   /**
    * Creates a QueryBuilder instance from an object.
@@ -182,7 +191,14 @@ export class QueryBuilder<T = any> {
     return this;
   }
 
-  condition(condition: Condition<T>, parentId?: string): this {
+  /**
+   * Builds a condition.
+   * @param condition Condition object, contains field, operator, and optional value.
+   * @param parentId Used to set the condition's parent.
+   * @param caseSensitive Used only for operating on string columns. Defaults to true.
+   * @returns
+   */
+  condition(condition: Condition<T>, parentId?: string, caseSensitive: boolean = true): this {
     if (condition.value === this) {
       throw new Error(`Must use a new QueryBuilder instance for subquery`);
     }
@@ -202,6 +218,12 @@ export class QueryBuilder<T = any> {
         );
       }
       resolvedCondition.value = null;
+    }
+
+    if (caseSensitive) {
+      resolvedCondition = Object.assign(resolvedCondition, { caseSensitive: true }) as InternalCondition<T>;
+    } else {
+      resolvedCondition = Object.assign(resolvedCondition, { caseSensitive: false }) as InternalCondition<T>;
     }
 
     const logger = new Logger(`${this.constructor.name}.condition`, this.debugLogicalGrouping ? 'debug' : 'info');
@@ -255,6 +277,7 @@ export class QueryBuilder<T = any> {
   }
 
   toWhereClause(config: StatementConfig, statementParamManager?: StatementParamManager): Statement {
+    const logger = new Logger('QueryBuilder, toWhereClause');
     const paramManager = statementParamManager ? statementParamManager : new StatementParamManager(config);
 
     // Define a recursive function to process nodes and build condition strings
@@ -264,47 +287,71 @@ export class QueryBuilder<T = any> {
         case 'CONDITION': {
           const resolvedFieldName =
             node.field && config.resolveFieldName ? config.resolveFieldName(this.tableName, node.field) : node.field;
+
+          const fieldNameWithBackticks = `\`${resolvedFieldName}\``;
+          let processedFieldName = fieldNameWithBackticks;
+          let processedValue = node.value;
+          // case sensitivity can only be handled if the field name is resolved
+          if (config.resolveFieldName && config.handleCaseSensitivity) {
+            processedFieldName = config.handleCaseSensitivity(this.tableName, resolvedFieldName, node.caseSensitive);
+            processedFieldName = processedFieldName.replace(resolvedFieldName, fieldNameWithBackticks);
+            if (!node.caseSensitive) {
+              if (Array.isArray(node.value)) {
+                processedValue = node.value.map((item: any) => (typeof item === 'string' ? item.toLowerCase() : item));
+              } else if (typeof node.value === 'string') {
+                processedValue = node.value.toLowerCase();
+              }
+            }
+          }
+
+          if (this.tableName === 'db_test_employee') {
+            logger.info(
+              `db_test_employee, processedFieldName was resolved to: ${processedFieldName} and proccesedValue: ${processedValue}`
+            );
+          }
+
           if (node.empty) {
             return `1=0`;
-          } else if (isInstanceOf(node.value, QueryBuilder)) {
-            const valueStr = paramManager.parameterize(node.value, 'subquery');
-            return `\`${resolvedFieldName}\` ${node.operator} ${valueStr}`;
+          } else if (isInstanceOf(processedValue, QueryBuilder)) {
+            const valueStr = paramManager.parameterize(processedValue, 'subquery');
+            return `${processedFieldName} ${node.operator} ${valueStr}`;
           } else if (node.operator === 'IN' || node.operator === 'NOT IN') {
             if (config.useNamedParams) {
-              const valuesStr = Array.isArray(node.value)
+              const valuesStr = Array.isArray(processedValue)
                 ? paramManager.parameterize(
-                    node.value,
-                    getColumnType(config, this.tableName, node.field, node.value[0])
+                    processedValue,
+                    this.getDriverColumnType(config, node.field, processedValue[0])
                   )
-                : paramManager.parameterize(node.value, getColumnType(config, this.tableName, node.field, node.value));
-              return `\`${resolvedFieldName}\` ${node.operator} UNNEST(${valuesStr})`;
+                : paramManager.parameterize(
+                    processedValue,
+                    this.getDriverColumnType(config, node.field, processedValue)
+                  );
+              return `${processedFieldName} ${node.operator} UNNEST(${valuesStr})`;
             }
-            const valuesStr = Array.isArray(node.value)
-              ? node.value.map((val: any) => paramManager.parameterize(val, typeof val)).join(', ')
-              : paramManager.parameterize(node.value, typeof node.value);
-            return `\`${resolvedFieldName}\` ${node.operator} (${valuesStr})`;
+            const valuesStr = Array.isArray(processedValue)
+              ? processedValue.map((val: any) => paramManager.parameterize(val, typeof val)).join(', ')
+              : paramManager.parameterize(processedValue, typeof processedValue);
+            return `${processedFieldName} ${node.operator} (${valuesStr})`;
           } else if (node.operator === 'BETWEEN') {
             // Ensure BETWEEN values are provided as an array of two elements
-            const valuesStr = Array.isArray(node.value)
-              ? node.value
-                  .map((val: any) =>
-                    paramManager.parameterize(val, getColumnType(config, this.tableName, node.field, val))
-                  )
+            const valuesStr = Array.isArray(processedValue)
+              ? processedValue
+                  .map((val: any) => paramManager.parameterize(val, this.getDriverColumnType(config, node.field, val)))
                   .join(' AND ')
-              : paramManager.parameterize(node.value, getColumnType(config, this.tableName, node.field, node.value));
-            return `\`${resolvedFieldName}\` ${node.operator} ${valuesStr}`;
+              : paramManager.parameterize(processedValue, this.getDriverColumnType(config, node.field, processedValue));
+            return `${processedFieldName} ${node.operator} ${valuesStr}`;
           } else if (node.operator === 'IS NULL' || node.operator === 'IS NOT NULL') {
-            return `\`${resolvedFieldName}\` ${node.operator}`;
+            return `${processedFieldName} ${node.operator}`;
           } else {
-            if (node.value === null) {
-              return `\`${resolvedFieldName}\` IS NULL`;
+            if (processedValue === null) {
+              return `${processedFieldName} IS NULL`;
             }
 
             const conditionValue = paramManager.parameterize(
-              node.value,
-              getColumnType(config, this.tableName, node.field, node.value)
+              processedValue,
+              this.getDriverColumnType(config, node.field, processedValue)
             );
-            return `\`${resolvedFieldName}\` ${node.operator} ${conditionValue}`;
+            return `${processedFieldName} ${node.operator} ${conditionValue}`;
           }
         }
         case 'LOGICAL': {
@@ -375,7 +422,7 @@ export class QueryBuilder<T = any> {
             const cases = byValues
               .map(
                 (value: string, index: number) =>
-                  `WHEN ${resolvedSortFieldName} = ${paramManager.parameterize(value, getColumnType(config, this.tableName, node.field, value))} THEN ${index}`
+                  `WHEN ${resolvedSortFieldName} = ${paramManager.parameterize(value, this.getDriverColumnType(config, node.field, value))} THEN ${index}`
               )
               .join(' ');
             const orderByCase = `CASE ${cases} ELSE ${byValues.length} END`;

@@ -1,5 +1,12 @@
 import { Database, Instance, Spanner } from '@google-cloud/spanner';
-import { DbDriver, DbDriverStatementConfig, Table, TableManager, tableByName } from '@proteinjs/db';
+import {
+  DbDriver,
+  DbDriverQueryStatementConfig,
+  DbDriverDmlStatementConfig,
+  Table,
+  TableManager,
+  tableByName,
+} from '@proteinjs/db';
 import { SpannerConfig } from './SpannerConfig';
 import { Logger } from '@proteinjs/util';
 import { Statement } from '@proteinjs/db-query';
@@ -62,6 +69,7 @@ export class SpannerDriver implements DbDriver {
   }
 
   getColumnType(tableName: string, columnName: string): string {
+    const logger = new Logger('spanner driver: getColumnType');
     const table = this.getTable ? this.getTable(tableName) : tableByName(tableName);
     const column = Object.values(table.columns).find((col) => col.name === columnName);
 
@@ -71,11 +79,39 @@ export class SpannerDriver implements DbDriver {
 
     const type = new SpannerColumnTypeFactory().getType(column, true);
 
+    if (tableName === 'db_test_employee') {
+      logger.info(`processing col type for table ${tableName} and column ${columnName}: type resolved to ${type}`);
+    }
+
     if (!type) {
       throw new Error(`Type was not resolved for column ${columnName} in table ${table.name}`);
     }
 
     return type;
+  }
+
+  /**
+   * Spanner is case sensitive by default.
+   * If we want to query without case sensitivity, wrap the column name with the `LOWER()` function.
+   * @returns identifier to be used in SQL statement, may instead be an expression if using case insensitivity
+   */
+  handleCaseSensitivity(tableName: string, columnName: string, caseSensitive: boolean): string {
+    const logger = new Logger('handleCaseSensitivity');
+    if (caseSensitive) {
+      return columnName;
+    }
+
+    if (tableName === 'db_test_employee') {
+      logger.info(`processing case insensitivity for table ${tableName} and column ${columnName}`);
+    }
+
+    const isStringColType = this.getColumnType(tableName, columnName) === 'string';
+
+    if (isStringColType) {
+      return `LOWER(${columnName})`;
+    }
+
+    return columnName;
   }
 
   async createDbIfNotExists(): Promise<void> {
@@ -91,12 +127,13 @@ export class SpannerDriver implements DbDriver {
     return exists;
   }
 
-  async runQuery(generateStatement: (config: DbDriverStatementConfig) => Statement): Promise<any[]> {
+  async runQuery(generateStatement: (config: DbDriverQueryStatementConfig) => Statement): Promise<any[]> {
     const { sql, namedParams } = generateStatement({
       useParams: true,
       useNamedParams: true,
       prefixTablesWithDb: false,
-      getColumnType: this.getColumnType.bind(this),
+      getDriverColumnType: this.getColumnType.bind(this),
+      handleCaseSensitivity: this.handleCaseSensitivity.bind(this),
     });
     try {
       this.logger.debug(`Executing query: ${sql}`);
@@ -116,16 +153,16 @@ export class SpannerDriver implements DbDriver {
    *
    * @returns number of affected rows
    */
-  async runDml(generateStatement: (config: DbDriverStatementConfig) => Statement): Promise<number> {
+  async runDml(generateStatement: (config: DbDriverDmlStatementConfig) => Statement): Promise<number> {
     const { sql, namedParams } = generateStatement({
       useParams: true,
       useNamedParams: true,
       prefixTablesWithDb: false,
-      getColumnType: this.getColumnType.bind(this),
+      getDriverColumnType: this.getColumnType.bind(this),
     });
     try {
       return await this.getSpannerDb().runTransactionAsync(async (transaction) => {
-        this.logger.debug(`Executing dml: ${sql}`);
+        this.logger.info(`Executing dml: ${sql} with params: ${JSON.stringify(namedParams)}`, 10000);
         const [rowCount] = await transaction.runUpdate({
           sql,
           params: namedParams?.params,
