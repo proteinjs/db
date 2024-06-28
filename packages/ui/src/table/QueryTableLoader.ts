@@ -1,6 +1,6 @@
 import { Query, QueryBuilder, QueryBuilderFactory, Record, SortCriteria, Table, getDb } from '@proteinjs/db';
 import { RowWindow, TableLoader } from '@proteinjs/ui';
-import { Debouncer } from '@proteinjs/util';
+import { Debouncer, Logger } from '@proteinjs/util';
 
 export class QueryTableLoader<T extends Record> implements TableLoader<T> {
   private rowCountQb?: QueryBuilder<T>;
@@ -9,7 +9,6 @@ export class QueryTableLoader<T extends Record> implements TableLoader<T> {
     private table: Table<T>,
     private query?: Query<T>,
     private sort?: SortCriteria<T>[],
-    private debouncer?: Debouncer
   ) {
     // Store separate copies of the query for row count and pagination
     this.rowCountQb = new QueryBuilderFactory().createQueryBuilder(this.table, this.query);
@@ -17,34 +16,19 @@ export class QueryTableLoader<T extends Record> implements TableLoader<T> {
   }
 
   async load(startIndex: number, endIndex: number): Promise<RowWindow<T>> {
-    const executeQuery = async (): Promise<{
-      rows: T[];
-      totalCount: number;
-    }> => {
-      const db = getDb();
-      const sort: any = this.sort ? this.sort : [{ field: 'created', desc: true }];
+    const logger = new Logger('QueryTableLoader');
+    const db = getDb();
+    const sort: any = this.sort ? this.sort : [{ field: 'created', desc: true }];
 
-      const rowCountPromise = db.getRowCount(this.table, this.rowCountQb);
-      const qb = new QueryBuilderFactory()
-        .createQueryBuilder(this.table, this.paginationQb)
-        .sort(sort)
-        .paginate({ start: startIndex, end: endIndex });
-      const queryPromise = db.query(this.table, qb);
+    const rowCountPromise = db.getRowCount(this.table, this.rowCountQb);
+    const qb = new QueryBuilderFactory()
+      .createQueryBuilder(this.table, this.paginationQb)
+      .sort(sort)
+      .paginate({ start: startIndex, end: endIndex });
+    const queryPromise = db.query(this.table, qb);
 
-      const [rows, totalCount] = await Promise.all([queryPromise, rowCountPromise]);
-      return { rows, totalCount };
-    };
-
-    if (this.debouncer) {
-      const debouncer = this.debouncer;
-      return new Promise<RowWindow<T>>((resolve) => {
-        debouncer.debounce(async () => {
-          const result = await executeQuery();
-          resolve(result);
-        });
-      });
-    } else {
-      return await executeQuery();
-    }
+    const [rows, totalCount] = await Promise.all([queryPromise, rowCountPromise]);
+    logger.info(`retrieved rows length: ${rows.length} and total row count: ${totalCount}`);
+    return { rows, totalCount };
   }
 }
