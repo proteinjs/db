@@ -2,7 +2,7 @@ import React from 'react';
 import { Page, PageComponentProps } from '@proteinjs/ui';
 import { tableByName, Table } from '@proteinjs/db';
 import { RecordTable } from '../table/RecordTable';
-import { Box, SxProps, Theme } from '@mui/material';
+import { Box, Paper, SxProps, Theme } from '@mui/material';
 
 export const recordTablePage: Page = {
   name: 'Record Table',
@@ -17,10 +17,10 @@ export const recordTablePage: Page = {
     };
   },
   component: ({ ...props }) => (
-    <Box sx={{ display: 'flex', flexGrow: 1, padding: 4 }}>
-      <Box maxHeight='80vh'>
+    <Box sx={{ display: 'flex', flexGrow: 1, justifyContent: 'center', padding: 4 }}>
+      <Paper sx={{ maxHeight: '80vh' }}>
         <DynamicRecordTable {...props} />
-      </Box>
+      </Paper>
     </Box>
   ),
 };

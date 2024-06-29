@@ -1,11 +1,24 @@
 import React from 'react';
 import { Delete, Add } from '@mui/icons-material';
 import S from 'string';
-import { TableButton, Table as TableComponent, TableLoader, TableProps } from '@proteinjs/ui';
+import { CustomRenderer, TableButton, Table as TableComponent, TableLoader, TableProps } from '@proteinjs/ui';
 import { Column, QueryBuilderFactory, Record, Table, getDb } from '@proteinjs/db';
 import { QueryTableLoader } from './QueryTableLoader';
 import { newRecordFormLink, recordFormLink } from '../pages/RecordFormPage';
 import { recordTableLink } from '../pages/RecordTablePage';
+import { isInstanceOf } from '@proteinjs/util';
+import {
+  IntegerColumn,
+  StringColumn,
+  FloatColumn,
+  DecimalColumn,
+  BooleanColumn,
+  DateColumn,
+  DateTimeColumn,
+  ObjectColumn,
+  ArrayColumn,
+} from '@proteinjs/db';
+import moment from 'moment';
 
 export type RecordTableProps<T extends Record> = {
   table: Table<T>;
@@ -13,6 +26,7 @@ export type RecordTableProps<T extends Record> = {
   title?: TableProps<T>['title'];
   description?: TableProps<T>['description'];
   columns?: TableProps<T>['columns'];
+  columnConfig?: TableProps<T>['columnConfig'];
   pagination?: TableProps<T>['pagination'];
   infiniteScroll?: TableProps<T>['infiniteScroll'];
   buttons?: TableProps<T>['buttons'];
@@ -84,6 +98,60 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
     return columnProperties;
   }
 
+  function getDefaultRenderer(column: Column<any, any>): CustomRenderer<T> {
+    return (value: any, row: T) => {
+      if (
+        isInstanceOf(column, IntegerColumn) ||
+        isInstanceOf(column, FloatColumn) ||
+        isInstanceOf(column, DecimalColumn)
+      ) {
+        return value != null ? value.toString() : '';
+      }
+      if (isInstanceOf(column, StringColumn)) {
+        return value || '';
+      }
+      if (isInstanceOf(column, BooleanColumn)) {
+        return value ? '✅' : '❌';
+      }
+      if (isInstanceOf(column, DateColumn)) {
+        return value ? moment(value).format('YYYY-MM-DD') : '';
+      }
+      if (isInstanceOf(column, DateTimeColumn)) {
+        return value ? moment(value).format('YYYY-MM-DD HH:mm:ss') : '';
+      }
+      if (isInstanceOf(column, ObjectColumn) || isInstanceOf(column, ArrayColumn)) {
+        return JSON.stringify(value);
+      }
+      return value != null ? value.toString() : '';
+    };
+  }
+
+  function mergeColumnConfigs(): TableProps<T>['columnConfig'] {
+    const defaultConfig: TableProps<T>['columnConfig'] = {};
+    const columns = props.columns || defaultColumns();
+
+    for (const columnName of columns) {
+      const column = (props.table.columns as any)[columnName];
+      defaultConfig[columnName] = {
+        renderer: getDefaultRenderer(column),
+      };
+    }
+
+    // Merge with provided columnConfig, if any
+    if (props.columnConfig) {
+      for (const columnName in props.columnConfig) {
+        if (defaultConfig[columnName]) {
+          defaultConfig[columnName] = {
+            ...defaultConfig[columnName],
+            ...props.columnConfig[columnName],
+          };
+        }
+      }
+    }
+
+    return defaultConfig;
+  }
+
   function defaultTableLoader() {
     return new QueryTableLoader(props.table, undefined, [{ field: 'updated', desc: true }]);
   }
@@ -109,6 +177,7 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
       title={props.title ? props.title : `${S(props.table.name).humanize().toString()} Table`}
       description={props.description}
       columns={props.columns ? props.columns : defaultColumns()}
+      columnConfig={mergeColumnConfigs()}
       tableLoader={props.tableLoader ? props.tableLoader : defaultTableLoader()}
       rowOnClickRedirectUrl={props.rowOnClickRedirectUrl ? props.rowOnClickRedirectUrl : defaultRowOnClickRedirectUrl}
       pagination={props.pagination}
