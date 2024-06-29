@@ -99,7 +99,7 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
   }
 
   function getDefaultRenderer(column: Column<any, any>): CustomRenderer<T> {
-    return (value: any, row: T) => {
+    return (value: any) => {
       if (
         isInstanceOf(column, IntegerColumn) ||
         isInstanceOf(column, FloatColumn) ||
