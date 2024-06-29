@@ -1,10 +1,16 @@
 import { Route } from '@proteinjs/server-api';
 import { getFileStorage } from '../FileStorage';
+import { UserAuth } from '@proteinjs/user';
 
 export const getFile: Route = {
   path: '/file/:id',
   method: 'get',
   onRequest: async (request, response): Promise<void> => {
+    if (!UserAuth.isLoggedIn()) {
+      response.status(401).send('User not logged in');
+      return;
+    }
+
     const fileId = request.params.id;
     const fileStorage = getFileStorage();
     try {
