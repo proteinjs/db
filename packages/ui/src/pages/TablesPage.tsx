@@ -2,10 +2,17 @@ import React from 'react';
 import { FormPage, Page, TableLoader, Table as TableComponent, RowWindow } from '@proteinjs/ui';
 import { getTables, getDbService, Table } from '@proteinjs/db';
 import { recordTableLinkByName } from './RecordTablePage';
+import { Box, Grid, SxProps, Theme } from '@mui/material';
 
 export const tablesPage: Page = {
   name: 'Tables',
   path: 'tables',
+  pageContainerSxProps: (theme: Theme): SxProps => {
+    return {
+      height: '100vh',
+      backgroundColor: theme.palette.background.default,
+    };
+  },
   component: () => (
     <FormPage>
       <Tables />
@@ -36,13 +43,17 @@ class TableSummaryLoader implements TableLoader<TableSummary> {
 
 const Tables = () => {
   return (
-    <TableComponent
-      title='Tables'
-      columns={['name', 'rowCount']}
-      tableLoader={new TableSummaryLoader(getTables())}
-      rowOnClickRedirectUrl={async (row: TableSummary) => {
-        return recordTableLinkByName(row.name);
-      }}
-    />
+    <Box sx={{ display: 'flex', flexGrow: 1 }}>
+      <Box maxHeight='80vh'>
+        <TableComponent
+          title='Tables'
+          columns={['name', 'rowCount']}
+          tableLoader={new TableSummaryLoader(getTables())}
+          rowOnClickRedirectUrl={async (row: TableSummary) => {
+            return recordTableLinkByName(row.name);
+          }}
+        />
+      </Box>
+    </Box>
   );
 };

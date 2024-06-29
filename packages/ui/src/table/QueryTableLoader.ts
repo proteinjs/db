@@ -1,6 +1,6 @@
 import { Query, QueryBuilder, QueryBuilderFactory, Record, SortCriteria, Table, getDb } from '@proteinjs/db';
 import { RowWindow, TableLoader } from '@proteinjs/ui';
-import { Debouncer, Logger } from '@proteinjs/util';
+import { Logger } from '@proteinjs/util';
 
 export class QueryTableLoader<T extends Record> implements TableLoader<T> {
   private rowCountQb?: QueryBuilder<T>;
@@ -28,7 +28,6 @@ export class QueryTableLoader<T extends Record> implements TableLoader<T> {
     const queryPromise = db.query(this.table, qb);
 
     const [rows, totalCount] = await Promise.all([queryPromise, rowCountPromise]);
-    logger.info(`retrieved rows length: ${rows.length} and total row count: ${totalCount}`);
     return { rows, totalCount };
   }
 }
