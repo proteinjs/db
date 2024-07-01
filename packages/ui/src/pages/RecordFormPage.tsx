@@ -2,12 +2,19 @@ import React from 'react';
 import { FormPage, Page, PageComponentProps } from '@proteinjs/ui';
 import { getDbService, tableByName } from '@proteinjs/db';
 import { RecordForm } from '../form/RecordForm';
+import { Theme, SxProps } from '@mui/material';
 
 export const recordFormPage: Page = {
   name: 'Record Form',
   path: 'record/form',
   auth: {
     allUsers: true,
+  },
+  pageContainerSxProps: (theme: Theme): SxProps => {
+    return {
+      height: '100vh',
+      backgroundColor: theme.palette.background.default,
+    };
   },
   component: ({ ...props }) => (
     <FormPage>

@@ -1,23 +1,32 @@
-import { Query, QueryBuilderFactory, Record, SortCriteria, Table, getDb } from '@proteinjs/db';
+import { Query, QueryBuilder, QueryBuilderFactory, Record, SortCriteria, Table, getDb } from '@proteinjs/db';
 import { RowWindow, TableLoader } from '@proteinjs/ui';
+import { Logger } from '@proteinjs/util';
 
 export class QueryTableLoader<T extends Record> implements TableLoader<T> {
+  private rowCountQb?: QueryBuilder<T>;
+  private paginationQb?: QueryBuilder<T>;
   constructor(
     private table: Table<T>,
     private query?: Query<T>,
-    private sort?: SortCriteria<T>[]
-  ) {}
+    private sort?: SortCriteria<T>[],
+  ) {
+    // Store separate copies of the query for row count and pagination
+    this.rowCountQb = new QueryBuilderFactory().createQueryBuilder(this.table, this.query);
+    this.paginationQb = new QueryBuilderFactory().createQueryBuilder(this.table, this.query);
+  }
 
   async load(startIndex: number, endIndex: number): Promise<RowWindow<T>> {
+    const logger = new Logger('QueryTableLoader');
     const db = getDb();
     const sort: any = this.sort ? this.sort : [{ field: 'created', desc: true }];
+
+    const rowCountPromise = db.getRowCount(this.table, this.rowCountQb);
     const qb = new QueryBuilderFactory()
-      .getQueryBuilder(this.table, this.query)
+      .createQueryBuilder(this.table, this.paginationQb)
       .sort(sort)
       .paginate({ start: startIndex, end: endIndex });
     const queryPromise = db.query(this.table, qb);
-    const rowcountQb = new QueryBuilderFactory().getQueryBuilder(this.table, this.query);
-    const rowCountPromise = db.getRowCount(this.table, rowcountQb);
+
     const [rows, totalCount] = await Promise.all([queryPromise, rowCountPromise]);
     return { rows, totalCount };
   }
