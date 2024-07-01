@@ -98,7 +98,7 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
     return columnProperties;
   }
 
-  function getDefaultRenderer(column: Column<any, any>): CustomRenderer<T> {
+  function getDefaultRenderer(column: Column<any, any>): CustomRenderer<T, any> {
     return (value: any) => {
       if (
         isInstanceOf(column, IntegerColumn) ||
