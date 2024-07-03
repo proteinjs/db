@@ -158,7 +158,7 @@ export class SpannerDriver implements DbDriver {
     });
     try {
       return await this.getSpannerDb().runTransactionAsync(async (transaction) => {
-        this.logger.debug(`Executing dml: ${sql}`);
+        this.logger.info(`Executing dml: ${sql}, with params: ${JSON.stringify(namedParams)}`, 10000);
         const [rowCount] = await transaction.runUpdate({
           sql,
           params: namedParams?.params,

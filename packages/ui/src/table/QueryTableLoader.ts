@@ -5,18 +5,36 @@ import { Logger } from '@proteinjs/util';
 export class QueryTableLoader<T extends Record> implements TableLoader<T> {
   private rowCountQb?: QueryBuilder<T>;
   private paginationQb?: QueryBuilder<T>;
+
+  reactQueryKeys: {
+    dataKey: string;
+    dataQueryKey: string;
+    rowKey: string;
+  };
+
+  /**
+   * @param table the table to load rows from
+   * @param dataQueryKey a unique name to identify this query for cache invalidation (required for react-query)
+   * @param query the query to apply to the table
+   * @param sort the sort constraints to apply to the query
+   */
   constructor(
     private table: Table<T>,
+    dataQueryKey: string,
     private query?: Query<T>,
-    private sort?: SortCriteria<T>[],
+    private sort?: SortCriteria<T>[]
   ) {
     // Store separate copies of the query for row count and pagination
     this.rowCountQb = new QueryBuilderFactory().createQueryBuilder(this.table, this.query);
     this.paginationQb = new QueryBuilderFactory().createQueryBuilder(this.table, this.query);
+    this.reactQueryKeys = {
+      dataKey: table.name,
+      dataQueryKey,
+      rowKey: 'id',
+    };
   }
 
   async load(startIndex: number, endIndex: number): Promise<RowWindow<T>> {
-    const logger = new Logger('QueryTableLoader');
     const db = getDb();
     const sort: any = this.sort ? this.sort : [{ field: 'created', desc: true }];
 

@@ -26,6 +26,12 @@ type TableSummary = {
 };
 
 class TableSummaryLoader implements TableLoader<TableSummary> {
+  reactQueryKeys = {
+    dataKey: 'zzztables',
+    dataQueryKey: 'table row counts',
+    rowKey: 'name',
+  };
+
   constructor(private tables: Table<any>[]) {}
 
   async load(startIndex: number, endIndex: number) {
