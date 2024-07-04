@@ -153,7 +153,7 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
   }
 
   function defaultTableLoader() {
-    return new QueryTableLoader(props.table, 'ORDER BY `updated` DESC', undefined, [{ field: 'updated', desc: true }]);
+    return new QueryTableLoader(props.table, undefined, [{ field: 'updated', desc: true }]);
   }
 
   async function defaultRowOnClickRedirectUrl(row: T) {
