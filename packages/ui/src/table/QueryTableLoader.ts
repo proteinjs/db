@@ -26,18 +26,23 @@ export class QueryTableLoader<T extends Record> implements TableLoader<T> {
     };
   }
 
-  async load(startIndex: number, endIndex: number): Promise<RowWindow<T>> {
+  async load(startIndex: number, endIndex: number, skipRowCount: boolean = false): Promise<RowWindow<T>> {
     const db = getDb();
     const sort: any = this.sort ? this.sort : [{ field: 'created', desc: true }];
 
-    const rowCountPromise = db.getRowCount(this.table, this.rowCountQb);
     const qb = new QueryBuilderFactory()
       .createQueryBuilder(this.table, this.paginationQb)
       .sort(sort)
       .paginate({ start: startIndex, end: endIndex });
     const queryPromise = db.query(this.table, qb);
 
-    const [rows, totalCount] = await Promise.all([queryPromise, rowCountPromise]);
-    return { rows, totalCount };
+    if (skipRowCount) {
+      const rows = await queryPromise;
+      return { rows, totalCount: 0 };
+    } else {
+      const rowCountPromise = db.getRowCount(this.table, this.rowCountQb);
+      const [rows, totalCount] = await Promise.all([queryPromise, rowCountPromise]);
+      return { rows, totalCount };
+    }
   }
 }
