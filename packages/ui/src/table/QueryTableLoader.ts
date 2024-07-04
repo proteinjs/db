@@ -5,22 +5,15 @@ import { Logger } from '@proteinjs/util';
 export class QueryTableLoader<T extends Record> implements TableLoader<T> {
   private rowCountQb?: QueryBuilder<T>;
   private paginationQb?: QueryBuilder<T>;
-
-  reactQueryKeys: {
-    dataKey: string;
-    dataQueryKey: string;
-    rowKey: string;
-  };
+  reactQueryKeys: TableLoader<T>['reactQueryKeys'];
 
   /**
    * @param table the table to load rows from
-   * @param dataQueryKey a unique name to identify this query for cache invalidation (required for react-query)
    * @param query the query to apply to the table
    * @param sort the sort constraints to apply to the query
    */
   constructor(
     private table: Table<T>,
-    dataQueryKey: string,
     private query?: Query<T>,
     private sort?: SortCriteria<T>[]
   ) {
@@ -28,9 +21,8 @@ export class QueryTableLoader<T extends Record> implements TableLoader<T> {
     this.rowCountQb = new QueryBuilderFactory().createQueryBuilder(this.table, this.query);
     this.paginationQb = new QueryBuilderFactory().createQueryBuilder(this.table, this.query);
     this.reactQueryKeys = {
-      dataKey: table.name,
-      dataQueryKey,
-      rowKey: 'id',
+      dataKey: this.table.name,
+      dataQueryKey: JSON.stringify(this.query),
     };
   }
 
