@@ -1,4 +1,4 @@
-import { Logger, Graph, GraphJson, isInstanceOf } from '@proteinjs/util';
+import { Logger, Graph, isInstanceOf, graphSerializer } from '@proteinjs/util';
 import { Statement, StatementConfig, StatementParamManager } from './StatementFactory';
 
 export interface Select<T> {
@@ -96,10 +96,9 @@ export class QueryBuilder<T = any> {
     const newQb = new QueryBuilder<T>(tableName);
 
     if (qb) {
-      // Use graphlib's serialization/deserialization for deep copying the graph
       if (qb.graph) {
-        const serializedGraph = GraphJson.write(qb.graph);
-        newQb.graph = GraphJson.read(serializedGraph);
+        const serializedGraph = graphSerializer.serialize(qb.graph);
+        newQb.graph = graphSerializer.deserialize(serializedGraph);
       }
 
       newQb.__serializerId = qb.__serializerId;
