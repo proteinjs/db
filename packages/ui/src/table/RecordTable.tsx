@@ -28,8 +28,8 @@ export type RecordTableProps<T extends Record> = {
   columns?: TableProps<T>['columns'];
   columnConfig?: TableProps<T>['columnConfig'];
   pagination?: TableProps<T>['pagination'];
-  infiniteScroll?: TableProps<T>['infiniteScroll'];
   buttons?: TableProps<T>['buttons'];
+  hideButtons?: boolean;
   rowOnClickRedirectUrl?: TableProps<T>['rowOnClickRedirectUrl'];
   toolbarSx?: TableProps<T>['toolbarSx'];
   toolbarContent?: TableProps<T>['toolbarContent'];
@@ -161,15 +161,15 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
   }
 
   function buttons() {
-    const buttons: TableButton<T>[] = [];
-    if (props.buttons) {
-      buttons.push(...props.buttons);
+    if (props.hideButtons) {
+      return [];
     }
 
-    buttons.push(deleteButton(props.table));
-    buttons.push(createButton(props.table));
+    if (props.buttons) {
+      return props.buttons;
+    }
 
-    return buttons;
+    return [deleteButton(props.table), createButton(props.table)];
   }
 
   return (
@@ -181,7 +181,6 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
       tableLoader={props.tableLoader ? props.tableLoader : defaultTableLoader()}
       rowOnClickRedirectUrl={props.rowOnClickRedirectUrl ? props.rowOnClickRedirectUrl : defaultRowOnClickRedirectUrl}
       pagination={props.pagination}
-      infiniteScroll={props.infiniteScroll}
       buttons={buttons()}
       toolbarSx={props.toolbarSx}
       toolbarContent={props.toolbarContent}
