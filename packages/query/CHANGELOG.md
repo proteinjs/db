@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.2.0](https://github.com/proteinjs/db/compare/@proteinjs/db-query@1.1.1...@proteinjs/db-query@1.2.0) (2024-07-06)
+
+
+### Features
+
+* utilize react query and add infinite scroll to table ([#6](https://github.com/proteinjs/db/issues/6)) ([7244a68](https://github.com/proteinjs/db/commit/7244a68fbce5ca1270321c6c63366ea4f3d97b63))
+
+
+
+
+
 # [1.1.0](https://github.com/proteinjs/db/compare/@proteinjs/db-query@1.0.15...@proteinjs/db-query@1.1.0) (2024-06-27)
 
 

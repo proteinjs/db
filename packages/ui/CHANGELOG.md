@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.1.0](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.0.33...@proteinjs/db-ui@1.1.0) (2024-07-06)
+
+
+### Bug Fixes
+
+* updating package version for ui ([f670078](https://github.com/proteinjs/db/commit/f670078a684038c9880dcf9a41a65d4eea540b3a))
+
+
+### Features
+
+* utilize react query and add infinite scroll to table ([#6](https://github.com/proteinjs/db/issues/6)) ([7244a68](https://github.com/proteinjs/db/commit/7244a68fbce5ca1270321c6c63366ea4f3d97b63))
+
+
+
+
+
 ## [1.0.32](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.0.31...@proteinjs/db-ui@1.0.32) (2024-06-27)
 
 **Note:** Version bump only for package @proteinjs/db-ui
