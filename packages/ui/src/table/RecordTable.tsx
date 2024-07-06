@@ -28,6 +28,7 @@ export type RecordTableProps<T extends Record> = {
   columns?: TableProps<T>['columns'];
   columnConfig?: TableProps<T>['columnConfig'];
   pagination?: TableProps<T>['pagination'];
+  defaultRowsPerPage?: TableProps<T>['defaultRowsPerPage'];
   buttons?: TableProps<T>['buttons'];
   hideButtons?: boolean;
   rowOnClickRedirectUrl?: TableProps<T>['rowOnClickRedirectUrl'];
@@ -181,6 +182,7 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
       tableLoader={props.tableLoader ? props.tableLoader : defaultTableLoader()}
       rowOnClickRedirectUrl={props.rowOnClickRedirectUrl ? props.rowOnClickRedirectUrl : defaultRowOnClickRedirectUrl}
       pagination={props.pagination}
+      defaultRowsPerPage={props.defaultRowsPerPage}
       buttons={buttons()}
       toolbarSx={props.toolbarSx}
       toolbarContent={props.toolbarContent}
