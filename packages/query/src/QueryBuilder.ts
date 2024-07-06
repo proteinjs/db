@@ -1,4 +1,4 @@
-import { Logger, Graph, isInstanceOf } from '@proteinjs/util';
+import { Logger, Graph, isInstanceOf, graphSerializer } from '@proteinjs/util';
 import { Statement, StatementConfig, StatementParamManager } from './StatementFactory';
 
 export interface Select<T> {
@@ -70,6 +70,49 @@ export class QueryBuilder<T = any> {
     this.graph.setNode(this.rootId, { type: 'ROOT' });
   }
 
+  /**
+   * Creates a QueryBuilder instance from an object.
+   * Object properties will be treated as fields, joined with AND to construct the query.
+   * @param obj a query object
+   * @param tableName the table to query
+   * @returns a QueryBuilder with the query applied to it
+   */
+  static fromObject<T extends Object>(obj: Partial<T>, tableName: string): QueryBuilder<T> {
+    const qb = new QueryBuilder<T>(tableName);
+    for (const prop of Object.keys(obj)) {
+      qb.condition({ field: prop as keyof T, operator: '=', value: obj[prop as keyof T] as T[keyof T] });
+    }
+    return qb;
+  }
+
+  /**
+   * Creates a new QueryBuilder instance from an existing QueryBuilder.
+   * Sets all properties of the QueryBuilder class.
+   * @param qb an existing query builder
+   * @param tableName the table to query
+   * @returns a new QueryBuilder instance
+   */
+  static fromQueryBuilder<T = any>(qb: QueryBuilder<T>, tableName: string): QueryBuilder<T> {
+    const newQb = new QueryBuilder<T>(tableName);
+
+    if (qb) {
+      if (qb.graph) {
+        const serializedGraph = graphSerializer.serialize(qb.graph);
+        newQb.graph = graphSerializer.deserialize(serializedGraph);
+      }
+
+      newQb.__serializerId = qb.__serializerId;
+      newQb.graph = qb.graph;
+      newQb.idCounter = qb.idCounter;
+      newQb.rootId = qb.rootId;
+      newQb.currentContextIds = qb.currentContextIds;
+      newQb.paginationNodeId = qb.paginationNodeId;
+      newQb.debugLogicalGrouping = qb.debugLogicalGrouping;
+    }
+
+    return newQb;
+  }
+
   private generateId(): string {
     return `node_${this.idCounter++}`;
   }
@@ -95,21 +138,6 @@ export class QueryBuilder<T = any> {
       return typeof value;
     }
   };
-
-  /**
-   * Creates a QueryBuilder instance from an object.
-   * Object properties will be treated as fields, joined with AND to construct the query.
-   * @param obj a query object
-   * @param tableName the table to query
-   * @returns a QueryBuilder with the query applied to it
-   */
-  static fromObject<T extends Object>(obj: Partial<T>, tableName: string): QueryBuilder<T> {
-    const qb = new QueryBuilder<T>(tableName);
-    for (const prop of Object.keys(obj)) {
-      qb.condition({ field: prop as keyof T, operator: '=', value: obj[prop as keyof T] as T[keyof T] });
-    }
-    return qb;
-  }
 
   select(select: Select<T>): this {
     const id = this.generateId();

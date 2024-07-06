@@ -1,7 +1,8 @@
 import React from 'react';
-import { FormPage, Page, PageComponentProps } from '@proteinjs/ui';
+import { Page, PageComponentProps } from '@proteinjs/ui';
 import { tableByName, Table } from '@proteinjs/db';
 import { RecordTable } from '../table/RecordTable';
+import { Box, Paper, SxProps, Theme } from '@mui/material';
 
 export const recordTablePage: Page = {
   name: 'Record Table',
@@ -9,10 +10,18 @@ export const recordTablePage: Page = {
   auth: {
     allUsers: true,
   },
+  pageContainerSxProps: (theme: Theme): SxProps => {
+    return {
+      height: '100vh',
+      backgroundColor: theme.palette.background.default,
+    };
+  },
   component: ({ ...props }) => (
-    <FormPage>
-      <DynamicRecordTable {...props} />
-    </FormPage>
+    <Box sx={{ display: 'flex', flexGrow: 1, justifyContent: 'center', padding: 4 }}>
+      <Paper sx={{ maxHeight: '80vh' }}>
+        <DynamicRecordTable {...props} />
+      </Paper>
+    </Box>
   ),
 };
 
