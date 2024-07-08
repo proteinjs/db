@@ -95,20 +95,15 @@ export class QueryBuilder<T = any> {
   static fromQueryBuilder<T = any>(qb: QueryBuilder<T>, tableName: string): QueryBuilder<T> {
     const newQb = new QueryBuilder<T>(tableName);
 
-    if (qb) {
-      if (qb.graph) {
-        const serializedGraph = graphSerializer.serialize(qb.graph);
-        newQb.graph = graphSerializer.deserialize(serializedGraph);
-      }
+    const serializedGraph = graphSerializer.serialize(qb.graph);
+    newQb.graph = graphSerializer.deserialize(serializedGraph);
 
-      newQb.__serializerId = qb.__serializerId;
-      newQb.graph = qb.graph;
-      newQb.idCounter = qb.idCounter;
-      newQb.rootId = qb.rootId;
-      newQb.currentContextIds = qb.currentContextIds;
-      newQb.paginationNodeId = qb.paginationNodeId;
-      newQb.debugLogicalGrouping = qb.debugLogicalGrouping;
-    }
+    newQb.__serializerId = qb.__serializerId;
+    newQb.idCounter = qb.idCounter;
+    newQb.rootId = qb.rootId;
+    newQb.currentContextIds = [...qb.currentContextIds];
+    newQb.paginationNodeId = qb.paginationNodeId;
+    newQb.debugLogicalGrouping = qb.debugLogicalGrouping;
 
     return newQb;
   }
