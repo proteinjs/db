@@ -1,8 +1,11 @@
 import { ScopedRecord, getScopedDb } from '@proteinjs/user';
-import { QueryBuilderFactory, Reference } from '@proteinjs/db';
 import { File } from './tables/FileTable';
 import { tables } from './tables/tables';
 import { FileStorageService, getFileStorageService } from './services/FileStorageService';
+import { FileStorageDriver } from './FileStorageDriver';
+import { Loadable, SourceRepository } from '@proteinjs/reflection';
+import { Logger } from '@proteinjs/util';
+import { DbFileStorageDriver } from './DbFileStorageDriver';
 
 /**
  * A convenience factory function so code using this is portable (can be used in server or browser).
@@ -12,17 +15,47 @@ export const getFileStorage = () =>
   typeof self === 'undefined' ? new FileStorage() : (getFileStorageService() as FileStorage);
 
 /**
- * A simple api for reading/writing files to the db.
- * The storage is defined in `FileTable` and `FileDataTable`.
+ * A convenience factory to provide a default `FileStorageDriver`
+ */
+export interface DefaultFileStorageDriverFactory extends Loadable {
+  getDriver(): FileStorageDriver;
+}
+
+/**
+ * A simple api for file storage.
+ * File metadata is stored in the `FileTable`.
+ * File data is stored by the `FileStorageDriver`.
  */
 export class FileStorage implements FileStorageService {
+  private static defaultDriver: FileStorageDriver;
+  private driver: FileStorageDriver;
+  private logger: Logger = new Logger(this.constructor.name);
+
   public serviceMetadata = {
     auth: {
       allUsers: true,
     },
   };
 
-  private chunkSize = 1048576; // Max length of data written to `FileData.data` (1mb)
+  constructor(driver?: FileStorageDriver) {
+    this.driver = driver ? driver : this.getDefaultDriver();
+  }
+
+  private getDefaultDriver(): FileStorageDriver {
+    if (!FileStorage.defaultDriver) {
+      const defaultDriverFactory = SourceRepository.get().object<DefaultFileStorageDriverFactory>(
+        '@proteinjs/db-file/DefaultFileStorageDriverFactory'
+      );
+      if (defaultDriverFactory) {
+        FileStorage.defaultDriver = defaultDriverFactory.getDriver();
+      } else {
+        this.logger.info(`Defaulting to DbFileStorageDriver since no FileStorageDriver was provided`);
+        FileStorage.defaultDriver = new DbFileStorageDriver();
+      }
+    }
+
+    return FileStorage.defaultDriver;
+  }
 
   /**
    * Creates a new file record and its associated data chunks.
@@ -33,35 +66,13 @@ export class FileStorage implements FileStorageService {
   async createFile(fileMetaData: Omit<File, keyof ScopedRecord>, fileData: string): Promise<File> {
     const db = getScopedDb();
     const file = await db.insert(tables.File, fileMetaData);
-    const chunks = this.splitIntoChunks(fileData);
-    for (let index = 0; index < chunks.length; index++) {
-      const chunk = chunks[index];
-      await db.insert(tables.FileData, {
-        file: new Reference(tables.FileData.name, file.id),
-        order: index,
-        data: chunk,
-      });
-    }
-
+    await this.driver.createFile(file, fileData);
     return file;
   }
 
   /**
-   * Splits a string into chunks of a specified size.
-   * @param data - The data string to split.
-   * @returns An array of data chunks.
-   */
-  private splitIntoChunks(data: string): string[] {
-    const chunks = [];
-    for (let i = 0; i < data.length; i += this.chunkSize) {
-      chunks.push(data.substring(i, i + this.chunkSize));
-    }
-    return chunks;
-  }
-
-  /**
    * Retrieves the metadata of a given file.
-   * @param fileId - The ID of the file.
+   * @param fileId - The `id` of the file.
    * @returns The file metadata.
    */
   async getFile(fileId: string): Promise<File> {
@@ -72,40 +83,20 @@ export class FileStorage implements FileStorageService {
 
   /**
    * Retrieves the data chunks associated with a given file.
-   * @param fileId - The ID of the file.
+   * @param fileId - The `id` of the file.
    * @returns The file data as a single string.
    */
   async getFileData(fileId: string): Promise<string> {
-    const db = getScopedDb();
-    const qb = new QueryBuilderFactory()
-      .getQueryBuilder(tables.FileData, { file: fileId })
-      .sort([{ field: 'order', desc: false }]);
-    const fileDataRecords = await db.query(tables.FileData, qb);
-    return fileDataRecords.map((record) => record.data).join('');
+    return await this.driver.getFileData(fileId);
   }
 
   /**
    * Updates the data chunks associated with a given file.
-   * @param fileId - The ID of the file.
+   * @param fileId - The `id` of the file.
    * @param data - The new data string to replace the existing data.
    */
   async updateFileData(fileId: string, data: string): Promise<void> {
-    const db = getScopedDb();
-
-    // Delete existing data
-    const deleteQuery = new QueryBuilderFactory().getQueryBuilder(tables.FileData, { file: fileId });
-    await db.delete(tables.FileData, deleteQuery);
-
-    // Split new data into chunks and insert
-    const chunks = this.splitIntoChunks(data);
-    for (let index = 0; index < chunks.length; index++) {
-      const chunk = chunks[index];
-      await db.insert(tables.FileData, {
-        file: new Reference(tables.FileData.name, fileId),
-        order: index,
-        data: chunk,
-      });
-    }
+    await this.driver.updateFileData(fileId, data);
   }
 
   /**
@@ -115,16 +106,23 @@ export class FileStorage implements FileStorageService {
   async updateFile(file: Omit<File, keyof ScopedRecord>): Promise<void> {
     const db = getScopedDb();
     await db.update(tables.File, file);
+
+    if (this.driver.updateFile) {
+      await this.driver.updateFile(file as File);
+    }
   }
 
   /**
    * Deletes a file and its data.
    * The file data is deleted by a cascade delete rule defined on the `FileTable`
-   * @param fileId - The ID of the file to delete.
+   * @param fileId - The `id` of the file to delete.
    */
   async deleteFile(fileId: string): Promise<void> {
     const db = getScopedDb();
-    const qb = new QueryBuilderFactory().getQueryBuilder(tables.File, { id: fileId });
-    await db.delete(tables.File, qb);
+    if (this.driver.deleteFile) {
+      await this.driver.deleteFile(fileId);
+    }
+
+    await db.delete(tables.File, { id: fileId });
   }
 }

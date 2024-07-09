@@ -19,6 +19,8 @@ export * from './src/tables/MigrationTable';
 export * from './src/services/DbService';
 export * from './src/services/MigrationRunnerService';
 
+export * from './src/TableWatcher';
+
 export * from './test/TableManagerTests';
 export * from './test/CrudTests';
 export * from './test/ColumnTypesTests';

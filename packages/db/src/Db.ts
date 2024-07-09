@@ -11,6 +11,7 @@ import { StatementConfigFactory } from './StatementConfigFactory';
 import { TableManager } from './schema/TableManager';
 import { TableAuth } from './auth/TableAuth';
 import { TableServiceAuth } from './auth/TableServiceAuth';
+import { TableWatcherRunner } from './TableWatcherRunner';
 
 export const getDb = <R extends Record = Record>() =>
   typeof self === 'undefined' ? new Db<R>() : (getDbService() as Db<R>);
@@ -47,6 +48,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
   private logger = new Logger(this.constructor.name);
   private statementConfigFactory: StatementConfigFactory;
   private auth = new TableAuth();
+  private tableWatcherRunner = new TableWatcherRunner<R>();
   public serviceMetadata: Service['serviceMetadata'] = {
     auth: {
       canAccess: (methodName, args) => new TableServiceAuth().canAccess(methodName, args),
@@ -98,8 +100,9 @@ export class Db<R extends Record = Record> implements DbService<R> {
       this.auth.canInsert(table);
     }
 
-    const recordCopy = Object.assign({}, record);
+    let recordCopy = Object.assign({}, record);
     await this.addDefaultFieldValues(table, recordCopy);
+    recordCopy = await this.tableWatcherRunner.runBeforeInsertTableWatchers(table, recordCopy);
     const recordSearializer = new RecordSerializer(table);
     const serializedRecord = await recordSearializer.serialize(recordCopy);
     const generateInsert = (config: DbDriverDmlStatementConfig) =>
@@ -109,6 +112,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
         this.statementConfigFactory.getStatementConfig(config)
       );
     await this.dbDriver.runDml(generateInsert);
+    await this.tableWatcherRunner.runAfterInsertTableWatchers(table, recordCopy as T);
     return recordCopy as T;
   }
 
@@ -130,16 +134,17 @@ export class Db<R extends Record = Record> implements DbService<R> {
       throw new Error(`Update must be called with either a Query or a record with an id property`);
     }
 
-    const recordCopy = Object.assign({}, record);
+    let recordCopy = Object.assign({}, record);
     await this.addUpdateFieldValues(table, recordCopy);
-    const recordSearializer = new RecordSerializer<T>(table);
-    const serializedRecord = await recordSearializer.serialize(recordCopy);
     const qb = new QueryBuilderFactory().getQueryBuilder(table, query);
     this.addColumnQueries(table, qb);
     if (!query) {
       qb.condition({ field: 'id', operator: '=', value: recordCopy.id as T[keyof T] });
     }
 
+    recordCopy = await this.tableWatcherRunner.runBeforeUpdateTableWatchers(table, recordCopy, qb);
+    const recordSearializer = new RecordSerializer<T>(table);
+    const serializedRecord = await recordSearializer.serialize(recordCopy);
     delete serializedRecord['id'];
     const generateUpdate = (config: DbDriverDmlStatementConfig) =>
       new StatementFactory<T>().update(
@@ -148,7 +153,9 @@ export class Db<R extends Record = Record> implements DbService<R> {
         qb,
         this.statementConfigFactory.getStatementConfig(config)
       );
-    return await this.dbDriver.runDml(generateUpdate);
+    const recordUpdateCount = await this.dbDriver.runDml(generateUpdate);
+    await this.tableWatcherRunner.runAfterUpdateTableWatchers(table, recordUpdateCount, recordCopy, qb);
+    return recordUpdateCount;
   }
 
   private async addUpdateFieldValues<T extends R>(table: Table<T>, record: any) {
@@ -165,7 +172,8 @@ export class Db<R extends Record = Record> implements DbService<R> {
       this.auth.canDelete(table);
     }
 
-    const recordsToDelete = await this.query(table, query);
+    const qb = new QueryBuilderFactory().getQueryBuilder(table, query);
+    const recordsToDelete = await this.query(table, qb);
     if (recordsToDelete.length == 0) {
       return 0;
     }
@@ -175,13 +183,15 @@ export class Db<R extends Record = Record> implements DbService<R> {
     deleteQb.condition({ field: 'id', operator: 'IN', value: recordsToDeleteIds as T[keyof T][] });
     const generateDelete = (config: DbDriverDmlStatementConfig) =>
       new StatementFactory<T>().delete(table.name, deleteQb, this.statementConfigFactory.getStatementConfig(config));
-    await this.beforeDelete(table, recordsToDelete);
-    const deletedRowCount = await this.dbDriver.runDml(generateDelete);
-    await this.cascadeDeletions(table, recordsToDeleteIds);
-    return deletedRowCount;
+    await this.runColumnBeforeDeletes(table, recordsToDelete);
+    await this.tableWatcherRunner.runBeforeDeleteTableWatchers(table, recordsToDelete, qb);
+    const recordDeleteCount = await this.dbDriver.runDml(generateDelete);
+    await this.runCascadeDeletions(table, recordsToDeleteIds);
+    await this.tableWatcherRunner.runAfterDeleteTableWatchers(table, recordDeleteCount, recordsToDelete, qb);
+    return recordDeleteCount;
   }
 
-  private async beforeDelete(table: Table<any>, recordsToDelete: Record[]) {
+  private async runColumnBeforeDeletes(table: Table<any>, recordsToDelete: Record[]) {
     for (const columnPropertyName in table.columns) {
       const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
       if (typeof column.beforeDelete !== 'undefined') {
@@ -190,7 +200,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     }
   }
 
-  private async cascadeDeletions(table: Table<any>, deletedRecordIds: string[]) {
+  private async runCascadeDeletions(table: Table<any>, deletedRecordIds: string[]) {
     if (table.cascadeDeleteReferences().length < 1) {
       return;
     }
