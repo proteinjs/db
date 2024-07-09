@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.3.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.2.1...@proteinjs/db@1.3.0) (2024-07-09)
+
+
+### Features
+
+* added `TableWatcher` api ([1544e28](https://github.com/proteinjs/db/commit/1544e284ad712e2606c82606f2501041f34517cb))
+
+
+
+
+
 # [1.2.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.1.1...@proteinjs/db@1.2.0) (2024-07-06)
 
 

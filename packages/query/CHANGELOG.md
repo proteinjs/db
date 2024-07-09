@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.2.2](https://github.com/proteinjs/db/compare/@proteinjs/db-query@1.2.1...@proteinjs/db-query@1.2.2) (2024-07-09)
+
+
+### Bug Fixes
+
+* `QueryBuilder.fromQueryBuilder` needed to not overwrite the new graph and also pass the `currentContextIds` array prop by value ([714bb82](https://github.com/proteinjs/db/commit/714bb82aaf381434226e9a39d891862dc0dbef59))
+
+
+
+
+
 # [1.2.0](https://github.com/proteinjs/db/compare/@proteinjs/db-query@1.1.1...@proteinjs/db-query@1.2.0) (2024-07-06)
 
 
