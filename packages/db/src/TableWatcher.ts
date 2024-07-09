@@ -60,7 +60,7 @@ export const getTableWatcherMap = <R extends Record = any>(): TableWatcherMap<R>
   }
 
   return tableWatcherMap;
-}
+};
 
 export const getTableWatchers = <R extends Record = any>() =>
   SourceRepository.get().objects<TableWatcher<R>>('@proteinjs/db/TableWatcher');
