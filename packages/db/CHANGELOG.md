@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.3.1](https://github.com/proteinjs/db/compare/@proteinjs/db@1.3.0...@proteinjs/db@1.3.1) (2024-07-11)
+
+
+### Bug Fixes
+
+* `ReferenceArrayColumn.serialize` should not perform queries. it should be able to rely on the integrity of `ReferenceArray._ids`. ([dc1aa27](https://github.com/proteinjs/db/commit/dc1aa27883d9c9a8d22f4aa609594d8c485f7d29))
+* fisabled eslint for this line `const referenceArray = this;` ([9c1502b](https://github.com/proteinjs/db/commit/9c1502b9205fae9f3e6563145f5b9268ae478273))
+
+
+
+
+
 # [1.3.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.2.1...@proteinjs/db@1.3.0) (2024-07-09)
 
 
