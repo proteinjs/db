@@ -9,10 +9,10 @@ import {
   ObjectColumn,
   StringColumn,
   UuidColumn,
-} from '../src/Columns';
-import { DbDriver } from '../src/Db';
-import { Record, withRecordColumns } from '../src/Record';
-import { Column, Table } from '../src/Table';
+} from '../../src/Columns';
+import { DbDriver } from '../../src/Db';
+import { Record, withRecordColumns } from '../../src/Record';
+import { Column, Table } from '../../src/Table';
 
 interface User extends Record {
   name: string;

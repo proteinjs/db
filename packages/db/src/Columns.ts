@@ -235,8 +235,7 @@ export class ReferenceArrayColumn<T extends Record> extends ObjectColumn<Referen
       return null;
     }
 
-    const ids = (await fieldValue.get()).map((record) => record.id);
-    return await super.serialize(ids as any);
+    return await super.serialize(fieldValue._ids as any);
   }
 
   async deserialize(serializedFieldValue: string): Promise<ReferenceArray<T> | null> {

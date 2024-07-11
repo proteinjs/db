@@ -1,8 +1,8 @@
 import { QueryBuilder } from '@proteinjs/db-query';
-import { DbDriver, Db } from '../src/Db';
-import { withRecordColumns, Record } from '../src/Record';
-import { BooleanColumn, DateColumn, StringColumn } from '../src/Columns';
-import { Table } from '../src/Table';
+import { DbDriver, Db } from '../../src/Db';
+import { withRecordColumns, Record } from '../../src/Record';
+import { BooleanColumn, DateColumn, StringColumn } from '../../src/Columns';
+import { Table } from '../../src/Table';
 
 export interface Employee extends Record {
   name: string;

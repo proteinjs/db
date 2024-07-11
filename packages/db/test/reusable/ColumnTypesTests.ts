@@ -1,7 +1,7 @@
-import { Db, DbDriver } from '../src/Db';
+import { Db, DbDriver } from '../../src/Db';
 import { Moment } from 'moment';
-import { ReferenceArray } from '../src/reference/ReferenceArray';
-import { Reference } from '../src/reference/Reference';
+import { ReferenceArray } from '../../src/reference/ReferenceArray';
+import { Reference } from '../../src/reference/Reference';
 import {
   IntegerColumn,
   StringColumn,
@@ -17,9 +17,9 @@ import {
   ArrayColumn,
   ReferenceArrayColumn,
   ReferenceColumn,
-} from '../src/Columns';
-import { withRecordColumns, Record } from '../src/Record';
-import { Table } from '../src/Table';
+} from '../../src/Columns';
+import { withRecordColumns, Record } from '../../src/Record';
+import { Table } from '../../src/Table';
 
 export interface TestRecord extends Record {
   integerColumn?: number | null;

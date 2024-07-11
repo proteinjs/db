@@ -21,8 +21,8 @@ export * from './src/services/MigrationRunnerService';
 
 export * from './src/TableWatcher';
 
-export * from './test/TableManagerTests';
-export * from './test/CrudTests';
-export * from './test/ColumnTypesTests';
+export * from './test/reusable/TableManagerTests';
+export * from './test/reusable/CrudTests';
+export * from './test/reusable/ColumnTypesTests';
 
 export * from '@proteinjs/db-query';
