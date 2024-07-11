@@ -41,6 +41,7 @@ export class ReferenceArray<T extends Record> implements CustomSerializableObjec
    * Used to keep `_ids` in sync with `_objects`
    */
   private createProxy(objects: T[]): T[] {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const referenceArray = this;
     const handler: ProxyHandler<T[]> = {
       get(target: T[], property: string | symbol, receiver: any) {
