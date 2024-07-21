@@ -4,7 +4,7 @@ import { Record } from '../Record';
 import { tableByName } from '../Table';
 import { ReferenceArraySerializerId } from '../serializers/ReferenceArraySerializer';
 import { QueryBuilderFactory } from '../QueryBuilderFactory';
-
+import { Logger } from '@proteinjs/util';
 /**
  * The object returned by Db functions for each field of type ReferenceArrayColumn in a record.
  * The reason for this is to make loading of reference records on-demand. For theoretically
@@ -21,78 +21,59 @@ import { QueryBuilderFactory } from '../QueryBuilderFactory';
  */
 export class ReferenceArray<T extends Record> implements CustomSerializableObject {
   public __serializerId = ReferenceArraySerializerId;
-
   constructor(
     public _table: string,
     public _ids: string[],
     public _objects?: T[]
-  ) {
-    if (this._objects) {
-      this._objects = this.createProxy(this._objects);
-    }
-  }
+  ) {}
 
   static fromObjects<T extends Record>(table: string, objects: (T | (Partial<T> & { id: string }))[]) {
+    const logger = new Logger('ReferenceArray fromObjects');
+    logger.info(`mapping object ids`);
     const ids = objects.map((object) => object.id);
     return new ReferenceArray<T>(table, ids, objects as T[]);
   }
 
-  /**
-   * Used to keep `_ids` in sync with `_objects`
-   */
-  private createProxy(objects: T[]): T[] {
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
-    const referenceArray = this;
-    const handler: ProxyHandler<T[]> = {
-      get(target: T[], property: string | symbol, receiver: any) {
-        const value = Reflect.get(target, property, receiver);
-        if (typeof value === 'function' && ['push', 'pop', 'splice'].includes(property as string)) {
-          return function (...args: any[]) {
-            const result = (target as any)[property](...args);
-            referenceArray._ids = target.map((obj: T) => obj.id);
-            return result;
-          };
-        }
-        return value;
-      },
-      set(target: T[], property: string | symbol, value: any, receiver: any) {
-        const result = Reflect.set(target, property, value, receiver);
-        if (typeof property === 'number' || !isNaN(Number(property))) {
-          referenceArray._ids = target.map((obj: T) => obj.id);
-        }
-        return result;
-      },
-      deleteProperty(target: T[], property: string | symbol) {
-        if (typeof property === 'number' || !isNaN(Number(property))) {
-          target.splice(Number(property), 1);
-        }
-        referenceArray._ids = target.map((obj: T) => obj.id);
-        return true;
-      },
-    };
-    return new Proxy(objects, handler);
-  }
-
   async get(): Promise<T[]> {
+    // const logger = new Logger('ReferenceArray get');
+    // logger.info('calling get');
     if (!this._objects) {
       if (this._ids.length < 1) {
-        this._objects = this.createProxy([]);
+        this._objects = [];
       } else {
         const table = tableByName(this._table);
         const db = getDb();
         const qb = new QueryBuilderFactory().getQueryBuilder(table);
         qb.condition({ field: 'id', operator: 'IN', value: this._ids });
         qb.sort([{ field: 'id', byValues: this._ids }]);
-        const objects = await db.query(table, qb);
-        this._objects = this.createProxy(objects);
+        this._objects = await db.query(table, qb);
       }
     }
 
     return this._objects;
   }
 
+  getIfExists(): T[] {
+    // const logger = new Logger('ReferenceArray getIfExists');
+    // logger.info('calling');
+    if (this._objects) {
+      return this._objects;
+    }
+
+    return [];
+  }
+
+  getIfExistsOrUndefined(): T[] | undefined {
+    // const logger = new Logger('ReferenceArray getIfExistsOrUndefined');
+    // logger.info('calling');
+    if (this._objects) {
+      return this._objects;
+    }
+
+    return undefined;
+  }
+
   set(objects: T[]) {
-    this._objects = this.createProxy(objects);
-    this._ids = objects.map((object) => object.id);
+    this._objects = objects;
   }
 }
