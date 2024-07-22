@@ -34,6 +34,10 @@ export class ReferenceArray<T extends Record> implements CustomSerializableObjec
     return new ReferenceArray<T>(table, ids, objects as T[]);
   }
 
+  isLoaded(): boolean {
+    return this._objects !== undefined;
+  }
+
   async get(): Promise<T[]> {
     // const logger = new Logger('ReferenceArray get');
     // logger.info('calling get');
