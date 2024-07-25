@@ -28,8 +28,6 @@ export class ReferenceArray<T extends Record> implements CustomSerializableObjec
   ) {}
 
   static fromObjects<T extends Record>(table: string, objects: (T | (Partial<T> & { id: string }))[]) {
-    const logger = new Logger('ReferenceArray fromObjects');
-    logger.info(`mapping object ids`);
     const ids = objects.map((object) => object.id);
     return new ReferenceArray<T>(table, ids, objects as T[]);
   }
@@ -39,12 +37,12 @@ export class ReferenceArray<T extends Record> implements CustomSerializableObjec
   }
 
   async get(): Promise<T[]> {
-    // const logger = new Logger('ReferenceArray get');
-    // logger.info('calling get');
+    const logger = new Logger('ReferenceArray get');
     if (!this._objects) {
       if (this._ids.length < 1) {
         this._objects = [];
       } else {
+        logger.info(`querying db`);
         const table = tableByName(this._table);
         const db = getDb();
         const qb = new QueryBuilderFactory().getQueryBuilder(table);
@@ -57,24 +55,13 @@ export class ReferenceArray<T extends Record> implements CustomSerializableObjec
     return this._objects;
   }
 
+  // veronica todo: return undefined if it doesnt exist?
   getIfExists(): T[] {
-    // const logger = new Logger('ReferenceArray getIfExists');
-    // logger.info('calling');
     if (this._objects) {
       return this._objects;
     }
 
     return [];
-  }
-
-  getIfExistsOrUndefined(): T[] | undefined {
-    // const logger = new Logger('ReferenceArray getIfExistsOrUndefined');
-    // logger.info('calling');
-    if (this._objects) {
-      return this._objects;
-    }
-
-    return undefined;
   }
 
   set(objects: T[]) {
