@@ -37,12 +37,10 @@ export class ReferenceArray<T extends Record> implements CustomSerializableObjec
   }
 
   async get(): Promise<T[]> {
-    const logger = new Logger('ReferenceArray get');
     if (!this._objects) {
       if (this._ids.length < 1) {
         this._objects = [];
       } else {
-        logger.info(`querying db`);
         const table = tableByName(this._table);
         const db = getDb();
         const qb = new QueryBuilderFactory().getQueryBuilder(table);
