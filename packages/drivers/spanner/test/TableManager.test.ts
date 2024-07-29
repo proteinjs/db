@@ -1,7 +1,7 @@
 import { tableManagerTests } from '@proteinjs/db';
 import { SpannerDriver } from '../src/SpannerDriver';
 import { SpannerColumnTypeFactory } from '../src/SpannerColumnTypeFactory';
-import { getDropTable } from './dropTable';
+import { getDropTestTable } from './dropTestTable';
 
 const spannerDriver = new SpannerDriver({
   projectId: 'proteinjs-test',
@@ -11,7 +11,7 @@ const spannerDriver = new SpannerDriver({
 
 describe(
   'Table Manager Tests',
-  tableManagerTests(spannerDriver, getDropTable(spannerDriver), new SpannerColumnTypeFactory().getType, {
+  tableManagerTests(spannerDriver, getDropTestTable(spannerDriver), new SpannerColumnTypeFactory().getType, {
     alterColumnName: true,
     alterColumnTypes: true,
     alterNullableConstraint: true,

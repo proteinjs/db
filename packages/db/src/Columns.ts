@@ -6,6 +6,7 @@ import { ReferenceArray } from './reference/ReferenceArray';
 import { Db } from './Db';
 import { Reference } from './reference/Reference';
 import { QueryBuilderFactory } from './QueryBuilderFactory';
+import { Logger } from '@proteinjs/util';
 
 export class IntegerColumn implements Column<number, number> {
   constructor(
@@ -231,11 +232,20 @@ export class ReferenceArrayColumn<T extends Record> extends ObjectColumn<Referen
   }
 
   async serialize(fieldValue: ReferenceArray<T> | null | undefined): Promise<string | null> {
+    const logger = new Logger('ReferenceArrayColumn serialize');
     if (fieldValue === undefined || fieldValue == null) {
       return null;
     }
 
-    return await super.serialize(fieldValue._ids as any);
+    let returnIds = fieldValue._ids;
+
+    // ids and objects are not in sync, if objects exists then it is the most up to date data
+    if (fieldValue._objects) {
+      logger.info(`serializing objects`);
+      returnIds = (await fieldValue._objects).map((record) => record.id);
+    }
+
+    return await super.serialize(returnIds as any);
   }
 
   async deserialize(serializedFieldValue: string): Promise<ReferenceArray<T> | null> {

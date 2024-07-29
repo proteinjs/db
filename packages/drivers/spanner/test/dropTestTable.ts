@@ -1,7 +1,11 @@
 import { StatementFactory, Table } from '@proteinjs/db';
 import { SpannerDriver } from '../src/SpannerDriver';
 
-export const getDropTable = (spannerDriver: SpannerDriver) => {
+/**
+ * @internal This function is intended to be used only in tests.
+ * Do not use it in production code.
+ */
+export const getDropTestTable = (spannerDriver: SpannerDriver) => {
   return async (table: Table<any>) => {
     // console.info(`Dropping table: ${table.name}`);
     const tableManager = spannerDriver.getTableManager();

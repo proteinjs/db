@@ -27,16 +27,57 @@ describe('ReferenceArraySerializer', () => {
     });
 
     const deserialized = serializer.deserialize(serialized);
+    expect(deserialized).toBeInstanceOf(ReferenceArray);
     expect(deserialized._table).toEqual('mock_table');
     expect(deserialized._ids).toEqual(['1', '2']);
     expect(deserialized._objects).toEqual(objects);
+  });
 
-    // Test if the proxy is correctly applied
-    if (deserialized._objects) {
-      deserialized._objects.push(createMockRecord('3'));
-      expect(deserialized._ids).toEqual(['1', '2', '3']);
-    } else {
-      fail('deserialized._objects is undefined');
-    }
+  it('should handle empty ReferenceArray', () => {
+    const refArray = new ReferenceArray<MockRecord>('mock_table', []);
+    const serializer = new ReferenceArraySerializer();
+
+    const serialized = serializer.serialize(refArray);
+    expect(serialized).toEqual({
+      _table: 'mock_table',
+      _ids: [],
+      _objects: undefined,
+    });
+
+    const deserialized = serializer.deserialize(serialized);
+    expect(deserialized).toBeInstanceOf(ReferenceArray);
+    expect(deserialized._table).toEqual('mock_table');
+    expect(deserialized._ids).toEqual([]);
+    expect(deserialized._objects).toBeUndefined();
+  });
+
+  it('should handle ReferenceArray with ids but no objects', () => {
+    const refArray = new ReferenceArray<MockRecord>('mock_table', ['1', '2']);
+    const serializer = new ReferenceArraySerializer();
+
+    const serialized = serializer.serialize(refArray);
+    expect(serialized).toEqual({
+      _table: 'mock_table',
+      _ids: ['1', '2'],
+      _objects: undefined,
+    });
+
+    const deserialized = serializer.deserialize(serialized);
+    expect(deserialized).toBeInstanceOf(ReferenceArray);
+    expect(deserialized._table).toEqual('mock_table');
+    expect(deserialized._ids).toEqual(['1', '2']);
+    expect(deserialized._objects).toBeUndefined();
+  });
+
+  it('should maintain separate ids and objects after deserialization', () => {
+    const objects = [createMockRecord('1'), createMockRecord('2')];
+    const refArray = new ReferenceArray<MockRecord>('mock_table', ['3', '4'], objects);
+    const serializer = new ReferenceArraySerializer();
+
+    const serialized = serializer.serialize(refArray);
+    const deserialized = serializer.deserialize(serialized);
+
+    expect(deserialized._ids).toEqual(['3', '4']);
+    expect(deserialized._objects?.map((obj) => obj.id)).toEqual(['1', '2']);
   });
 });

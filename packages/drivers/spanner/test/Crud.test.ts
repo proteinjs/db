@@ -1,6 +1,6 @@
 import { columnTypeTests, crudTests, getColTypeTestTable, getCrudTestTable } from '@proteinjs/db';
 import { SpannerDriver } from '../src/SpannerDriver';
-import { getDropTable } from './dropTable';
+import { getDropTestTable } from './dropTestTable';
 
 const spannerDriverCrudTests = new SpannerDriver(
   {
@@ -11,7 +11,7 @@ const spannerDriverCrudTests = new SpannerDriver(
   getCrudTestTable
 );
 
-describe('CRUD Tests', crudTests(spannerDriverCrudTests, getDropTable(spannerDriverCrudTests)));
+describe('CRUD Tests', crudTests(spannerDriverCrudTests, getDropTestTable(spannerDriverCrudTests)));
 
 const spannerDriverColumnTypesTests = new SpannerDriver(
   {
@@ -24,5 +24,5 @@ const spannerDriverColumnTypesTests = new SpannerDriver(
 
 describe(
   'Column Type Tests',
-  columnTypeTests(spannerDriverColumnTypesTests, getDropTable(spannerDriverColumnTypesTests))
+  columnTypeTests(spannerDriverColumnTypesTests, getDropTestTable(spannerDriverColumnTypesTests))
 );
