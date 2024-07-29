@@ -55,13 +55,20 @@ export class ReferenceArray<T extends Record> implements CustomSerializableObjec
     return this._objects;
   }
 
-  // veronica todo: return undefined if it doesnt exist?
-  getIfExists(): T[] {
+  getIfExists(): T[] | undefined {
     if (this._objects) {
       return this._objects;
     }
 
-    return [];
+    return undefined;
+  }
+
+  getLength(): number {
+    if (this._objects) {
+      return this._objects.length;
+    }
+
+    return this._ids.length;
   }
 
   set(objects: T[]) {
