@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.4.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.3.3...@proteinjs/db@1.4.0) (2024-07-29)
+
+
+### Features
+
+* remove createProxy in ReferenceArray and add additional helper functions ([#9](https://github.com/proteinjs/db/issues/9)) ([bf00e2e](https://github.com/proteinjs/db/commit/bf00e2eeedd5f6d96bc64461bd3c4136a2b3a015))
+
+
+
+
+
 ## [1.3.1](https://github.com/proteinjs/db/compare/@proteinjs/db@1.3.0...@proteinjs/db@1.3.1) (2024-07-11)
 
 

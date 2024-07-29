@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.4.0](https://github.com/brentbahry/db/compare/@proteinjs/db-driver-spanner@1.3.5...@proteinjs/db-driver-spanner@1.4.0) (2024-07-29)
+
+
+### Features
+
+* remove createProxy in ReferenceArray and add additional helper functions ([#9](https://github.com/brentbahry/db/issues/9)) ([bf00e2e](https://github.com/brentbahry/db/commit/bf00e2eeedd5f6d96bc64461bd3c4136a2b3a015))
+
+
+
+
+
 ## [1.3.3](https://github.com/brentbahry/db/compare/@proteinjs/db-driver-spanner@1.3.2...@proteinjs/db-driver-spanner@1.3.3) (2024-07-11)
 
 **Note:** Version bump only for package @proteinjs/db-driver-spanner
