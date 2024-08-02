@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.5.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.4.0...@proteinjs/db@1.5.0) (2024-08-02)
+
+
+### Features
+
+* added `DbInitStartupTask` to init the db if the consuming app is using `@proteinjs/server` ([5d076a1](https://github.com/proteinjs/db/commit/5d076a1574f9dd6bd3c8111efb20d3ce67475ef9))
+
+
+
+
+
 # [1.4.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.3.3...@proteinjs/db@1.4.0) (2024-07-29)
 
 
