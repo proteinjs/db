@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.5.2](https://github.com/proteinjs/db/compare/@proteinjs/db@1.5.1...@proteinjs/db@1.5.2) (2024-08-05)
+
+
+### Bug Fixes
+
+* `RecordIterator` now correctly calculates `pagination.end`. i don't think it was ever reading past the first page since the first page of `results.length` would always be less than `pageSize`.. ([2a23c04](https://github.com/proteinjs/db/commit/2a23c0488f58588a7581413457b40e9a347500e5))
+
+
+
+
+
 # [1.5.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.4.0...@proteinjs/db@1.5.0) (2024-08-02)
 
 
