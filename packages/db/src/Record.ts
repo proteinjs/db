@@ -1,3 +1,4 @@
+import { Logger } from '@proteinjs/util';
 import { DateTimeColumn, UuidColumn } from './Columns';
 import { Column, Table, Columns } from './Table';
 import { moment } from './opt/moment';
@@ -19,6 +20,13 @@ const recordColumns: Columns<Record> = {
   }),
 };
 
+class MissingFieldError extends Error {
+  constructor(tableName: string, fieldName: string) {
+    super(`Table ${tableName} is missing field: ${fieldName}`);
+    this.name = 'MissingFieldError';
+  }
+}
+
 /**
  * Wrapper function to add default Record columns to your table's columns (should always use).
  *
@@ -36,6 +44,7 @@ export function withRecordColumns<T extends Record>(
 export type SerializedRecord = { [columnName: string]: any };
 
 export class RecordSerializer<T extends Record> {
+  private logger: Logger = new Logger(this.constructor.name);
   private table: Table<T>;
 
   constructor(table: Table<T>) {
@@ -45,6 +54,7 @@ export class RecordSerializer<T extends Record> {
   async serialize(record: any): Promise<SerializedRecord> {
     const serialized: any = {};
     const fieldSerializer = new FieldSerializer(this.table);
+    const omittedFields: string[] = [];
     for (const fieldPropertyName in record) {
       if (typeof record[fieldPropertyName] === 'function') {
         continue;
@@ -54,20 +64,39 @@ export class RecordSerializer<T extends Record> {
       if (fieldValue === undefined) {
         throw new Error(`Must not pass in undefined. Undefined was found for field: ${fieldPropertyName}`);
       }
-      const { columnName, serializedFieldValue } = await fieldSerializer.serialize(fieldPropertyName, fieldValue);
-      serialized[columnName] = serializedFieldValue;
+      try {
+        const { columnName, serializedFieldValue } = await fieldSerializer.serialize(fieldPropertyName, fieldValue);
+        serialized[columnName] = serializedFieldValue;
+      } catch (MissingFieldError) {
+        omittedFields.push(fieldPropertyName);
+      }
     }
+
+    if (omittedFields.length > 0) {
+      this.logger.info(`Fields were omitted during serialization: ${omittedFields.join(', ')}`);
+    }
+
     return serialized;
   }
 
   async deserialize(serializedRecord: SerializedRecord): Promise<T> {
     const deserialized: any = {};
     const fieldSerializer = new FieldSerializer(this.table);
+    const omittedFields: string[] = [];
     for (const columnName in serializedRecord) {
       const serializedFieldValue = serializedRecord[columnName];
-      const { fieldPropertyName, fieldValue } = await fieldSerializer.deserialize(columnName, serializedFieldValue);
-      deserialized[fieldPropertyName] = fieldValue;
+      try {
+        const { fieldPropertyName, fieldValue } = await fieldSerializer.deserialize(columnName, serializedFieldValue);
+        deserialized[fieldPropertyName] = fieldValue;
+      } catch (MissingFieldError) {
+        omittedFields.push(columnName);
+      }
     }
+
+    if (omittedFields.length > 0) {
+      this.logger.info(`Fields were omitted during deserialization: ${omittedFields.join(', ')}`);
+    }
+
     return deserialized;
   }
 }
@@ -79,9 +108,7 @@ export class FieldSerializer<T extends Record> {
     const columns: { [prop: string]: Column<any, any> } = this.table.columns;
     const column = columns[fieldPropertyName];
     if (!column) {
-      throw new Error(
-        `[FieldSerializer.serialize] (${this.table.name}) no column matches fieldPropertyName: ${fieldPropertyName}`
-      );
+      throw new MissingFieldError(this.table.name, fieldPropertyName);
     }
 
     let serializedFieldValue = fieldValue;
@@ -109,7 +136,7 @@ export class FieldSerializer<T extends Record> {
 
     if (!column) {
       // this is the case where a column exists in the db that is no longer defined in Table.columns
-      return { fieldPropertyName, fieldValue: undefined };
+      throw new MissingFieldError(this.table.name, fieldPropertyName);
     }
 
     let fieldValue = serializedFieldValue;
