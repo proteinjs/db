@@ -232,7 +232,6 @@ export class ReferenceArrayColumn<T extends Record> extends ObjectColumn<Referen
   }
 
   async serialize(fieldValue: ReferenceArray<T> | null | undefined): Promise<string | null> {
-    const logger = new Logger('ReferenceArrayColumn serialize');
     if (fieldValue === undefined || fieldValue == null) {
       return null;
     }
@@ -241,8 +240,7 @@ export class ReferenceArrayColumn<T extends Record> extends ObjectColumn<Referen
 
     // ids and objects are not in sync, if objects exists then it is the most up to date data
     if (fieldValue._objects) {
-      logger.info(`serializing objects`);
-      returnIds = (await fieldValue._objects).map((record) => record.id);
+      returnIds = fieldValue._objects.map((record) => record.id);
     }
 
     return await super.serialize(returnIds as any);
