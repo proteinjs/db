@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/db",
-  "version": "1.5.4",
+  "version": "1.5.5",
   "description": "Db",
   "publishConfig": {
     "access": "public"
@@ -22,7 +22,7 @@
     "test": "jest"
   },
   "dependencies": {
-    "@proteinjs/db-query": "^1.2.5",
+    "@proteinjs/db-query": "^1.2.6",
     "@proteinjs/reflection": "1.1.8",
     "@proteinjs/serializer": "1.0.14",
     "@proteinjs/server-api": "1.4.1",
