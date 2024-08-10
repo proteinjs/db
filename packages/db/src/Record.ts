@@ -73,7 +73,7 @@ export class RecordSerializer<T extends Record> {
     }
 
     if (omittedFields.length > 0) {
-      this.logger.info(`Fields were omitted during serialization: ${omittedFields.join(', ')}`);
+      this.logger.debug(`Fields were omitted during serialization: ${omittedFields.join(', ')}`);
     }
 
     return serialized;
@@ -94,7 +94,7 @@ export class RecordSerializer<T extends Record> {
     }
 
     if (omittedFields.length > 0) {
-      this.logger.info(`Fields were omitted during deserialization: ${omittedFields.join(', ')}`);
+      this.logger.debug(`Fields were omitted during deserialization: ${omittedFields.join(', ')}`);
     }
 
     return deserialized;
