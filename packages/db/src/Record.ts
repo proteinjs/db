@@ -73,6 +73,7 @@ export class RecordSerializer<T extends Record> {
     }
 
     if (omittedFields.length > 0) {
+      // could mean the developer is passing in an object they don't expect
       this.logger.warn(`Fields were omitted during serialization: ${omittedFields.join(', ')}`);
     }
 
@@ -94,6 +95,7 @@ export class RecordSerializer<T extends Record> {
     }
 
     if (omittedFields.length > 0) {
+      // expected when passing a base table into the query api
       this.logger.debug(`Fields were omitted during deserialization: ${omittedFields.join(', ')}`);
     }
 
