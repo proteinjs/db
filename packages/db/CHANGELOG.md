@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.5.6](https://github.com/proteinjs/db/compare/@proteinjs/db@1.5.5...@proteinjs/db@1.5.6) (2024-08-10)
+
+
+### Bug Fixes
+
+* `RecordSerializer` now only logs omitted fields in debug mode. it's expected behavior when tables are extended and logs a lot. ([8462005](https://github.com/proteinjs/db/commit/8462005bcf459ef7e8ec2d4fa687a41798db17a4))
+
+
+
+
+
 ## [1.5.5](https://github.com/proteinjs/db/compare/@proteinjs/db@1.5.4...@proteinjs/db@1.5.5) (2024-08-07)
 
 
