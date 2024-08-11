@@ -52,63 +52,60 @@ jobs:
             echo "NPM token validation failed. Error details:"
             echo "$npm_output"
             exit 1
-          else
-            echo "NPM token validation succeeded. Details:"
-            echo "$npm_output"
           fi
       
-      # - name: Install root package
-      #   run: |
-      #     npm i
+      - name: Install root package
+        run: |
+          npm i
       
-      # - name: Build packages
-      #   run: |
-      #     npm run build-workspace
+      - name: Build packages
+        run: |
+          npm run build-workspace
 
-      # - name: 'Set up Cloud SDK'
-      #   uses: 'google-github-actions/setup-gcloud@v2'
-      #   with:
-      #     version: '>= 363.0.0'
+      - name: 'Set up Cloud SDK'
+        uses: 'google-github-actions/setup-gcloud@v2'
+        with:
+          version: '>= 363.0.0'
 
-      # - name: Configure gcloud for Spanner Emulator
-      #   run: |
-      #     gcloud config configurations create emulator || gcloud config configurations activate emulator
-      #     gcloud config set auth/disable_credentials true
-      #     gcloud config set project proteinjs-test
-      #     gcloud config set api_endpoint_overrides/spanner http://localhost:9020/
+      - name: Configure gcloud for Spanner Emulator
+        run: |
+          gcloud config configurations create emulator || gcloud config configurations activate emulator
+          gcloud config set auth/disable_credentials true
+          gcloud config set project proteinjs-test
+          gcloud config set api_endpoint_overrides/spanner http://localhost:9020/
 
-      # - name: Create Spanner Instance
-      #   run: |
-      #     gcloud spanner instances create proteinjs-test --config=emulator-config --description="Protein JS Test Instance" --nodes=1
+      - name: Create Spanner Instance
+        run: |
+          gcloud spanner instances create proteinjs-test --config=emulator-config --description="Protein JS Test Instance" --nodes=1
 
-      # - name: Create Spanner Database
-      #   run: |
-      #     gcloud spanner databases create test --instance=proteinjs-test
+      - name: Create Spanner Database
+        run: |
+          gcloud spanner databases create test --instance=proteinjs-test
 
-      # - name: Test packages
-      #   env:
-      #     SPANNER_EMULATOR_HOST: localhost:9020
-      #     MYSQL_HOST: 127.0.0.1
-      #     MYSQL_USER: root
-      #     MYSQL_PASSWORD: ""
-      #     MYSQL_DATABASE: test
-      #   run: |
-      #     npm run test-workspace
+      - name: Test packages
+        env:
+          SPANNER_EMULATOR_HOST: localhost:9020
+          MYSQL_HOST: 127.0.0.1
+          MYSQL_USER: root
+          MYSQL_PASSWORD: ""
+          MYSQL_DATABASE: test
+        run: |
+          npm run test-workspace
 
-      # - name: Commit package-locks
-      #   run: |
-      #     git add .
-      #     if git diff --staged --exit-code; then
-      #       echo "No changes to commit."
-      #     else
-      #       git commit -m "chore(version) update package-locks [skip ci]"
-      #       git fetch origin main
-      #       git rebase origin/main
-      #       git push origin main
-      #     fi
+      - name: Commit package-locks
+        run: |
+          git add .
+          if git diff --staged --exit-code; then
+            echo "No changes to commit."
+          else
+            git commit -m "chore(version) update package-locks [skip ci]"
+            git fetch origin main
+            git rebase origin/main
+            git push origin main
+          fi
 
-      # - name: Version and Publish
-      #   run: |
-      #     npx lerna publish --yes --no-private
-      #   env:
-      #     NPM_TOKEN: ${{secrets.NPM_TOKEN}}
+      - name: Version and Publish
+        run: |
+          npx lerna publish --yes --no-private
+        env:
+          NPM_TOKEN: ${{secrets.NPM_TOKEN}}
