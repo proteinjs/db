@@ -48,10 +48,13 @@ jobs:
 
       - name: Check NPM token validity
         run: |
-          if ! npm_output=$(npm whoami 2>&1); then
+          if ! npm_output=$(npm org ls proteinjs --json 2>&1); then
             echo "NPM token validation failed. Error details:"
             echo "$npm_output"
             exit 1
+          else
+            echo "NPM token validation succeeded. Details:"
+            echo "$npm_output"
           fi
       
       - name: Install root package
