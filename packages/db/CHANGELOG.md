@@ -3,20 +3,6 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
-## [1.5.6](https://github.com/proteinjs/db/compare/@proteinjs/db@1.5.5...@proteinjs/db@1.5.6) (2024-08-11)
-
-
-### Bug Fixes
-
-* `RecordSerializer` now only logs omitted fields in debug mode. it's expected behavior when tables are extended and logs a lot. ([8462005](https://github.com/proteinjs/db/commit/8462005bcf459ef7e8ec2d4fa687a41798db17a4))
-* reverted package versions to before failed publishes ([f63518c](https://github.com/proteinjs/db/commit/f63518cf27b74b53571254621dfe9df63aa94871))
-* should however warn when fields are skipped when serializing a record going into the db. the developer may be sending in a different object than they think ([7c52a76](https://github.com/proteinjs/db/commit/7c52a76980dc68f1ef1260c9824492bf2bd16c57))
-* trigger a publish after npm access token refresh ([c19cdb0](https://github.com/proteinjs/db/commit/c19cdb0f0a1bdc2f5aa5f31c8bb49e140beb5a21))
-
-
-
-
-
 ## [1.5.6](https://github.com/proteinjs/db/compare/@proteinjs/db@1.5.5...@proteinjs/db@1.5.6) (2024-08-10)
 
 
