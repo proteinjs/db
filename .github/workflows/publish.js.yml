@@ -48,7 +48,7 @@ jobs:
 
       - name: Check NPM token validity
         run: |
-          if ! npm_output=$(npm token list 2>&1); then
+          if ! npm_output=$(npm whoami 2>&1); then
             echo "NPM token validation failed. Error details:"
             echo "$npm_output"
             exit 1
