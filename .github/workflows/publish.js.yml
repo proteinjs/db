@@ -39,6 +39,19 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20.3.1'
+
+      - name: Setup NPM authentication
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > .npmrc
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Check NPM token validity
+        run: |
+          if ! npm token list >/dev/null 2>&1; then
+            echo "NPM token is invalid or has expired"
+            exit 1
+          fi
       
       - name: Install root package
         run: |
@@ -89,12 +102,6 @@ jobs:
             git rebase origin/main
             git push origin main
           fi
-
-      - name: Authenticate with npm registry
-        run: |
-          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" >> .npmrc
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Version and Publish
         run: |
