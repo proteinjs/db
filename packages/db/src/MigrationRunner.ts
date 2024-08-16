@@ -5,13 +5,13 @@ import { SourceRecordRepo } from './source/SourceRecordRepo';
 import { MigrationRunnerService, getMigrationRunnerService } from './services/MigrationRunnerService';
 import { Migration, MigrationTable } from './tables/MigrationTable';
 import { Service } from '@proteinjs/service';
-import { Logger } from '@proteinjs/util';
+import { Logger } from '@proteinjs/logger';
 
 export const getMigrationRunner = () =>
   typeof self === 'undefined' ? new MigrationRunner() : (getMigrationRunnerService() as MigrationRunner);
 
 export class MigrationRunner implements MigrationRunnerService {
-  private logger = new Logger(this.constructor.name);
+  private logger = new Logger({ name: this.constructor.name });
   public serviceMetadata: Service['serviceMetadata'] = {
     doNotAwait: true,
   };
@@ -27,7 +27,7 @@ export class MigrationRunner implements MigrationRunnerService {
     migration.status = 'running';
     migration.startTime = moment();
     await db.update(migrationTable, migration);
-    this.logger.info(`Running migration (${migration.id}) ${migration.description}`);
+    this.logger.info({ message: `Running migration (${migration.id}) ${migration.description}` });
     try {
       migration.output = await migration.run();
       migration.status = 'success';
@@ -40,9 +40,9 @@ export class MigrationRunner implements MigrationRunnerService {
     }
     migration.duration = this.duration(migration.startTime, migration.endTime);
     await db.update(migrationTable, migration);
-    this.logger.info(
-      `[${migration.status}] (${migration.duration}) Finished running migration (${migration.id}) ${migration.description}`
-    );
+    this.logger.info({
+      message: `[${migration.status}] (${migration.duration}) Finished running migration (${migration.id}) ${migration.description}`,
+    });
   }
 
   private duration(start: Moment, end: Moment): string {

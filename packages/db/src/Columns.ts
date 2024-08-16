@@ -6,7 +6,6 @@ import { ReferenceArray } from './reference/ReferenceArray';
 import { Db } from './Db';
 import { Reference } from './reference/Reference';
 import { QueryBuilderFactory } from './QueryBuilderFactory';
-import { Logger } from '@proteinjs/util';
 
 export class IntegerColumn implements Column<number, number> {
   constructor(

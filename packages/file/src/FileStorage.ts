@@ -4,7 +4,7 @@ import { tables } from './tables/tables';
 import { FileStorageService, getFileStorageService } from './services/FileStorageService';
 import { FileStorageDriver } from './FileStorageDriver';
 import { Loadable, SourceRepository } from '@proteinjs/reflection';
-import { Logger } from '@proteinjs/util';
+import { Logger } from '@proteinjs/logger';
 import { DbFileStorageDriver } from './DbFileStorageDriver';
 
 /**
@@ -29,7 +29,7 @@ export interface DefaultFileStorageDriverFactory extends Loadable {
 export class FileStorage implements FileStorageService {
   private static defaultDriver: FileStorageDriver;
   private driver: FileStorageDriver;
-  private logger: Logger = new Logger(this.constructor.name);
+  private logger: Logger = new Logger({ name: this.constructor.name });
 
   public serviceMetadata = {
     auth: {
@@ -49,7 +49,7 @@ export class FileStorage implements FileStorageService {
       if (defaultDriverFactory) {
         FileStorage.defaultDriver = defaultDriverFactory.getDriver();
       } else {
-        this.logger.info(`Defaulting to DbFileStorageDriver since no FileStorageDriver was provided`);
+        this.logger.info({ message: `Defaulting to DbFileStorageDriver since no FileStorageDriver was provided` });
         FileStorage.defaultDriver = new DbFileStorageDriver();
       }
     }

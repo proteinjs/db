@@ -1,4 +1,4 @@
-import { Logger } from '@proteinjs/util';
+import { Logger } from '@proteinjs/logger';
 import { QueryBuilder } from '@proteinjs/db-query';
 import { getSourceRecordLoaders, SourceRecord, getSourceRecordTables } from './SourceRecord';
 import { Table } from '../Table';
@@ -10,7 +10,7 @@ type SourceRecordsMap = {
 };
 
 export class SourceRecordLoader {
-  private logger = new Logger(this.constructor.name);
+  private logger = new Logger({ name: this.constructor.name });
 
   async load() {
     const sourceRecordsMap = await this.getSourceRecordsMap();
@@ -45,9 +45,14 @@ export class SourceRecordLoader {
         new SourceRecordRepo().loadSourceRecord(table.name, sourceRecord as any);
       }
 
-      this.logger.info(
-        `(${table.name}) Loaded ${sourceRecords.length} ${sourceRecords.length == 1 ? 'record' : 'records'} from source (inserts: ${insertCount}, updates: ${updateCount}, deletes: ${deleteCount})`
-      );
+      this.logger.info({
+        message: `(${table.name}) Loaded ${sourceRecords.length} ${sourceRecords.length == 1 ? 'record' : 'records'} from source`,
+        obj: {
+          inserts: insertCount,
+          updates: updateCount,
+          deletes: deleteCount,
+        },
+      });
     }
   }
 

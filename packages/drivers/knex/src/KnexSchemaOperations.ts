@@ -1,11 +1,11 @@
 import * as knex from 'knex';
-import { Logger } from '@proteinjs/util';
+import { Logger } from '@proteinjs/logger';
 import { Column, Table, SchemaOperations, TableChanges } from '@proteinjs/db';
 import { KnexDriver } from './KnexDriver';
 import { getColumnFactory } from './getColumnFactory';
 
 export class KnexSchemaOperations implements SchemaOperations {
-  private logger = new Logger(this.constructor.name);
+  private logger = new Logger({ name: this.constructor.name });
 
   constructor(private knexDriver: KnexDriver) {}
 
@@ -24,11 +24,11 @@ export class KnexSchemaOperations implements SchemaOperations {
         for (const columnPropertyName in table.columns) {
           const column = table.columns[columnPropertyName];
           this.createColumn(column, table, tableBuilder);
-          this.logger.info(`[${table.name}] Creating column: ${column.name}`);
+          this.logger.info({ message: `[${table.name}] Creating column: ${column.name}` });
         }
 
         tableBuilder.primary(['id']);
-        this.logger.info(`[${table.name}] Creating primary key: id`);
+        this.logger.info({ message: `[${table.name}] Creating primary key: id` });
 
         if (table.indexes) {
           for (const index of table.indexes) {
@@ -36,7 +36,7 @@ export class KnexSchemaOperations implements SchemaOperations {
               (columnPropertyName) => table.columns[columnPropertyName as string].name
             );
             tableBuilder.index(columnNames, index.name);
-            this.logger.info(`[${table.name}] Creating index: ${columnNames}`);
+            this.logger.info({ message: `[${table.name}] Creating index: ${columnNames}` });
           }
         }
       })
@@ -64,28 +64,30 @@ export class KnexSchemaOperations implements SchemaOperations {
       .table(table.name, (tableBuilder: knex.TableBuilder) => {
         for (const columnPropertyName of tableChanges.columnsToCreate) {
           const column = table.columns[columnPropertyName];
-          this.logger.info(`[${table.name}] Creating column: ${column.name}`);
+          this.logger.info({ message: `[${table.name}] Creating column: ${column.name}` });
           this.createColumn(column, table, tableBuilder, tableChanges);
         }
 
         for (const column of tableChanges.columnsWithUniqueConstraintsToDrop) {
           tableBuilder.dropUnique([column]);
-          this.logger.info(`[${table.name}.${column}] Dropping unique constraint`);
+          this.logger.info({ message: `[${table.name}.${column}] Dropping unique constraint` });
         }
 
         for (const column of tableChanges.columnsWithForeignKeysToDrop) {
           tableBuilder.dropForeign([column]);
-          this.logger.info(`[${table.name}.${column}] Dropping foreign key`);
+          this.logger.info({ message: `[${table.name}.${column}] Dropping foreign key` });
         }
 
         for (const index of tableChanges.indexesToDrop) {
           tableBuilder.dropIndex(index.columns);
-          this.logger.info(`[${table.name}] Dropping index: ${JSON.stringify(index)}`);
+          this.logger.info({ message: `[${table.name}] Dropping index: ${JSON.stringify(index)}` });
         }
 
         for (const columnPropertyName of tableChanges.columnsToAlter) {
           const column = table.columns[columnPropertyName];
-          this.logger.info(`[${table.name}.${column.name}] Altering column type to: ${column.constructor.name}`);
+          this.logger.info({
+            message: `[${table.name}.${column.name}] Altering column type to: ${column.constructor.name}`,
+          });
           this.createColumn(column, table, tableBuilder, tableChanges).alter();
         }
 
@@ -96,12 +98,12 @@ export class KnexSchemaOperations implements SchemaOperations {
           }
 
           tableBuilder.renameColumn(column.oldName, column.name);
-          this.logger.info(`[${table.name}] Renaming column: ${column.oldName} -> ${column.name}`);
+          this.logger.info({ message: `[${table.name}] Renaming column: ${column.oldName} -> ${column.name}` });
         }
 
         for (const index of tableChanges.indexesToCreate) {
           tableBuilder.index(index.columns);
-          this.logger.info(`[${table.name}] Creating index: ${JSON.stringify(index)}`);
+          this.logger.info({ message: `[${table.name}] Creating index:`, obj: { index } });
         }
       })
       .catch((reason: any) => {
@@ -127,7 +129,7 @@ export class KnexSchemaOperations implements SchemaOperations {
       (!tableChanges || tableChanges.columnsWithUniqueConstraintsToCreate.includes(column.name))
     ) {
       columnBuilder.unique(column.options.unique.indexName);
-      this.logger.info(`[${table.name}.${column.name}] Adding unique constraint`);
+      this.logger.info({ message: `[${table.name}.${column.name}] Adding unique constraint` });
     }
 
     if (
@@ -135,7 +137,9 @@ export class KnexSchemaOperations implements SchemaOperations {
       (!tableChanges || tableChanges.columnsWithForeignKeysToCreate.includes(column.name))
     ) {
       columnBuilder.references('id').inTable(`${this.knexDriver.getDbName()}.${column.options.references.table}`);
-      this.logger.info(`[${table.name}.${column.name}] Adding foreign key -> ${column.options.references.table}.id`);
+      this.logger.info({
+        message: `[${table.name}.${column.name}] Adding foreign key -> ${column.options.references.table}.id`,
+      });
     }
 
     if (typeof column.options?.nullable !== 'undefined') {
@@ -145,7 +149,9 @@ export class KnexSchemaOperations implements SchemaOperations {
         columnBuilder.notNullable();
       }
 
-      this.logger.info(`[${table.name}.${column.name}] Adding constraint nullable: ${column.options?.nullable}`);
+      this.logger.info({
+        message: `[${table.name}.${column.name}] Adding constraint nullable: ${column.options?.nullable}`,
+      });
     }
 
     return columnBuilder;

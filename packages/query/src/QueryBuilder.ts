@@ -1,4 +1,5 @@
-import { Logger, Graph, isInstanceOf, graphSerializer } from '@proteinjs/util';
+import { Logger } from '@proteinjs/logger';
+import { Graph, isInstanceOf, graphSerializer } from '@proteinjs/util';
 import { Statement, StatementConfig, StatementParamManager } from './StatementFactory';
 
 export interface Select<T> {
@@ -122,14 +123,17 @@ export class QueryBuilder<T = any> {
    * @returns {string} The column type specific to the database driver, or `typeof value` if the column type was not found.
    */
   private getDriverColumnType = (config: StatementConfig, columnPropertyName: string, value: any): string => {
-    const logger = new Logger('QueryBuilder getDriverColumnType');
+    const logger = new Logger({ name: 'QueryBuilder.getDriverColumnType' });
     try {
       const columnName = config.resolveFieldName
         ? config.resolveFieldName(this.tableName, columnPropertyName)
         : columnPropertyName;
       return config.getDriverColumnType ? config.getDriverColumnType(this.tableName, columnName) : typeof value;
     } catch (error: any) {
-      logger.debug(`Failed to get driver's column type for ${this.tableName}.${columnPropertyName}: ${error.message}`);
+      logger.debug({
+        message: `Failed to get driver's column type for ${this.tableName}.${columnPropertyName}`,
+        obj: { error },
+      });
       return typeof value;
     }
   };
@@ -171,16 +175,19 @@ export class QueryBuilder<T = any> {
     elements: Array<Condition<T> | LogicalGroup<T> | QueryBuilder<T>>,
     parentId?: string
   ): this {
-    const logger = new Logger(`${this.constructor.name}.logicalGroup`, this.debugLogicalGrouping ? 'debug' : 'info');
+    const logger = new Logger({
+      name: `${this.constructor.name}.logicalGroup`,
+      logLevel: this.debugLogicalGrouping ? 'debug' : 'info',
+    });
     const groupId = this.generateId();
     this.graph.setNode(groupId, { type: 'LOGICAL', operator });
-    logger.debug(`Created node: ${operator} (${groupId})`);
+    logger.debug({ message: `Created node: ${operator} (${groupId})` });
     if (parentId) {
       this.graph.setEdge(parentId, groupId);
-      logger.debug(`Set edge: ${parentId} -> ${groupId}`);
+      logger.debug({ message: `Set edge: ${parentId} -> ${groupId}` });
     } else {
       this.graph.setEdge(this.rootId, groupId);
-      logger.debug(`Set edge: ${this.rootId} -> ${groupId}`);
+      logger.debug({ message: `Set edge: ${this.rootId} -> ${groupId}` });
     }
 
     const childIds: string[] = [];
@@ -203,10 +210,10 @@ export class QueryBuilder<T = any> {
     // Process linking child QueryBuilder nodes
     for (const childId of childIds) {
       this.graph.setEdge(groupId, childId);
-      logger.debug(`Set edge: ${groupId} -> ${childId}`);
+      logger.debug({ message: `Set edge: ${groupId} -> ${childId}` });
       if (this.graph.hasEdge(this.rootId, childId)) {
         this.graph.removeEdge(this.rootId, childId);
-        logger.debug(`Removed edge: ${this.rootId} -> ${childId}`);
+        logger.debug({ message: `Removed edge: ${this.rootId} -> ${childId}` });
       }
     }
 
@@ -245,16 +252,22 @@ export class QueryBuilder<T = any> {
 
     resolvedCondition = Object.assign(resolvedCondition, { caseSensitive }) as InternalCondition<T>;
 
-    const logger = new Logger(`${this.constructor.name}.condition`, this.debugLogicalGrouping ? 'debug' : 'info');
+    const logger = new Logger({
+      name: `${this.constructor.name}.condition`,
+      logLevel: this.debugLogicalGrouping ? 'debug' : 'info',
+    });
     const conditionId = this.generateId();
     this.graph.setNode(conditionId, { ...resolvedCondition, type: 'CONDITION' });
-    logger.debug(`Created node: CONDITION(${JSON.stringify(resolvedCondition)}) (${conditionId})`);
+    logger.debug({
+      message: `Created condition node`,
+      obj: { condition: resolvedCondition, conditionId },
+    });
     if (parentId) {
       this.graph.setEdge(parentId, conditionId);
-      logger.debug(`Set edge: ${parentId} -> ${conditionId}`);
+      logger.debug({ message: `Set edge: ${parentId} -> ${conditionId}` });
     } else {
       this.graph.setEdge(this.rootId, conditionId);
-      logger.debug(`Set edge: ${this.rootId} -> ${conditionId}`);
+      logger.debug({ message: `Set edge: ${this.rootId} -> ${conditionId}` });
       this.currentContextIds.push(conditionId);
     }
     return this;

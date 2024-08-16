@@ -22,6 +22,7 @@
     "test": "jest"
   },
   "dependencies": {
+    "@proteinjs/logger": "1.0.4",
     "@proteinjs/serializer": "1.0.14",
     "@proteinjs/util": "1.4.0"
   },

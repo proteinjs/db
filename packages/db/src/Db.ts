@@ -3,7 +3,7 @@ import { Service } from '@proteinjs/service';
 import { Loadable, SourceRepository } from '@proteinjs/reflection';
 import { Column, Table, getColumnPropertyName, tableByName } from './Table';
 import { Record, RecordSerializer, SerializedRecord } from './Record';
-import { Logger } from '@proteinjs/util';
+import { Logger } from '@proteinjs/logger';
 import { SourceRecordLoader } from './source/SourceRecordLoader';
 import { ParameterizationConfig, QueryBuilder, Statement, StatementFactory } from '@proteinjs/db-query';
 import { QueryBuilderFactory } from './QueryBuilderFactory';
@@ -45,7 +45,7 @@ export interface DbDriver {
 export class Db<R extends Record = Record> implements DbService<R> {
   private static defaultDbDriver: DbDriver;
   private dbDriver: DbDriver;
-  private logger = new Logger(this.constructor.name);
+  private logger = new Logger({ name: this.constructor.name });
   private statementConfigFactory: StatementConfigFactory;
   private auth = new TableAuth();
   private tableWatcherRunner = new TableWatcherRunner<R>();
@@ -208,9 +208,15 @@ export class Db<R extends Record = Record> implements DbService<R> {
     for (const cascadeDeleteReference of table.cascadeDeleteReferences()) {
       const referenceTable = tableByName(cascadeDeleteReference.table);
       const referenceColumnPropertyName = getColumnPropertyName(referenceTable, cascadeDeleteReference.referenceColumn);
-      this.logger.info(
-        `Executing cascade delete for table: ${table.name}, referenceTable: ${referenceTable.name}, referenceColumnPropertyName: ${referenceColumnPropertyName}, deletedRecordIds: ${JSON.stringify(deletedRecordIds)}`
-      );
+      this.logger.info({
+        message: `Executing cascade delete for table: ${table.name}`,
+        obj: {
+          table: table.name,
+          referenceTable: referenceTable.name,
+          referenceColumnPropertyName,
+          deletedRecordIds,
+        },
+      });
       const cascadeDeleteQb = new QueryBuilderFactory().getQueryBuilder(referenceTable);
       cascadeDeleteQb.condition({
         field: referenceColumnPropertyName as string,
@@ -218,7 +224,9 @@ export class Db<R extends Record = Record> implements DbService<R> {
         value: deletedRecordIds,
       });
       const deleteCount = await this.delete(referenceTable, cascadeDeleteQb);
-      this.logger.info(`Cascade deleted ${deleteCount} record${deleteCount == 1 ? '' : 's'}`);
+      this.logger.info({
+        message: `Cascade deleted ${deleteCount} record${deleteCount == 1 ? '' : 's'}`,
+      });
     }
   }
 

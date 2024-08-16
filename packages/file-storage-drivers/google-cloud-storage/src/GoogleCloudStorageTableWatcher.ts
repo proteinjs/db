@@ -1,14 +1,14 @@
 import { Storage } from '@google-cloud/storage';
 import { QueryBuilder, Table, TableWatcher } from '@proteinjs/db';
 import { File, FileTable } from '@proteinjs/db-file';
-import { Logger } from '@proteinjs/util';
+import { Logger } from '@proteinjs/logger';
 import {
   GoogleCloudStorageConfig,
   getDefaultGoogleCloudStorageConfigFactory,
 } from './DefaultGoogleCloudStorageConfigFactory';
 
 export class GoogleCloudStorageTableWatcher implements TableWatcher<File> {
-  private logger = new Logger(this.constructor.name);
+  private logger = new Logger({ name: this.constructor.name });
   private storage: Storage;
   private bucketName: string;
 
@@ -44,6 +44,9 @@ export class GoogleCloudStorageTableWatcher implements TableWatcher<File> {
       await file.delete();
     }
 
-    this.logger.info(`Deleted the following files from Google Cloud Storage: ${JSON.stringify(fileIdsToDelete)}`);
+    this.logger.info({
+      message: `Deleted the following files from Google Cloud Storage`,
+      obj: { deletedFileIds: fileIdsToDelete },
+    });
   }
 }

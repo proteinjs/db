@@ -8,7 +8,7 @@ import {
   tableByName,
 } from '@proteinjs/db';
 import { SpannerConfig } from './SpannerConfig';
-import { Logger } from '@proteinjs/util';
+import { Logger } from '@proteinjs/logger';
 import { Statement } from '@proteinjs/db-query';
 import { SpannerSchemaOperations } from './SpannerSchemaOperations';
 import { SpannerColumnTypeFactory } from './SpannerColumnTypeFactory';
@@ -18,7 +18,7 @@ export class SpannerDriver implements DbDriver {
   private static SPANNER: Spanner;
   private static SPANNER_INSTANCE: Instance;
   private static SPANNER_DB: Database;
-  private logger = new Logger(this.constructor.name);
+  private logger = new Logger({ name: this.constructor.name });
   private config: SpannerConfig;
   public getTable: ((name: string) => Table<any>) | undefined;
 
@@ -132,14 +132,14 @@ export class SpannerDriver implements DbDriver {
       handleCaseSensitivity: this.handleCaseSensitivity.bind(this),
     });
     try {
-      this.logger.debug(`Executing query: ${sql}, with params: ${JSON.stringify(namedParams)}`);
+      this.logger.debug({ message: `Executing query`, obj: { sql, params: namedParams } });
       const [rows] = await this.getSpannerDb().run({ sql, params: namedParams?.params, types: namedParams?.types });
       return rows.map((row) => row.toJSON());
-      // return JSON.parse(JSON.stringify((await this.getSpannerDb().run({ sql, params: namedParams?.params }))[0]));
     } catch (error: any) {
-      this.logger.error(
-        `Failed when executing query: ${sql}\nparams: ${JSON.stringify(namedParams, null, 2)}\nreason: ${error.details}`
-      );
+      this.logger.error({
+        message: `Failed when executing query`,
+        obj: { sql, params: namedParams, errorDetails: error.details },
+      });
       throw error;
     }
   }
@@ -158,7 +158,7 @@ export class SpannerDriver implements DbDriver {
     });
     try {
       return await this.getSpannerDb().runTransactionAsync(async (transaction) => {
-        this.logger.debug(`Executing dml: ${sql}, with params: ${JSON.stringify(namedParams)}`);
+        this.logger.debug({ message: `Executing dml`, obj: { sql, params: namedParams } });
         const [rowCount] = await transaction.runUpdate({
           sql,
           params: namedParams?.params,
@@ -168,9 +168,10 @@ export class SpannerDriver implements DbDriver {
         return rowCount;
       });
     } catch (error: any) {
-      this.logger.error(
-        `Failed when executing dml: ${sql}\nparams: ${JSON.stringify(namedParams, null, 2)}\nreason: ${error.details}`
-      );
+      this.logger.error({
+        message: `Failed when executing dml`,
+        obj: { sql, params: namedParams, errorDetails: error.details },
+      });
       throw error;
     }
   }
@@ -180,11 +181,11 @@ export class SpannerDriver implements DbDriver {
    */
   async runUpdateSchema(sql: string): Promise<void> {
     try {
-      this.logger.debug(`Executing schema update: ${sql}`);
+      this.logger.debug({ message: `Executing schema update`, obj: { sql } });
       const [operation] = await this.getSpannerDb().updateSchema(sql);
       await operation.promise();
     } catch (error: any) {
-      this.logger.error(`Failed when executing schema update: ${sql}\nreason: ${error.details}`);
+      this.logger.error({ message: `Failed when executing schema update`, obj: { sql, errorDetails: error.details } });
       throw error;
     }
   }

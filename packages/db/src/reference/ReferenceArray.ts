@@ -4,7 +4,6 @@ import { Record } from '../Record';
 import { tableByName } from '../Table';
 import { ReferenceArraySerializerId } from '../serializers/ReferenceArraySerializer';
 import { QueryBuilderFactory } from '../QueryBuilderFactory';
-import { Logger } from '@proteinjs/util';
 /**
  * The object returned by Db functions for each field of type ReferenceArrayColumn in a record.
  * The reason for this is to make loading of reference records on-demand. For theoretically

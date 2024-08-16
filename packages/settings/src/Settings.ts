@@ -1,4 +1,4 @@
-import { Logger } from '@proteinjs/util';
+import { Logger } from '@proteinjs/logger';
 import { SettingsService, getSettingsService } from './services/SettingsService';
 import { tables } from './tables/tables';
 import { getScopedDb } from '@proteinjs/user';
@@ -6,7 +6,7 @@ import { getScopedDb } from '@proteinjs/user';
 export const getSettings = () => (typeof self === 'undefined' ? new Settings() : (getSettingsService() as Settings));
 
 export class Settings implements SettingsService {
-  private logger = new Logger(this.constructor.name);
+  private logger = new Logger({ name: this.constructor.name });
   public serviceMetadata = {
     auth: {
       allUsers: true,
@@ -27,7 +27,7 @@ export class Settings implements SettingsService {
     const db = getScopedDb();
     const rowsUpdated = await db.update(tables.Setting, { value }, { name });
     if (rowsUpdated == 0) {
-      this.logger.info(`Creating new setting: ${name}`);
+      this.logger.info({ message: `Creating new setting`, obj: { name, value } });
       await db.insert(tables.Setting, { name, value });
     }
   }

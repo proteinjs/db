@@ -1,9 +1,9 @@
-import { Logger } from '@proteinjs/util';
+import { Logger } from '@proteinjs/logger';
 import { Table, isTable } from '../Table';
 import { TableAuth } from './TableAuth';
 
 export class TableServiceAuth {
-  private logger = new Logger(this.constructor.name);
+  private logger = new Logger({ name: this.constructor.name });
 
   canAccess(methodName: string, args: any[]): boolean {
     try {
@@ -25,7 +25,7 @@ export class TableServiceAuth {
         throw new Error(`User is not authorized to access unsupported Db service api: ${methodName}`);
       }
     } catch (error: any) {
-      this.logger.error(error.stack);
+      this.logger.error({ message: `Failed evaluating auth for method: ${methodName}`, error });
       return false;
     }
 

@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@proteinjs/db-query": "^1.2.6",
+    "@proteinjs/logger": "1.0.4",
     "@proteinjs/reflection": "1.1.8",
     "@proteinjs/serializer": "1.0.14",
     "@proteinjs/server-api": "1.4.1",

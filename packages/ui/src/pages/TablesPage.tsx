@@ -2,7 +2,7 @@ import React from 'react';
 import { FormPage, Page, TableLoader, Table as TableComponent, RowWindow } from '@proteinjs/ui';
 import { getTables, getDbService, Table } from '@proteinjs/db';
 import { recordTableLinkByName } from './RecordTablePage';
-import { Box, Grid, SxProps, Theme } from '@mui/material';
+import { Box, SxProps, Theme } from '@mui/material';
 
 export const tablesPage: Page = {
   name: 'Tables',

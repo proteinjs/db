@@ -1,4 +1,4 @@
-import { Logger } from '@proteinjs/util';
+import { Logger } from '@proteinjs/logger';
 import { DateTimeColumn, UuidColumn } from './Columns';
 import { Column, Table, Columns } from './Table';
 import { moment } from './opt/moment';
@@ -44,7 +44,7 @@ export function withRecordColumns<T extends Record>(
 export type SerializedRecord = { [columnName: string]: any };
 
 export class RecordSerializer<T extends Record> {
-  private logger: Logger = new Logger(this.constructor.name);
+  private logger = new Logger({ name: this.constructor.name });
   private table: Table<T>;
 
   constructor(table: Table<T>) {
@@ -74,7 +74,7 @@ export class RecordSerializer<T extends Record> {
 
     if (omittedFields.length > 0) {
       // could mean the developer is passing in an object they don't expect
-      this.logger.warn(`Fields were omitted during serialization: ${omittedFields.join(', ')}`);
+      this.logger.warn({ message: `Fields were omitted during serialization`, obj: { omittedFields } });
     }
 
     return serialized;
@@ -96,7 +96,7 @@ export class RecordSerializer<T extends Record> {
 
     if (omittedFields.length > 0) {
       // expected when passing a base table into the query api
-      this.logger.debug(`Fields were omitted during deserialization: ${omittedFields.join(', ')}`);
+      this.logger.debug({ message: `Fields were omitted during deserialization`, obj: { omittedFields } });
     }
 
     return deserialized;

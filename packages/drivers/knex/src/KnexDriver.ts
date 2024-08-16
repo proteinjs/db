@@ -9,14 +9,14 @@ import {
   tableByName,
 } from '@proteinjs/db';
 import { KnexConfig } from './KnexConfig';
-import { Logger } from '@proteinjs/util';
+import { Logger } from '@proteinjs/logger';
 import { Statement } from '@proteinjs/db-query';
 import { KnexSchemaOperations } from './KnexSchemaOperations';
 import { KnexColumnTypeFactory } from './KnexColumnTypeFactory';
 
 export class KnexDriver implements DbDriver {
   private static KNEX: knex;
-  private logger = new Logger(this.constructor.name);
+  private logger = new Logger({ name: this.constructor.name });
   private config: KnexConfig;
   private knexConfig: any;
   public getTable: ((name: string) => Table<any>) | undefined;
@@ -77,7 +77,7 @@ export class KnexDriver implements DbDriver {
     await this.getKnex().raw('SET GLOBAL max_allowed_packet=1073741824;');
     await this.getKnex().destroy();
     KnexDriver.KNEX = knex(this.knexConfig);
-    this.logger.info('Set global max_allowed_packet size to 1gb');
+    this.logger.info({ message: 'Set global max_allowed_packet size to 1gb' });
   }
 
   getTableManager(): TableManager {
@@ -122,7 +122,7 @@ export class KnexDriver implements DbDriver {
     try {
       return (await this.getKnex().raw(sql, params as any))[0]; // returns 2 arrays, first is records, second is metadata per record
     } catch (error: any) {
-      this.logger.error(`Failed when executing query: ${sql}`);
+      this.logger.error({ message: `Failed when executing sql`, obj: { sql }, error });
       throw error;
     }
   }

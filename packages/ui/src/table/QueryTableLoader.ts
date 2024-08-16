@@ -1,6 +1,5 @@
 import { Query, QueryBuilder, QueryBuilderFactory, Record, SortCriteria, Table, getDb } from '@proteinjs/db';
 import { RowWindow, TableLoader } from '@proteinjs/ui';
-import { Logger } from '@proteinjs/util';
 
 export class QueryTableLoader<T extends Record> implements TableLoader<T> {
   private rowCountQb?: QueryBuilder<T>;

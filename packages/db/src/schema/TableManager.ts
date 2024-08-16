@@ -1,4 +1,4 @@
-import { Logger } from '@proteinjs/util';
+import { Logger } from '@proteinjs/logger';
 import { Column, Table, getTables } from '../Table';
 import { SchemaOperations, TableChanges } from './SchemaOperations';
 import { SchemaMetadata } from './SchemaMetadata';
@@ -9,7 +9,7 @@ export interface ColumnTypeFactory {
 }
 
 export class TableManager {
-  private logger = new Logger(this.constructor.name);
+  private logger = new Logger({ name: this.constructor.name });
   public columnTypeFactory: ColumnTypeFactory;
   public schemaOperations: SchemaOperations;
   public schemaMetadata: SchemaMetadata;
@@ -40,14 +40,14 @@ export class TableManager {
     if (await this.tableExists(table)) {
       const tableChanges = await this.getTableChanges(table);
       if (this.shouldAlterTable(tableChanges)) {
-        this.logger.info(`Altering table: ${table.name}`);
+        this.logger.info({ message: `Altering table: ${table.name}` });
         await this.schemaOperations.alterTable(table, tableChanges);
-        this.logger.info(`Finished altering table: ${table.name}`);
+        this.logger.info({ message: `Finished altering table: ${table.name}` });
       }
     } else {
-      this.logger.info(`Creating table: ${table.name}`);
+      this.logger.info({ message: `Creating table: ${table.name}` });
       await this.schemaOperations.createTable(table);
-      this.logger.info(`Finished creating table: ${table.name}`);
+      this.logger.info({ message: `Finished creating table: ${table.name}` });
     }
   }
 

@@ -25,6 +25,7 @@
     "@google-cloud/spanner": "7.5.0",
     "@proteinjs/db": "^1.5.6",
     "@proteinjs/db-query": "^1.2.6",
+    "@proteinjs/logger": "1.0.4",
     "@proteinjs/reflection": "1.1.8",
     "@proteinjs/util": "1.4.0"
   },
