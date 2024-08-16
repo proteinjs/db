@@ -3,6 +3,24 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.1.17](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.1.15...@proteinjs/db-ui@1.1.17) (2024-08-16)
+
+
+### Bug Fixes
+
+* refactored to implement new @proteinjs/logger/Logger api ([66578f2](https://github.com/proteinjs/db/commit/66578f267d9293c0d5703c63e53d8edf68325f52))
+* reverted package versions to before failed publishes ([f63518c](https://github.com/proteinjs/db/commit/f63518cf27b74b53571254621dfe9df63aa94871))
+* reverted versions of packages that failed to publish so they will be re-published ([e2f83b0](https://github.com/proteinjs/db/commit/e2f83b0c8664ab9ad22d9d641639df6eeab6b63f))
+
+
+### Reverts
+
+* Revert "chore(release): publish [skip ci]" ([822bec0](https://github.com/proteinjs/db/commit/822bec053324b13522a6f754cf1f3771d8a24f8e))
+
+
+
+
+
 ## [1.1.16](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.1.15...@proteinjs/db-ui@1.1.16) (2024-08-11)
 
 

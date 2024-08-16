@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.1.20](https://github.com/brentbahry/db/compare/@proteinjs/db-settings@1.1.19...@proteinjs/db-settings@1.1.20) (2024-08-16)
+
+
+### Bug Fixes
+
+* refactored to implement new @proteinjs/logger/Logger api ([66578f2](https://github.com/brentbahry/db/commit/66578f267d9293c0d5703c63e53d8edf68325f52))
+
+
+
+
+
 ## [1.1.18](https://github.com/brentbahry/db/compare/@proteinjs/db-settings@1.1.17...@proteinjs/db-settings@1.1.18) (2024-08-11)
 
 

@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.4.8](https://github.com/brentbahry/db/compare/@proteinjs/db-driver-spanner@1.4.7...@proteinjs/db-driver-spanner@1.4.8) (2024-08-16)
+
+
+### Bug Fixes
+
+* refactored to implement new @proteinjs/logger/Logger api ([66578f2](https://github.com/brentbahry/db/commit/66578f267d9293c0d5703c63e53d8edf68325f52))
+
+
+
+
+
 ## [1.4.7](https://github.com/brentbahry/db/compare/@proteinjs/db-driver-spanner@1.4.6...@proteinjs/db-driver-spanner@1.4.7) (2024-08-11)
 
 

@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.2.7](https://github.com/proteinjs/db/compare/@proteinjs/db-query@1.2.6...@proteinjs/db-query@1.2.7) (2024-08-16)
+
+
+### Bug Fixes
+
+* refactored to implement new @proteinjs/logger/Logger api ([66578f2](https://github.com/proteinjs/db/commit/66578f267d9293c0d5703c63e53d8edf68325f52))
+
+
+
+
+
 ## [1.2.6](https://github.com/proteinjs/db/compare/@proteinjs/db-query@1.2.5...@proteinjs/db-query@1.2.6) (2024-08-07)
 
 **Note:** Version bump only for package @proteinjs/db-query
