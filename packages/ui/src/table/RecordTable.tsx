@@ -35,6 +35,7 @@ export type RecordTableProps<T extends Record> = {
   toolbarSx?: TableProps<T>['toolbarSx'];
   toolbarContent?: TableProps<T>['toolbarContent'];
   tableContainerSx?: TableProps<T>['tableContainerSx'];
+  emptyTableComponent?: TableProps<T>['emptyTableComponent'];
 };
 
 function deleteButton<T extends Record>(table: Table<T>): TableButton<T> {
@@ -187,6 +188,7 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
       toolbarSx={props.toolbarSx}
       toolbarContent={props.toolbarContent}
       tableContainerSx={props.tableContainerSx}
+      emptyTableComponent={props.emptyTableComponent}
     />
   );
 }
