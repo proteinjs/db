@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/db",
-  "version": "1.5.9",
+  "version": "1.5.10",
   "description": "Db",
   "publishConfig": {
     "access": "public"
@@ -22,12 +22,12 @@
     "test": "jest"
   },
   "dependencies": {
-    "@proteinjs/db-query": "^1.2.8",
-    "@proteinjs/logger": "1.0.5",
+    "@proteinjs/db-query": "^1.2.9",
+    "@proteinjs/logger": "1.0.6",
     "@proteinjs/reflection": "1.1.9",
     "@proteinjs/serializer": "1.0.15",
     "@proteinjs/server-api": "1.5.0",
-    "@proteinjs/service": "1.0.30",
+    "@proteinjs/service": "1.0.31",
     "@proteinjs/user-auth": "1.1.1",
     "@proteinjs/util": "1.4.1",
     "moment": "2.29.4",
