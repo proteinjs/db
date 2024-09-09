@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/db-driver-knex",
-  "version": "1.1.21",
+  "version": "1.1.22",
   "description": "Db driver for Knex",
   "publishConfig": {
     "access": "public"
@@ -22,7 +22,7 @@
     "test": "jest"
   },
   "dependencies": {
-    "@proteinjs/db": "^1.5.11",
+    "@proteinjs/db": "^1.5.12",
     "@proteinjs/db-query": "^1.2.9",
     "@proteinjs/logger": "1.0.6",
     "@proteinjs/reflection": "1.1.9",
