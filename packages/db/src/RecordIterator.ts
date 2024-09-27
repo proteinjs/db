@@ -12,8 +12,8 @@ export class RecordIterator<T extends Record> implements AsyncIterable<T> {
   private pageSize: number;
   private currentPage: number;
 
-  constructor(table: Table<T>, query: Query<T>, pageSize: number = 10) {
-    this.db = getDb();
+  constructor(table: Table<T>, query: Query<T>, pageSize: number = 10, db?: Db) {
+    this.db = db || getDb();
     this.table = table;
     this.query = new QueryBuilderFactory().getQueryBuilder(table, query);
     this.pageSize = pageSize;
