@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/db-ui",
-  "version": "1.1.24",
+  "version": "1.1.25",
   "description": "Db ui components",
   "publishConfig": {
     "access": "public"
@@ -27,7 +27,7 @@
     "@mui/material": "5.14.11",
     "@proteinjs/db": "^1.5.13",
     "@proteinjs/reflection": "1.1.9",
-    "@proteinjs/ui": "3.1.0",
+    "@proteinjs/ui": "4.0.0",
     "@proteinjs/util": "1.4.1",
     "moment": "2.29.4",
     "react": "18.2.0",
