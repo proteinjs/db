@@ -1,5 +1,5 @@
 import React from 'react';
-import { FormPage, Page, TableLoader, Table as TableComponent, RowWindow } from '@proteinjs/ui';
+import { FormPage, Page, TableLoader, Table as TableComponent, RowWindow, BaseTableLoader } from '@proteinjs/ui';
 import { getTables, getDbService, Table } from '@proteinjs/db';
 import { recordTableLinkByName } from './RecordTablePage';
 import { Box, SxProps, Theme } from '@mui/material';
@@ -25,8 +25,10 @@ type TableSummary = {
   rowCount: number;
 };
 
-class TableSummaryLoader implements TableLoader<TableSummary> {
-  constructor(private tables: Table<any>[]) {}
+class TableSummaryLoader extends BaseTableLoader<TableSummary> {
+  constructor(private tables: Table<any>[]) {
+    super();
+  }
 
   async load(startIndex: number, endIndex: number) {
     const page: RowWindow<TableSummary> = { rows: [], totalCount: this.tables.length };
@@ -49,7 +51,7 @@ const Tables = () => {
           title='Tables'
           columns={['name', 'rowCount']}
           tableLoader={new TableSummaryLoader(getTables())}
-          rowOnClickRedirectUrl={async (row: TableSummary) => {
+          rowOnClick={async (row: TableSummary) => {
             return recordTableLinkByName(row.name);
           }}
         />
