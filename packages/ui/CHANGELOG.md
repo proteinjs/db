@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.2.0](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.1.24...@proteinjs/db-ui@1.2.0) (2024-09-27)
+
+
+### Features
+
+* table updates; RecordIterator accepts optional db constructor param ([#10](https://github.com/proteinjs/db/issues/10)) ([6f963c4](https://github.com/proteinjs/db/commit/6f963c4daaa1f6fcff18cbc5714be6ed9d3b42f7))
+
+
+
+
+
 ## [1.1.17](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.1.15...@proteinjs/db-ui@1.1.17) (2024-08-16)
 
 
