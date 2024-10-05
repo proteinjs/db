@@ -10,6 +10,7 @@ import {
   IntegerColumn,
   StringColumn,
 } from '@proteinjs/db';
+import { JsonColumn } from '@proteinjs/db-spanner-common';
 
 // max size of a row in spanner is 10mb
 export class SpannerColumnTypeFactory {
@@ -34,6 +35,8 @@ export class SpannerColumnTypeFactory {
       type = isQueryOrDml
         ? 'bytes'
         : `BYTES(${!(column as BinaryColumn).maxLength ? 'MAX' : (column as BinaryColumn).maxLength})`;
+    } else if (isInstanceOf(column, JsonColumn)) {
+      type = 'JSON';
     } else {
       throw new Error(`Invalid column type: ${column.constructor.name}, must extend a base column`);
     }
