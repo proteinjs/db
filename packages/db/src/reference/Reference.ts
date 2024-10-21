@@ -38,6 +38,10 @@ export class Reference<T extends Record> implements CustomSerializableObject {
     return this._object;
   }
 
+  getIfExists(): T | undefined {
+    return this._object;
+  }
+
   set(object: T) {
     this._object = object;
     this._id = object.id;
