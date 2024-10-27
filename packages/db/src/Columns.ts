@@ -351,8 +351,8 @@ export class ReferenceColumn<T extends Record> extends StringColumn<Reference<T>
   }
 }
 
-/** Column type for storing table names that links to DynamicReferenceColumn */
-export class TableNameColumn extends StringColumn<string> {
+/** Column type for storing table names that links to a DynamicReferenceColumn */
+export class DynamicReferenceTableNameColumn extends StringColumn<string> {
   constructor(
     name: string,
     public referenceColumnName: string,
@@ -422,12 +422,12 @@ export class TableNameColumn extends StringColumn<string> {
  * Creates a dynamic reference column that can link to records in any table
  *
  * The reference is stored as two columns:
- * 1. A table name column storing the target table name, which is managed internally
- * 2. A dynamic reference column holding the ID of the target record
+ * 1. A `DynamicReferenceTableNameColumn` storing the reference's table name, which is managed internally and should not be set or updated
+ * 2. A `DynamicReferenceColumn` which is a reference to a record
  *
  * @example
  * {
- *   referenceTableName: new TableNameColumn('reference_table_name', 'dynamic_reference'),
+ *   referenceTableName: new DynamicReferenceTableNameColumn('reference_table_name', 'dynamic_reference'),
  *   dynamicReference: new DynamicReferenceColumn<EntityType>(
  *     'dynamic_reference',
  *     'reference_table_name',    // Name of column containing table name
@@ -439,7 +439,7 @@ export class TableNameColumn extends StringColumn<string> {
 export class DynamicReferenceColumn<T extends Record> extends StringColumn<Reference<T>> {
   constructor(
     name: string,
-    public tableColumnName: string,
+    public dynamicRefTableColName: string,
     public cascadeDelete: boolean = false,
     options?: ColumnOptions
   ) {
@@ -475,9 +475,9 @@ export class DynamicReferenceColumn<T extends Record> extends StringColumn<Refer
       return null;
     }
 
-    const tableName = serializedRecord[this.tableColumnName];
+    const tableName = serializedRecord[this.dynamicRefTableColName];
     if (!tableName) {
-      throw new Error(`Table name not found in column ${this.tableColumnName} for reference ${this.name}`);
+      throw new Error(`Table name not found in column ${this.dynamicRefTableColName} for reference ${this.name}`);
     }
 
     return new Reference<T>(tableName, serializedFieldValue);
@@ -514,6 +514,7 @@ export class DynamicReferenceColumn<T extends Record> extends StringColumn<Refer
 
     // Delete records from each referenced table using Promise.all to properly await all deletions
     const entries = Array.from(recordsToDelete.entries());
+    console.log(`entries to delete: ${JSON.stringify(entries)}`);
     for (const [tableName, ids] of entries) {
       if (ids.length > 0) {
         const referenceTable = getTableFn(tableName);

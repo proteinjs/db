@@ -3,6 +3,7 @@ import { Column, Table, getTables } from '../Table';
 import { SchemaOperations, TableChanges } from './SchemaOperations';
 import { SchemaMetadata } from './SchemaMetadata';
 import { DbDriver } from '../Db';
+import { DynamicReferenceColumn, DynamicReferenceTableNameColumn } from '../Columns';
 
 export interface ColumnTypeFactory {
   getType(column: Column<any, any>): string;
@@ -37,6 +38,8 @@ export class TableManager {
   }
 
   async loadTable(table: Table<any>): Promise<void> {
+    this.validateDynamicReferenceColumns(table);
+
     if (await this.tableExists(table)) {
       const tableChanges = await this.getTableChanges(table);
       if (this.shouldAlterTable(tableChanges)) {
@@ -49,6 +52,64 @@ export class TableManager {
       await this.schemaOperations.createTable(table);
       this.logger.info({ message: `Finished creating table: ${table.name}` });
     }
+  }
+
+  private validateDynamicReferenceColumns(table: Table<any>): void {
+    const isDynamicRefColumn = (column: any): column is DynamicReferenceColumn<any> =>
+      typeof column.dynamicRefTableColName === 'string';
+
+    const isDynamicRefTableNameColumn = (column: any): column is DynamicReferenceTableNameColumn =>
+      typeof column.referenceColumnName === 'string';
+
+    // Quick check if there are any dynamic reference columns
+    const hasDynamicColumns = Object.values(table.columns).some(
+      (column) => isDynamicRefColumn(column) || isDynamicRefTableNameColumn(column)
+    );
+
+    if (!hasDynamicColumns) {
+      return;
+    }
+
+    interface DynamicRefColumnInfo {
+      columnName: string;
+      tableColumnName: string;
+    }
+
+    const dynamicRefColumns: DynamicRefColumnInfo[] = [];
+    const dynamicRefTableNameColumns: string[] = [];
+
+    // First pass: collect all dynamic reference columns
+    Object.entries(table.columns).forEach(([propertyName, column]) => {
+      if (isDynamicRefColumn(column)) {
+        dynamicRefColumns.push({
+          columnName: column.name,
+          tableColumnName: column.dynamicRefTableColName,
+        });
+      } else if (isDynamicRefTableNameColumn(column)) {
+        dynamicRefTableNameColumns.push(column.name);
+      }
+    });
+
+    // Second pass: validate that each DynamicReferenceColumn has its required table name column
+    dynamicRefColumns.forEach(({ columnName, tableColumnName }) => {
+      if (!dynamicRefTableNameColumns.includes(tableColumnName)) {
+        throw new Error(
+          `Table ${table.name} has a DynamicReferenceColumn '${columnName}' but is missing its required DynamicReferenceTableNameColumn '${tableColumnName}'`
+        );
+      }
+    });
+
+    // Third pass: validate that each DynamicReferenceTableNameColumn is used by a DynamicReferenceColumn
+    dynamicRefTableNameColumns.forEach((tableNameColumnName) => {
+      const hasMatchingRefColumn = dynamicRefColumns.some(
+        ({ tableColumnName }) => tableColumnName === tableNameColumnName
+      );
+      if (!hasMatchingRefColumn) {
+        throw new Error(
+          `Table ${table.name} has a DynamicReferenceTableNameColumn '${tableNameColumnName}' but no DynamicReferenceColumn references it`
+        );
+      }
+    });
   }
 
   private shouldAlterTable(tableChanges: TableChanges) {
