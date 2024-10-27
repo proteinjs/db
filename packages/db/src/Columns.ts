@@ -1,6 +1,6 @@
 import moment from 'moment';
 import { v1 as uuidv1 } from 'uuid';
-import { Column, ColumnOptions, Table, tableByName } from './Table';
+import { Column, ColumnOptions, getColumnPropertyName, Table, tableByName } from './Table';
 import { Record } from './Record';
 import { ReferenceArray } from './reference/ReferenceArray';
 import { Db } from './Db';
@@ -348,5 +348,180 @@ export class ReferenceColumn<T extends Record> extends StringColumn<Reference<T>
       .getQueryBuilder(referenceTable)
       .condition({ field: 'id', operator: 'IN', value: recordIdsToDelete });
     await new Db().delete(referenceTable, qb);
+  }
+}
+
+/** Column type for storing table names that links to DynamicReferenceColumn */
+export class TableNameColumn extends StringColumn<string> {
+  constructor(
+    name: string,
+    public referenceColumnName: string,
+    options?: ColumnOptions
+  ) {
+    const enhancedOptions = {
+      ...options,
+      defaultValue: async (table: Table<any>, record: any) => {
+        const colPropertyName = getColumnPropertyName(table, name);
+        const refColPropertyName = getColumnPropertyName(table, referenceColumnName);
+        if (!colPropertyName) {
+          throw new Error(`Column ${name} in table ${table.name} not found when setting default value`);
+        }
+        if (!refColPropertyName) {
+          throw new Error(`Column ${referenceColumnName} in table ${table.name} not found when setting default value`);
+        }
+
+        const referenceTableName = record[refColPropertyName]?._table;
+        if (referenceTableName) {
+          record[colPropertyName] = referenceTableName;
+        } else {
+          throw new Error(
+            `When inserting, table name must be set in Reference object for DynamicReferenceColumn ${referenceColumnName}`
+          );
+        }
+
+        return options?.defaultValue ? await options.defaultValue(table, record) : record[colPropertyName];
+      },
+      updateValue: async (table: Table<any>, updateObj: any) => {
+        const colPropertyName = getColumnPropertyName(table, name);
+        const refColPropertyName = getColumnPropertyName(table, referenceColumnName);
+        if (!colPropertyName) {
+          throw new Error(`Column ${name} in table ${table.name} not found when setting default value`);
+        }
+        if (!refColPropertyName) {
+          throw new Error(`Column ${referenceColumnName} in table ${table.name} not found when setting default value`);
+        }
+
+        const referenceTableName = updateObj[refColPropertyName]?._table;
+        if (referenceTableName) {
+          updateObj[colPropertyName] = referenceTableName;
+        } else {
+          throw new Error(
+            `When inserting, table name must be set in Reference object for DynamicReferenceColumn ${referenceColumnName}`
+          );
+        }
+
+        return options?.updateValue ? options.updateValue(table, updateObj) : updateObj[colPropertyName];
+      },
+    };
+
+    super(
+      name,
+      Object.assign(
+        {
+          ui: {
+            hidden: true,
+          },
+        },
+        enhancedOptions
+      )
+    );
+  }
+}
+
+/**
+ * Creates a dynamic reference column that can link to records in any table
+ *
+ * The reference is stored as two columns:
+ * 1. A table name column storing the target table name, which is managed internally
+ * 2. A dynamic reference column holding the ID of the target record
+ *
+ * @example
+ * {
+ *   referenceTableName: new TableNameColumn('reference_table_name', 'dynamic_reference'),
+ *   dynamicReference: new DynamicReferenceColumn<EntityType>(
+ *     'dynamic_reference',
+ *     'reference_table_name',    // Name of column containing table name
+ *   )
+ * }
+ */
+
+// veronica todo: make sure we check the presence of both columns needed at table creation in table manager
+export class DynamicReferenceColumn<T extends Record> extends StringColumn<Reference<T>> {
+  constructor(
+    name: string,
+    public tableColumnName: string,
+    public cascadeDelete: boolean = false,
+    options?: ColumnOptions
+  ) {
+    super(
+      name,
+      Object.assign(
+        {
+          ui: {
+            hidden: true,
+          },
+        },
+        options
+      ),
+      36
+    );
+  }
+
+  async serialize(fieldValue: Reference<T> | null | undefined): Promise<string | null> {
+    if (fieldValue === undefined || fieldValue == null || !fieldValue._id) {
+      return null;
+    }
+
+    if (!fieldValue._table || fieldValue._table.trim() === '') {
+      throw new Error(`Table name must be provided for DynamicReferenceColumn ${this.name}`);
+    }
+
+    return fieldValue._id;
+  }
+
+  async deserialize(serializedFieldValue: string, serializedRecord: any): Promise<Reference<T> | null> {
+    const reference = new Reference('', serializedFieldValue);
+    if (reference._id === null) {
+      return null;
+    }
+
+    const tableName = serializedRecord[this.tableColumnName];
+    if (!tableName) {
+      throw new Error(`Table name not found in column ${this.tableColumnName} for reference ${this.name}`);
+    }
+
+    return new Reference<T>(tableName, serializedFieldValue);
+  }
+
+  async beforeDelete(
+    table: Table<any>,
+    columnPropertyName: string,
+    records: any[],
+    getTable?: (tableName: string) => Table<any>,
+    db?: Db
+  ): Promise<void> {
+    if (!this.cascadeDelete) {
+      return;
+    }
+
+    const getTableFn = getTable ? getTable : tableByName;
+    const dbInstance = db ? db : new Db();
+
+    // Get all referenced record IDs grouped by table
+    const recordsToDelete = new Map<string, string[]>();
+
+    for (const record of records) {
+      const reference = record[columnPropertyName] as Reference<Record>;
+      if (!reference?._id || !reference._table) {
+        continue;
+      }
+
+      if (!recordsToDelete.has(reference._table)) {
+        recordsToDelete.set(reference._table, []);
+      }
+      recordsToDelete.get(reference._table)!.push(reference._id);
+    }
+
+    // Delete records from each referenced table using Promise.all to properly await all deletions
+    const entries = Array.from(recordsToDelete.entries());
+    for (const [tableName, ids] of entries) {
+      if (ids.length > 0) {
+        const referenceTable = getTableFn(tableName);
+        const qb = new QueryBuilderFactory()
+          .getQueryBuilder(referenceTable)
+          .condition({ field: 'id', operator: 'IN', value: ids });
+        await dbInstance.delete(referenceTable, qb);
+      }
+    }
   }
 }

@@ -1,4 +1,11 @@
-import { columnTypeTests, crudTests, getColTypeTestTable, getCrudTestTable } from '@proteinjs/db';
+import {
+  columnTypeTests,
+  crudTests,
+  dynamicReferenceColumnTests,
+  getColTypeTestTable,
+  getCrudTestTable,
+  getDynamicReferenceColumnTestTable,
+} from '@proteinjs/db';
 import { SpannerDriver } from '../src/SpannerDriver';
 import { getDropTestTable } from './dropTestTable';
 
@@ -25,4 +32,18 @@ const spannerDriverColumnTypesTests = new SpannerDriver(
 describe(
   'Column Type Tests',
   columnTypeTests(spannerDriverColumnTypesTests, getDropTestTable(spannerDriverColumnTypesTests))
+);
+
+const spannerDriverDynamicRefColTests = new SpannerDriver(
+  {
+    projectId: 'proteinjs-test',
+    instanceName: 'proteinjs-test',
+    databaseName: 'test',
+  },
+  getDynamicReferenceColumnTestTable
+);
+
+describe(
+  'DynamicReferenceColumn Tests',
+  dynamicReferenceColumnTests(spannerDriverDynamicRefColTests, getDropTestTable(spannerDriverDynamicRefColTests))
 );
