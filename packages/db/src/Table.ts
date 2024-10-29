@@ -42,6 +42,27 @@ export const getColumnByName = (table: Table<any>, columnName: string) => {
   return null;
 };
 
+export const addDefaultFieldValues = async (table: Table<any>, record: any) => {
+  for (const columnPropertyName in table.columns) {
+    const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
+    if (
+      column.options?.defaultValue &&
+      (typeof record[columnPropertyName] === 'undefined' || column.options?.forceDefaultValue)
+    ) {
+      record[columnPropertyName] = await column.options.defaultValue(record);
+    }
+  }
+};
+
+export const addUpdateFieldValues = async (table: Table<any>, record: any) => {
+  for (const columnPropertyName in table.columns) {
+    const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
+    if (column.options?.updateValue) {
+      record[columnPropertyName] = await column.options.updateValue(record);
+    }
+  }
+};
+
 /**
  * primary key is `id`
  */
@@ -112,6 +133,8 @@ export type ColumnOptions = {
   nullable?: boolean;
   /** Value stored on insert */
   defaultValue?: (insertObj: any) => Promise<any>;
+  /** If true, the `defaultValue` function will always provide the value and override any existing value */
+  forceDefaultValue?: boolean;
   /** Value stored on update */
   updateValue?: (updateObj: any) => Promise<any>;
   /** Add conditions to query; called on every query of this table */

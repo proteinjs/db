@@ -8,6 +8,9 @@ export * from './src/reference/Reference';
 export * from './src/RecordIterator';
 export * from './src/source/SourceRecord';
 export * from './src/QueryBuilderFactory';
+export * from './src/TableWatcher';
+export * from './src/transaction/Transaction';
+export * from './src/transaction/TransactionRunner';
 
 export * from './src/schema/SchemaOperations';
 export * from './src/schema/SchemaMetadata';
@@ -18,11 +21,11 @@ export * from './src/tables/MigrationTable';
 
 export * from './src/services/DbService';
 export * from './src/services/MigrationRunnerService';
-
-export * from './src/TableWatcher';
+export * from './src/services/TransactionRunnerService';
 
 export * from './test/reusable/TableManagerTests';
 export * from './test/reusable/CrudTests';
 export * from './test/reusable/ColumnTypesTests';
+export * from './test/reusable/TransactionTests';
 
 export * from '@proteinjs/db-query';
