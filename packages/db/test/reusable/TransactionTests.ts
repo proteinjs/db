@@ -14,7 +14,7 @@ interface Employee extends Record {
 }
 
 class EmployeeTestTable extends Table<Employee> {
-  name = 'db_test_employee';
+  name = 'db_transaction_test_employee';
   columns = withRecordColumns<Employee>({
     name: new StringColumn('name'),
     department: new StringColumn('department'),
@@ -33,7 +33,7 @@ interface ReservedWordTest extends Record {
 }
 
 class ReservedWordTestTable extends Table<ReservedWordTest> {
-  name = 'db_test_reserved_word';
+  name = 'db_transaction_test_reserved_word';
   columns = withRecordColumns<ReservedWordTest>({
     name: new StringColumn('name'),
     order: new StringColumn('order'),
