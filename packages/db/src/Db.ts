@@ -1,7 +1,14 @@
 import { DbService, Query, getDbService } from './services/DbService';
 import { Service } from '@proteinjs/service';
 import { Loadable, SourceRepository } from '@proteinjs/reflection';
-import { Column, Table, getColumnPropertyName, tableByName } from './Table';
+import {
+  Column,
+  Table,
+  getColumnPropertyName,
+  tableByName,
+  addDefaultFieldValues,
+  addUpdateFieldValues,
+} from './Table';
 import { Record, RecordSerializer, SerializedRecord } from './Record';
 import { Logger } from '@proteinjs/logger';
 import { SourceRecordLoader } from './source/SourceRecordLoader';
@@ -38,8 +45,12 @@ export interface DbDriver {
   start?(): Promise<void>;
   stop?(): Promise<void>;
   getTableManager(): TableManager;
-  runQuery(generateStatement: (config: DbDriverQueryStatementConfig) => Statement): Promise<SerializedRecord[]>;
-  runDml(generateStatement: (config: DbDriverDmlStatementConfig) => Statement): Promise<number>; // returns the number of affected rows
+  runQuery(
+    generateStatement: (config: DbDriverQueryStatementConfig) => Statement,
+    transaction?: any
+  ): Promise<SerializedRecord[]>;
+  runDml(generateStatement: (config: DbDriverDmlStatementConfig) => Statement, transaction?: any): Promise<number>;
+  runTransaction<T>(fn: (transaction: any) => Promise<T>): Promise<T>;
 }
 
 export class Db<R extends Record = Record> implements DbService<R> {
@@ -49,6 +60,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
   private statementConfigFactory: StatementConfigFactory;
   private auth = new TableAuth();
   private tableWatcherRunner = new TableWatcherRunner<R>();
+  private currentTransaction?: any;
   public serviceMetadata: Service['serviceMetadata'] = {
     auth: {
       canAccess: (methodName, args) => new TableServiceAuth().canAccess(methodName, args),
@@ -101,7 +113,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     }
 
     let recordCopy = Object.assign({}, record);
-    await this.addDefaultFieldValues(table, recordCopy);
+    await addDefaultFieldValues(table, recordCopy);
     recordCopy = await this.tableWatcherRunner.runBeforeInsertTableWatchers(table, recordCopy);
     const recordSearializer = new RecordSerializer(table);
     const serializedRecord = await recordSearializer.serialize(recordCopy);
@@ -111,18 +123,9 @@ export class Db<R extends Record = Record> implements DbService<R> {
         serializedRecord as Partial<T>,
         this.statementConfigFactory.getStatementConfig(config)
       );
-    await this.dbDriver.runDml(generateInsert);
+    await this.dbDriver.runDml(generateInsert, this.currentTransaction);
     await this.tableWatcherRunner.runAfterInsertTableWatchers(table, recordCopy as T);
     return recordCopy as T;
-  }
-
-  private async addDefaultFieldValues<T extends R>(table: Table<T>, record: any) {
-    for (const columnPropertyName in table.columns) {
-      const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
-      if (column.options?.defaultValue && typeof record[columnPropertyName] === 'undefined') {
-        record[columnPropertyName] = await column.options.defaultValue(record);
-      }
-    }
   }
 
   async update<T extends R>(table: Table<T>, record: Partial<T>, query?: Query<T>): Promise<number> {
@@ -135,7 +138,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     }
 
     let recordCopy = Object.assign({}, record);
-    await this.addUpdateFieldValues(table, recordCopy);
+    await addUpdateFieldValues(table, recordCopy);
     const qb = new QueryBuilderFactory().getQueryBuilder(table, query);
     this.addColumnQueries(table, qb);
     if (!query) {
@@ -153,18 +156,9 @@ export class Db<R extends Record = Record> implements DbService<R> {
         qb,
         this.statementConfigFactory.getStatementConfig(config)
       );
-    const recordUpdateCount = await this.dbDriver.runDml(generateUpdate);
+    const recordUpdateCount = await this.dbDriver.runDml(generateUpdate, this.currentTransaction);
     await this.tableWatcherRunner.runAfterUpdateTableWatchers(table, recordUpdateCount, recordCopy, qb);
     return recordUpdateCount;
-  }
-
-  private async addUpdateFieldValues<T extends R>(table: Table<T>, record: any) {
-    for (const columnPropertyName in table.columns) {
-      const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
-      if (column.options?.updateValue) {
-        record[columnPropertyName] = await column.options.updateValue(record);
-      }
-    }
   }
 
   async delete<T extends R>(table: Table<T>, query: Query<T>): Promise<number> {
@@ -185,7 +179,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
       new StatementFactory<T>().delete(table.name, deleteQb, this.statementConfigFactory.getStatementConfig(config));
     await this.runColumnBeforeDeletes(table, recordsToDelete);
     await this.tableWatcherRunner.runBeforeDeleteTableWatchers(table, recordsToDelete, qb);
-    const recordDeleteCount = await this.dbDriver.runDml(generateDelete);
+    const recordDeleteCount = await this.dbDriver.runDml(generateDelete, this.currentTransaction);
     await this.runCascadeDeletions(table, recordsToDeleteIds);
     await this.tableWatcherRunner.runAfterDeleteTableWatchers(table, recordDeleteCount, recordsToDelete, qb);
     return recordDeleteCount;
@@ -239,7 +233,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     this.addColumnQueries(table, qb);
     const generateQuery = (config: DbDriverQueryStatementConfig) =>
       qb.toSql(this.statementConfigFactory.getStatementConfig(config));
-    const serializedRecords = await this.dbDriver.runQuery(generateQuery);
+    const serializedRecords = await this.dbDriver.runQuery(generateQuery, this.currentTransaction);
     const recordSearializer = new RecordSerializer(table);
     return await Promise.all(
       serializedRecords.map(async (serializedRecord) => recordSearializer.deserialize(serializedRecord))
@@ -256,7 +250,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     this.addColumnQueries(table, qb);
     const generateQuery = (config: DbDriverQueryStatementConfig) =>
       qb.toSql(this.statementConfigFactory.getStatementConfig(config));
-    const result = await this.dbDriver.runQuery(generateQuery);
+    const result = await this.dbDriver.runQuery(generateQuery, this.currentTransaction);
     return result[0]['count'];
   }
 
@@ -267,5 +261,45 @@ export class Db<R extends Record = Record> implements DbService<R> {
         column.options.addToQuery(qb, this.runAsSystem);
       }
     }
+  }
+
+  /**
+   * Run a transaction.
+   *
+   * Use this db instance for any operation you want to include in the transaction.
+   *
+   * Note: This method uses Db instance state. Usually it is best to create a new instance
+   * of Db to run a transaction.
+   *
+   * Note: Nested transactions are not supported; will throw.
+   *
+   *
+   * Example:
+   *
+   * ```
+   * const db = getDb();
+   * const results = await db.runTransaction(async () => {
+   *   const emp1 = await db.insert(emplyeeTable, testEmployee1);
+   *   const emp2 = await db.insert(emplyeeTable, testEmployee2);
+   *   await db.update(emplyeeTable, { department: 'R&D' }, { id: emp1.id });
+   *   await someFunctionThatDoesDbOps(db);
+   *   return { emp1, emp2 };
+   * });
+   * ```
+   */
+  async runTransaction<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.currentTransaction) {
+      throw new Error(`Nested transactions are not supported. A transaction is already running on this Db instance.`);
+    }
+
+    return await this.dbDriver.runTransaction(async (transaction) => {
+      this.currentTransaction = transaction;
+      try {
+        const result = await fn();
+        return result;
+      } finally {
+        this.currentTransaction = undefined;
+      }
+    });
   }
 }

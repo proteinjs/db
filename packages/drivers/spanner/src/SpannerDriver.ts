@@ -1,4 +1,4 @@
-import { Database, Instance, Spanner } from '@google-cloud/spanner';
+import { Database, Instance, Spanner, Transaction } from '@google-cloud/spanner';
 import {
   DbDriver,
   DbDriverQueryStatementConfig,
@@ -123,7 +123,20 @@ export class SpannerDriver implements DbDriver {
     return exists;
   }
 
-  async runQuery(generateStatement: (config: DbDriverQueryStatementConfig) => Statement): Promise<any[]> {
+  /**
+   * Execute a query.
+   */
+  async runQuery(
+    generateStatement: (config: DbDriverQueryStatementConfig) => Statement,
+    transaction?: Transaction
+  ): Promise<any[]> {
+    return await this.executeQuery(generateStatement, transaction || this.getSpannerDb());
+  }
+
+  private async executeQuery(
+    generateStatement: (config: DbDriverQueryStatementConfig) => Statement,
+    runner: Database | Transaction
+  ): Promise<any[]> {
     const { sql, namedParams } = generateStatement({
       useParams: true,
       useNamedParams: true,
@@ -131,9 +144,14 @@ export class SpannerDriver implements DbDriver {
       getDriverColumnType: this.getColumnType.bind(this),
       handleCaseSensitivity: this.handleCaseSensitivity.bind(this),
     });
+
     try {
       this.logger.debug({ message: `Executing query`, obj: { sql, params: namedParams } });
-      const [rows] = await this.getSpannerDb().run({ sql, params: namedParams?.params, types: namedParams?.types });
+      const [rows] = await runner.run({
+        sql,
+        params: namedParams?.params,
+        types: namedParams?.types,
+      });
       return rows.map((row) => row.toJSON());
     } catch (error: any) {
       this.logger.error({
@@ -149,24 +167,40 @@ export class SpannerDriver implements DbDriver {
    *
    * @returns number of affected rows
    */
-  async runDml(generateStatement: (config: DbDriverDmlStatementConfig) => Statement): Promise<number> {
+  async runDml(
+    generateStatement: (config: DbDriverDmlStatementConfig) => Statement,
+    transaction?: Transaction
+  ): Promise<number> {
+    if (transaction) {
+      return await this.executeDml(generateStatement, transaction);
+    }
+
+    return await this.getSpannerDb().runTransactionAsync(async (transaction) => {
+      const rowCount = await this.executeDml(generateStatement, transaction);
+      await transaction.commit();
+      return rowCount;
+    });
+  }
+
+  private async executeDml(
+    generateStatement: (config: DbDriverDmlStatementConfig) => Statement,
+    runner: Transaction
+  ): Promise<number> {
     const { sql, namedParams } = generateStatement({
       useParams: true,
       useNamedParams: true,
       prefixTablesWithDb: false,
       getDriverColumnType: this.getColumnType.bind(this),
     });
+
     try {
-      return await this.getSpannerDb().runTransactionAsync(async (transaction) => {
-        this.logger.debug({ message: `Executing dml`, obj: { sql, params: namedParams } });
-        const [rowCount] = await transaction.runUpdate({
-          sql,
-          params: namedParams?.params,
-          types: namedParams?.types,
-        });
-        await transaction.commit();
-        return rowCount;
+      this.logger.debug({ message: `Executing dml`, obj: { sql, params: namedParams } });
+      const [rowCount] = await runner.runUpdate({
+        sql,
+        params: namedParams?.params,
+        types: namedParams?.types,
       });
+      return rowCount;
     } catch (error: any) {
       this.logger.error({
         message: `Failed when executing dml`,
@@ -174,6 +208,19 @@ export class SpannerDriver implements DbDriver {
       });
       throw error;
     }
+  }
+
+  /**
+   * Execute a transaction.
+   * @param fn all db operations within this function will be part of this transaction
+   * @returns the return of the `fn`
+   */
+  async runTransaction<T>(fn: (transaction: Transaction) => Promise<T>): Promise<T> {
+    return await this.getSpannerDb().runTransactionAsync(async (transaction) => {
+      const result = await fn(transaction);
+      await transaction.commit();
+      return result;
+    });
   }
 
   /**
