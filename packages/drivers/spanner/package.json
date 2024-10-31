@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/db-driver-spanner",
-  "version": "1.5.1",
+  "version": "1.6.0",
   "description": "Db driver for Google Spanner",
   "publishConfig": {
     "access": "public"
@@ -23,9 +23,9 @@
   },
   "dependencies": {
     "@google-cloud/spanner": "7.5.0",
-    "@proteinjs/db": "^1.7.0",
+    "@proteinjs/db": "^1.8.0",
     "@proteinjs/db-query": "^1.2.9",
-    "@proteinjs/db-spanner-common": "^1.0.2",
+    "@proteinjs/db-spanner-common": "^1.0.3",
     "@proteinjs/logger": "1.0.6",
     "@proteinjs/reflection": "1.1.9",
     "@proteinjs/util": "1.4.1"

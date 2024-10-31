@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.8.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.7.0...@proteinjs/db@1.8.0) (2024-10-31)
+
+
+### Features
+
+* transaction support version bump ([5908646](https://github.com/proteinjs/db/commit/59086469a2a9bb551fd86425f43f9900f6f9a3fc))
+
+
+
+
+
 # [1.7.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.6.0...@proteinjs/db@1.7.0) (2024-10-21)
 
 

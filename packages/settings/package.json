@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/db-settings",
-  "version": "1.1.31",
+  "version": "1.1.32",
   "description": "Db settings",
   "publishConfig": {
     "access": "public"
@@ -21,7 +21,7 @@
     "watch": "reflection-watch"
   },
   "dependencies": {
-    "@proteinjs/db": "^1.7.0",
+    "@proteinjs/db": "^1.8.0",
     "@proteinjs/logger": "1.0.6",
     "@proteinjs/reflection": "1.1.9",
     "@proteinjs/service": "1.1.1",
