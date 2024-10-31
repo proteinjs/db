@@ -20,6 +20,7 @@ import { TableAuth } from './auth/TableAuth';
 import { TableServiceAuth } from './auth/TableServiceAuth';
 import { TableWatcherRunner } from './TableWatcherRunner';
 
+/** get `Db` if on server, and `DbService` if on browser */
 export const getDb = <R extends Record = Record>() =>
   typeof self === 'undefined' ? new Db<R>() : (getDbService() as Db<R>);
 export const getDbAsSystem = <R extends Record = Record>() => new Db<R>(undefined, undefined, true);

@@ -14,6 +14,9 @@ import { Statement } from '@proteinjs/db-query';
 import { KnexSchemaOperations } from './KnexSchemaOperations';
 import { KnexColumnTypeFactory } from './KnexColumnTypeFactory';
 
+/**
+ * Knex driver (configured for MariaDb) for ProteinJs Db
+ */
 export class KnexDriver implements DbDriver {
   private static KNEX: knex;
   private logger = new Logger({ name: this.constructor.name });

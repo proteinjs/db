@@ -14,6 +14,9 @@ import { SpannerSchemaOperations } from './SpannerSchemaOperations';
 import { SpannerColumnTypeFactory } from './SpannerColumnTypeFactory';
 import { SpannerSchemaMetadata } from './SpannerSchemaMetadata';
 
+/**
+ * Google Spanner driver for ProteinJs Db
+ */
 export class SpannerDriver implements DbDriver {
   private static SPANNER: Spanner;
   private static SPANNER_INSTANCE: Instance;
