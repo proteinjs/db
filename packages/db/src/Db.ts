@@ -263,6 +263,30 @@ export class Db<R extends Record = Record> implements DbService<R> {
     }
   }
 
+  /**
+   * Run a transaction.
+   *
+   * Use this db instance for any operation you want to include in the transaction.
+   *
+   * Note: This method uses Db instance state. Usually it is best to create a new instance
+   * of Db to run a transaction.
+   *
+   * Note: Nested transactions are not supported; will throw.
+   *
+   *
+   * Example:
+   *
+   * ```
+   * const db = getDb();
+   * const results = await db.runTransaction(async () => {
+   *   const emp1 = await db.insert(emplyeeTable, testEmployee1);
+   *   const emp2 = await db.insert(emplyeeTable, testEmployee2);
+   *   await db.update(emplyeeTable, { department: 'R&D' }, { id: emp1.id });
+   *   await someFunctionThatDoesDbOps(db);
+   *   return { emp1, emp2 };
+   * });
+   * ```
+   */
   async runTransaction<T>(fn: () => Promise<T>): Promise<T> {
     if (this.currentTransaction) {
       throw new Error(`Nested transactions are not supported. A transaction is already running on this Db instance.`);
