@@ -1,4 +1,4 @@
-import knex from 'knex';
+import knex, { Transaction } from 'knex';
 import {
   DbDriver,
   DbDriverQueryStatementConfig,
@@ -14,6 +14,9 @@ import { Statement } from '@proteinjs/db-query';
 import { KnexSchemaOperations } from './KnexSchemaOperations';
 import { KnexColumnTypeFactory } from './KnexColumnTypeFactory';
 
+/**
+ * Knex driver (configured for MariaDb) for ProteinJs Db
+ */
 export class KnexDriver implements DbDriver {
   private static KNEX: knex;
   private logger = new Logger({ name: this.constructor.name });
@@ -113,22 +116,42 @@ export class KnexDriver implements DbDriver {
     return columnName;
   }
 
-  async runQuery(generateStatement: (config: DbDriverQueryStatementConfig) => Statement): Promise<SerializedRecord[]> {
+  async runQuery(
+    generateStatement: (config: DbDriverQueryStatementConfig) => Statement,
+    transaction?: Transaction
+  ): Promise<SerializedRecord[]> {
     const { sql, params } = generateStatement({
       useParams: true,
       prefixTablesWithDb: true,
       handleCaseSensitivity: this.handleCaseSensitivity.bind(this),
     });
+
     try {
-      return (await this.getKnex().raw(sql, params as any))[0]; // returns 2 arrays, first is records, second is metadata per record
+      const runner = transaction || this.getKnex();
+      return (await runner.raw(sql, params as any))[0]; // returns 2 arrays, first is records, second is metadata per record
     } catch (error: any) {
       this.logger.error({ message: `Failed when executing sql`, obj: { sql }, error });
       throw error;
     }
   }
 
-  async runDml(generateStatement: (config: DbDriverDmlStatementConfig) => Statement): Promise<number> {
-    const { affectedRows } = (await this.runQuery(generateStatement)) as any;
+  async runDml(
+    generateStatement: (config: DbDriverDmlStatementConfig) => Statement,
+    transaction?: Transaction
+  ): Promise<number> {
+    const { affectedRows } = (await this.runQuery(generateStatement, transaction)) as any;
     return affectedRows;
+  }
+
+  /**
+   * Execute a transaction.
+   * @param fn all db operations within this function will be part of this transaction
+   * @returns the return value of the `fn`
+   */
+  async runTransaction<T>(fn: (transaction: Transaction) => Promise<T>): Promise<T> {
+    return await this.getKnex().transaction(async (trx) => {
+      const result = await fn(trx);
+      return result;
+    });
   }
 }
