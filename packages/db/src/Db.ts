@@ -195,7 +195,6 @@ export class Db<R extends Record = Record> implements DbService<R> {
     for (const columnPropertyName in table.columns) {
       const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
       if (typeof column.beforeDelete !== 'undefined') {
-        console.log(`Db runColumnBeforeDeletes for col: ${JSON.stringify(column)}`);
         await column.beforeDelete(
           table,
           columnPropertyName,

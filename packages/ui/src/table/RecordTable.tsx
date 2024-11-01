@@ -20,23 +20,15 @@ import {
 } from '@proteinjs/db';
 import moment from 'moment';
 
+type TablePropsToOmit = 'tableLoader' | 'columns';
+type SpecificTableProps<T> = Omit<TableProps<T>, TablePropsToOmit>;
+
 export type RecordTableProps<T extends Record> = {
   table: Table<T>;
   tableLoader?: TableLoader<T>;
-  title?: TableProps<T>['title'];
-  description?: TableProps<T>['description'];
   columns?: TableProps<T>['columns'];
-  columnConfig?: TableProps<T>['columnConfig'];
-  pagination?: TableProps<T>['pagination'];
-  defaultRowsPerPage?: TableProps<T>['defaultRowsPerPage'];
-  buttons?: TableProps<T>['buttons'];
   hideButtons?: boolean;
-  rowOnClick?: TableProps<T>['rowOnClick'];
-  toolbarSx?: TableProps<T>['toolbarSx'];
-  toolbarContent?: TableProps<T>['toolbarContent'];
-  tableContainerSx?: TableProps<T>['tableContainerSx'];
-  emptyTableComponent?: TableProps<T>['emptyTableComponent'];
-};
+} & SpecificTableProps<T>;
 
 function deleteButton<T extends Record>(table: Table<T>): TableButton<T> {
   return {
@@ -71,6 +63,7 @@ function createButton<T extends Record>(table: Table<T>): TableButton<T> {
 }
 
 export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
+  const { ...passthrough } = props;
   function defaultColumns() {
     const columnProperties: (keyof T)[] = [];
     if ((props.table.columns as any)['name']) {
@@ -189,6 +182,7 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
       toolbarContent={props.toolbarContent}
       tableContainerSx={props.tableContainerSx}
       emptyTableComponent={props.emptyTableComponent}
+      {...passthrough}
     />
   );
 }
