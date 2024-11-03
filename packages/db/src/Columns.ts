@@ -370,18 +370,23 @@ export class DynamicReferenceTableNameColumn extends StringColumn<string> {
           throw new Error(`Column ${referenceColumnName} in table ${table.name} not found when setting default value`);
         }
 
-        if (record[refColPropertyName]) {
-          const referenceTableName = record[refColPropertyName]?._table;
-          if (referenceTableName) {
-            record[colPropertyName] = referenceTableName;
-          } else {
-            throw new Error(
-              `When inserting, table name must be set in Reference object for DynamicReferenceColumn ${referenceColumnName}`
-            );
-          }
+        // No reference is being set, so we can return early
+        if (!record[refColPropertyName]) {
+          return options?.defaultValue ? await options.defaultValue(table, record) : record[colPropertyName] ?? null;
         }
 
-        return options?.defaultValue ? await options.defaultValue(table, record) : record[colPropertyName] || null;
+        // Get the table name from the reference column
+        const { _table: referenceTableName } = record[refColPropertyName];
+
+        if (!referenceTableName) {
+          throw new Error(
+            `When inserting, table name must be set in Reference object for DynamicReferenceColumn ${referenceColumnName}`
+          );
+        }
+
+        // Assign the table name and return it, unless an defaultValue function is provided via options
+        record[colPropertyName] = referenceTableName;
+        return options?.defaultValue ? await options.defaultValue(table, record) : referenceTableName;
       },
       updateValue: async (table: Table<any>, updateObj: any) => {
         const colPropertyName = getColumnPropertyName(table, name);
@@ -393,19 +398,23 @@ export class DynamicReferenceTableNameColumn extends StringColumn<string> {
           throw new Error(`Column ${referenceColumnName} in table ${table.name} not found when setting default value`);
         }
 
-        // only update this column if the reference column is being updated
-        if (updateObj[refColPropertyName]) {
-          const newTableName = updateObj[refColPropertyName]._table;
-          if (newTableName) {
-            updateObj[colPropertyName] = newTableName;
-          } else {
-            throw new Error(
-              `When inserting, table name must be set in Reference object for DynamicReferenceColumn ${referenceColumnName}`
-            );
-          }
+        // The reference column is not being updated, so we can return early
+        if (!updateObj[refColPropertyName]) {
+          return options?.updateValue?.(table, updateObj) ?? updateObj[colPropertyName] ?? undefined;
         }
 
-        return options?.updateValue ? options.updateValue(table, updateObj) : updateObj[colPropertyName] || null;
+        // Get the table name from the new reference column
+        const { _table: newTableName } = updateObj[refColPropertyName];
+
+        if (!newTableName) {
+          throw new Error(
+            `When inserting, table name must be set in Reference object for DynamicReferenceColumn ${referenceColumnName}`
+          );
+        }
+
+        // Assign the new table name and return it, unless an updateValue function is provided via options
+        updateObj[colPropertyName] = newTableName;
+        return options?.updateValue?.(table, updateObj) ?? newTableName;
       },
     };
 

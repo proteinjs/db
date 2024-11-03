@@ -59,7 +59,10 @@ export const addUpdateFieldValues = async (table: Table<any>, record: any) => {
   for (const columnPropertyName in table.columns) {
     const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
     if (column.options?.updateValue) {
-      record[columnPropertyName] = await column.options.updateValue(table, record);
+      const value = await column.options.updateValue(table, record);
+      if (value !== undefined) {
+        record[columnPropertyName] = value;
+      }
     }
   }
 };
@@ -142,7 +145,7 @@ export type ColumnOptions = {
   defaultValue?: (table: Table<any>, insertObj: any) => Promise<any>;
   /** If true, the `defaultValue` function will always provide the value and override any existing value */
   forceDefaultValue?: boolean;
-  /** Value stored on update */
+  /** Value stored on update. Value is not stored if the function returns `undefined`. */
   updateValue?: (table: Table<any>, updateObj: any) => Promise<any>;
   /** Add conditions to query; called on every query of this table */
   addToQuery?: (qb: QueryBuilder, runAsSystem: boolean) => Promise<void>;

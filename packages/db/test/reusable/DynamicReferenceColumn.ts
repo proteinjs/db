@@ -7,8 +7,10 @@ import { QueryBuilder } from '@proteinjs/db-query';
 
 interface ProjectAssignment extends Record {
   projectName: string;
-  employeeTableName?: string;
+  employeeTableName?: string | null;
   employeeRef?: Reference<Engineer | Designer | ProjectManager> | null;
+  projectLeadTableName?: string | null;
+  projectLeadRef?: Reference<Engineer | Designer | ProjectManager> | null;
   startDate: string;
 }
 
@@ -35,6 +37,15 @@ class ProjectAssignmentTable extends Table<ProjectAssignment> {
     employeeRef: new DynamicReferenceColumn<Engineer | Designer | ProjectManager>(
       'employee_ref',
       'employee_table_name',
+      true // Enable cascade delete for testing
+    ),
+    projectLeadTableName: new DynamicReferenceTableNameColumn('project_lead_table_name', 'project_lead_ref', {
+      defaultValue: async () => 'TEST_DEFAULT_VALUE',
+      updateValue: async () => 'TEST_UPDATE_VALUE',
+    }),
+    projectLeadRef: new DynamicReferenceColumn<Engineer | Designer | ProjectManager>(
+      'project_lead_ref',
+      'project_lead_table_name',
       true // Enable cascade delete for testing
     ),
     startDate: new StringColumn('start_date'),
@@ -303,6 +314,174 @@ export const dynamicReferenceColumnTests = (driver: DbDriver, dropTable: (table:
       expect(updatedAssignment.employeeRef?._table).toBe(designerTable.name);
       expect(updatedAssignment.employeeRef?._id).toBe(designer.id);
       expect(updatedAssignment.employeeTableName).toBe(designerTable.name);
+    });
+
+    describe('DynamicReferenceTableNameColumn behavior', () => {
+      test('should handle defaultValue logic correctly', async () => {
+        // Test case 1: Reference column is populated
+        const engineer = await db.insert(engineerTable, {
+          name: 'John Doe',
+          yearsOfExperience: 5,
+        });
+
+        const assignment = await db.insert(projectAssignmentTable, {
+          projectName: 'Test Project',
+          employeeRef: new Reference(engineerTable.name, engineer.id),
+          startDate: '2024-01-01',
+        });
+
+        // Verify table name was set correctly from reference
+        expect(assignment.employeeTableName).toBe(engineerTable.name);
+
+        // Test case 2: Reference column is null
+        const assignmentNoRef = await db.insert(projectAssignmentTable, {
+          projectName: 'No Reference Project',
+          employeeRef: null,
+          startDate: '2024-01-01',
+        });
+
+        // Verify table name is null when reference is null
+        expect(assignmentNoRef.employeeTableName).toBeNull();
+
+        // Test case 3: Reference without table name should throw
+        await expect(
+          db.insert(projectAssignmentTable, {
+            projectName: 'Invalid Reference',
+            employeeRef: new Reference('', engineer.id), // Empty table name
+            startDate: '2024-01-01',
+          })
+        ).rejects.toThrow(/table name must be set in Reference object/);
+      });
+
+      test('should handle updateValue logic correctly', async () => {
+        // Create initial records
+        const engineer = await db.insert(engineerTable, {
+          name: 'John Doe',
+          yearsOfExperience: 5,
+        });
+
+        const designer = await db.insert(designerTable, {
+          name: 'Jane Smith',
+          specialization: 'UI/UX',
+        });
+
+        const assignment = await db.insert(projectAssignmentTable, {
+          projectName: 'Initial Project',
+          employeeRef: new Reference(engineerTable.name, engineer.id),
+          startDate: '2024-01-01',
+        });
+
+        // Test case 1: Update reference to new table
+        await db.update(
+          projectAssignmentTable,
+          {
+            employeeRef: new Reference(designerTable.name, designer.id),
+          },
+          { id: assignment.id }
+        );
+
+        const updatedAssignment = await db.get(projectAssignmentTable, { id: assignment.id });
+        expect(updatedAssignment.employeeTableName).toBe(designerTable.name);
+
+        // Test case 2: Update without changing reference
+        await db.update(
+          projectAssignmentTable,
+          {
+            projectName: 'Updated Project Name',
+          },
+          { id: assignment.id }
+        );
+
+        const unchangedAssignment = await db.get(projectAssignmentTable, { id: assignment.id });
+        expect(unchangedAssignment.employeeTableName).toBe(designerTable.name); // Should retain previous value
+
+        // Test case 3: Update with invalid reference should throw
+        await expect(
+          db.update(
+            projectAssignmentTable,
+            {
+              employeeRef: new Reference('', designer.id), // Empty table name
+            },
+            { id: assignment.id }
+          )
+        ).rejects.toThrow(/table name must be set in Reference object/);
+      });
+
+      test('should handle null references correctly', async () => {
+        // Create initial assignment with reference
+        const engineer = await db.insert(engineerTable, {
+          name: 'John Doe',
+          yearsOfExperience: 5,
+        });
+
+        const assignment = await db.insert(projectAssignmentTable, {
+          projectName: 'Initial Project',
+          employeeRef: new Reference(engineerTable.name, engineer.id),
+          startDate: '2024-01-01',
+        });
+
+        // Update to null reference
+        await db.update(
+          projectAssignmentTable,
+          {
+            employeeRef: null,
+          },
+          { id: assignment.id }
+        );
+
+        const nullRefAssignment = await db.get(projectAssignmentTable, { id: assignment.id });
+        expect(nullRefAssignment.employeeRef).toBeNull();
+        expect(nullRefAssignment.employeeTableName).toBe(engineerTable.name); // Should retain previous value
+      });
+
+      test('should handle custom defaultValue override for projectLead', async () => {
+        const engineer = await db.insert(engineerTable, {
+          name: 'John Doe',
+          yearsOfExperience: 5,
+        });
+
+        // Even with a reference provided, should use the custom default value
+        const assignment = await db.insert(projectAssignmentTable, {
+          projectName: 'Custom Default Test',
+          projectLeadRef: new Reference(engineerTable.name, engineer.id),
+          startDate: '2024-01-01',
+        });
+
+        // Should use our custom default value instead of the reference's table name
+        expect(assignment.projectLeadTableName).toBe('TEST_DEFAULT_VALUE');
+      });
+
+      test('should handle custom updateValue override for projectLead', async () => {
+        const engineer = await db.insert(engineerTable, {
+          name: 'John Doe',
+          yearsOfExperience: 5,
+        });
+
+        const designer = await db.insert(designerTable, {
+          name: 'Jane Smith',
+          specialization: 'UI/UX',
+        });
+
+        // Create initial assignment
+        const assignment = await db.insert(projectAssignmentTable, {
+          projectName: 'Initial Project',
+          projectLeadRef: new Reference(engineerTable.name, engineer.id),
+          startDate: '2024-01-01',
+        });
+
+        // Update the reference
+        await db.update(
+          projectAssignmentTable,
+          {
+            projectLeadRef: new Reference(designerTable.name, designer.id),
+          },
+          { id: assignment.id }
+        );
+
+        const updatedAssignment = await db.get(projectAssignmentTable, { id: assignment.id });
+        // Should use our custom update value instead of the new reference's table name
+        expect(updatedAssignment.projectLeadTableName).toBe('TEST_UPDATE_VALUE');
+      });
     });
   };
 };
