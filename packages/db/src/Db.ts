@@ -114,7 +114,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     }
 
     let recordCopy = Object.assign({}, record);
-    await addDefaultFieldValues(table, recordCopy);
+    await addDefaultFieldValues(table, recordCopy, this.runAsSystem);
     recordCopy = await this.tableWatcherRunner.runBeforeInsertTableWatchers(table, recordCopy);
     const recordSearializer = new RecordSerializer(table);
     const serializedRecord = await recordSearializer.serialize(recordCopy);
