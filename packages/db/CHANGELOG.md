@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.9.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.8.0...@proteinjs/db@1.9.0) (2024-11-06)
+
+
+### Features
+
+* `ColumnOptions.forceDefaultValue` now optionally takes a function `(runAsSystem: boolean) => boolean` to provide more control to the column over how it handles enforcing default values on insert ([7f8f30a](https://github.com/proteinjs/db/commit/7f8f30a98bce496d5ca3254a69c1bc54a90bc460))
+
+
+
+
+
 # [1.8.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.7.0...@proteinjs/db@1.8.0) (2024-10-31)
 
 
