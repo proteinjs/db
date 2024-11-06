@@ -170,18 +170,11 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
   return (
     <TableComponent
       title={props.title ? props.title : `${S(props.table.name).humanize().toString()} Table`}
-      description={props.description}
       columns={props.columns ? props.columns : defaultColumns()}
       columnConfig={mergeColumnConfigs()}
       tableLoader={props.tableLoader ? props.tableLoader : defaultTableLoader()}
       rowOnClick={props.rowOnClick ? props.rowOnClick : defaultRowOnClickRedirectUrl}
-      pagination={props.pagination}
-      defaultRowsPerPage={props.defaultRowsPerPage}
       buttons={buttons()}
-      toolbarSx={props.toolbarSx}
-      toolbarContent={props.toolbarContent}
-      tableContainerSx={props.tableContainerSx}
-      emptyTableComponent={props.emptyTableComponent}
       {...passthrough}
     />
   );

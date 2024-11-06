@@ -449,7 +449,6 @@ export class DynamicReferenceTableNameColumn extends StringColumn<string> {
  * }
  */
 
-// veronica todo: make sure we check the presence of both columns needed at table creation in table manager
 export class DynamicReferenceColumn<T extends Record> extends StringColumn<Reference<T>> {
   constructor(
     name: string,
