@@ -59,7 +59,7 @@ export class Transaction implements OperationQueue {
   async insert<R extends Record = Record>(...args: Parameters<DbService<R>['insert']>): Promise<R> {
     const [table, record] = args;
     const recordCopy = Object.assign({}, record) as R;
-    await addDefaultFieldValues(table, recordCopy);
+    await addDefaultFieldValues(table, recordCopy, false);
     const recordMap = this.recordMap(table.name);
     if (recordMap[recordCopy.id]) {
       throw new Error(`Attempting to insert with duplicate id: ${recordCopy.id}, record already exists`);
