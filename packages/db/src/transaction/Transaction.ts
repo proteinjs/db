@@ -104,7 +104,7 @@ export class Transaction implements OperationQueue {
           this.onUpdate(table, prevRecord, existingRecord);
         }
       } else {
-        throw new Error(`Attempting to update record not in the cached db`);
+        // Updating record not in the cached db - skipping cached db update
       }
     } else if (query && !isInstanceOf(query, QueryBuilder)) {
       const objectQuery = query as ObjectQuery<any>;
