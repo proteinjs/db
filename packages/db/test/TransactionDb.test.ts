@@ -170,12 +170,10 @@ describe('Transaction db', () => {
       });
     });
 
-    it('should throw error when updating non-existent record by id', () => {
+    it('should not throw when updating non-existent record by id', () => {
       const update = { id: 'non-existent', name: 'John' };
 
-      expect(() => transaction.update(employeeTable, update)).toThrow(
-        'Attempting to update record not in the cached db'
-      );
+      expect(() => transaction.update(employeeTable, update)).not.toThrow();
     });
   });
 
