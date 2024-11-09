@@ -70,6 +70,7 @@ export class KnexDriver implements DbDriver {
 
   async start() {
     await this.setMaxAllowedPacketSize();
+    await this.createDbIfNotExists();
   }
 
   async stop() {
