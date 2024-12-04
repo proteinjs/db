@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.9.1](https://github.com/proteinjs/db/compare/@proteinjs/db@1.9.0...@proteinjs/db@1.9.1) (2024-11-07)
+
+
+### Bug Fixes
+
+* `Transaction.update` no longer throws when updating a record not in the cached db, instead no-ops; it's valid to not care about the cached db when using `Transaction`. ([27089d6](https://github.com/proteinjs/db/commit/27089d6b1e99c3a6b37eae94655c5a8092faed3d))
+* adjusted `TransactionDb` tests expectations ([8f30fa1](https://github.com/proteinjs/db/commit/8f30fa118486b6a8d9a571d79b7c813c58875b51))
+
+
+
+
+
 # [1.9.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.8.0...@proteinjs/db@1.9.0) (2024-11-06)
 
 
