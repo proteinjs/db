@@ -19,6 +19,10 @@ import { TableManager } from './schema/TableManager';
 import { TableAuth } from './auth/TableAuth';
 import { TableServiceAuth } from './auth/TableServiceAuth';
 import { TableWatcherRunner } from './TableWatcherRunner';
+import {
+  DefaultTransactionContextFactory,
+  getDefaultTransactionContextFactory,
+} from './transaction/TransactionContextFactory';
 
 /** get `Db` if on server, and `DbService` if on browser */
 export const getDb = <R extends Record = Record>() =>
@@ -73,6 +77,11 @@ export class Db<R extends Record = Record> implements DbService<R> {
     getTable?: (tableName: string) => Table<any>,
     private runAsSystem: boolean = false
   ) {
+    const transactionContext = this.getDefaultTransactionContextFactory().getTransactionContext();
+    if (transactionContext?.currentTransaction) {
+      this.currentTransaction = transactionContext.currentTransaction;
+    }
+
     this.dbDriver = dbDriver ? dbDriver : this.getDefaultDbDriver();
     this.statementConfigFactory = new StatementConfigFactory(this.dbDriver.getDbName(), getTable);
   }
@@ -92,6 +101,15 @@ export class Db<R extends Record = Record> implements DbService<R> {
     }
 
     return Db.defaultDbDriver;
+  }
+
+  private getDefaultTransactionContextFactory(): DefaultTransactionContextFactory {
+    const defaultTransactionContextFactory = getDefaultTransactionContextFactory();
+    if (!defaultTransactionContextFactory) {
+      throw new Error(`Unable to find a @proteinjs/db/DefaultTransactionContextFactory implementation.`);
+    }
+
+    return defaultTransactionContextFactory;
   }
 
   async init(): Promise<void> {
@@ -295,9 +313,13 @@ export class Db<R extends Record = Record> implements DbService<R> {
 
     return await this.dbDriver.runTransaction(async (transaction) => {
       this.currentTransaction = transaction;
+      const transactionContextFactory = this.getDefaultTransactionContextFactory();
+
       try {
-        const result = await fn();
-        return result;
+        return await transactionContextFactory.runInContext(transaction, async () => {
+          const result = await fn();
+          return result;
+        });
       } finally {
         this.currentTransaction = undefined;
       }

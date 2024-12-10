@@ -26,6 +26,7 @@
     "@proteinjs/db": "^1.10.0",
     "@proteinjs/db-query": "^1.2.9",
     "@proteinjs/db-spanner-common": "^1.0.6",
+    "@proteinjs/db-transaction-context": "^0.1.0",
     "@proteinjs/logger": "1.0.6",
     "@proteinjs/reflection": "1.1.9",
     "@proteinjs/util": "1.4.1"
