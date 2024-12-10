@@ -11,6 +11,7 @@ export * from './src/QueryBuilderFactory';
 export * from './src/TableWatcher';
 export * from './src/transaction/Transaction';
 export * from './src/transaction/TransactionRunner';
+export * from './src/transaction/TransactionContextFactory';
 
 export * from './src/schema/SchemaOperations';
 export * from './src/schema/SchemaMetadata';
