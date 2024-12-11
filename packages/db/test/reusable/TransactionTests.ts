@@ -3,6 +3,7 @@ import { DbDriver, Db } from '../../src/Db';
 import { withRecordColumns, Record } from '../../src/Record';
 import { BooleanColumn, DateColumn, StringColumn } from '../../src/Columns';
 import { Table } from '../../src/Table';
+import { DefaultTransactionContextFactory } from '../../src/transaction/TransactionContextFactory';
 
 interface Employee extends Record {
   name: string;
@@ -59,9 +60,13 @@ export const getTransactionTestTable = (tableName: string) => {
   throw new Error(`Cannot find test table: ${tableName}`);
 };
 
-export const transactionTests = (driver: DbDriver, dropTable: (table: Table<any>) => Promise<void>) => {
+export const transactionTests = (
+  driver: DbDriver,
+  transactionContextFactory: DefaultTransactionContextFactory,
+  dropTable: (table: Table<any>) => Promise<void>
+) => {
   return () => {
-    const db = new Db(driver, getTransactionTestTable);
+    const db = new Db(driver, getTransactionTestTable, transactionContextFactory);
 
     beforeAll(async () => {
       if (driver.start) {

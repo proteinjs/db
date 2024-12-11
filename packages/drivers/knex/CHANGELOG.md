@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.3.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.2.3...@proteinjs/db-driver-knex@1.3.0) (2024-12-11)
+
+
+### Bug Fixes
+
+* add transactionContextFactory to tests to bypass reflection error ([d8021f4](https://github.com/proteinjs/db/commit/d8021f4b5ed19f9bc536af8e62703d7ff51f635a))
+
+
+### Features
+
+* implement usage of new transaction context package in db and add it as dependency in db driver packages ([a1bc03a](https://github.com/proteinjs/db/commit/a1bc03ae7cde59237ab24a7cbb3e168b4425df9d))
+
+
+
+
+
 ## [1.2.3](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.2.2...@proteinjs/db-driver-knex@1.2.3) (2024-12-10)
 
 

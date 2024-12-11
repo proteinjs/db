@@ -27,7 +27,7 @@ import {
 /** get `Db` if on server, and `DbService` if on browser */
 export const getDb = <R extends Record = Record>() =>
   typeof self === 'undefined' ? new Db<R>() : (getDbService() as Db<R>);
-export const getDbAsSystem = <R extends Record = Record>() => new Db<R>(undefined, undefined, true);
+export const getDbAsSystem = <R extends Record = Record>() => new Db<R>(undefined, undefined, undefined, true);
 
 export type DbDriverQueryStatementConfig = ParameterizationConfig & {
   prefixTablesWithDb?: boolean;
@@ -66,6 +66,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
   private auth = new TableAuth();
   private tableWatcherRunner = new TableWatcherRunner<R>();
   private currentTransaction?: any;
+  private transactionContextFactory: DefaultTransactionContextFactory;
   public serviceMetadata: Service['serviceMetadata'] = {
     auth: {
       canAccess: (methodName, args) => new TableServiceAuth().canAccess(methodName, args),
@@ -75,15 +76,18 @@ export class Db<R extends Record = Record> implements DbService<R> {
   constructor(
     dbDriver?: DbDriver,
     private getTable?: (tableName: string) => Table<any>,
+    transactionContextFactory?: DefaultTransactionContextFactory,
     private runAsSystem: boolean = false
   ) {
-    const transactionContext = this.getDefaultTransactionContextFactory().getTransactionContext();
-    if (transactionContext?.currentTransaction) {
-      this.currentTransaction = transactionContext.currentTransaction;
-    }
-
     this.dbDriver = dbDriver ? dbDriver : this.getDefaultDbDriver();
     this.statementConfigFactory = new StatementConfigFactory(this.dbDriver.getDbName(), getTable);
+    this.transactionContextFactory = transactionContextFactory
+      ? transactionContextFactory
+      : this.getDefaultTransactionContextFactory();
+    const transactionContext = this.transactionContextFactory.getTransactionContext();
+    if (transactionContext.currentTransaction) {
+      this.currentTransaction = transactionContext.currentTransaction;
+    }
   }
 
   private getDefaultDbDriver(): DbDriver {
@@ -213,7 +217,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
           columnPropertyName,
           recordsToDelete,
           this.getTable,
-          new Db(this.dbDriver, this.getTable)
+          new Db(this.dbDriver, this.getTable, this.transactionContextFactory)
         );
       }
     }
@@ -319,10 +323,9 @@ export class Db<R extends Record = Record> implements DbService<R> {
 
     return await this.dbDriver.runTransaction(async (transaction) => {
       this.currentTransaction = transaction;
-      const transactionContextFactory = this.getDefaultTransactionContextFactory();
 
       try {
-        return await transactionContextFactory.runInContext(transaction, async () => {
+        return await this.transactionContextFactory.runInContext(transaction, async () => {
           const result = await fn();
           return result;
         });

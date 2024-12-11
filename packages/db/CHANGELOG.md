@@ -3,6 +3,23 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.11.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.10.0...@proteinjs/db@1.11.0) (2024-12-11)
+
+
+### Bug Fixes
+
+* add transactionContextFactory to tests to bypass reflection error ([d8021f4](https://github.com/proteinjs/db/commit/d8021f4b5ed19f9bc536af8e62703d7ff51f635a))
+* fixing api for Transaction Context runInContext ([a66dfed](https://github.com/proteinjs/db/commit/a66dfed178b6a3b7f431849b26dd1139e4f3f9ff))
+
+
+### Features
+
+* implement usage of new transaction context package in db and add it as dependency in db driver packages ([a1bc03a](https://github.com/proteinjs/db/commit/a1bc03ae7cde59237ab24a7cbb3e168b4425df9d))
+
+
+
+
+
 # [1.10.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.9.1...@proteinjs/db@1.10.0) (2024-12-10)
 
 

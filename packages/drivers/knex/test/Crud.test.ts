@@ -8,6 +8,7 @@ import {
   dynamicReferenceColumnTests,
 } from '@proteinjs/db';
 import { KnexDriver } from '../src/KnexDriver';
+import { TransactionContext } from '@proteinjs/db-transaction-context';
 
 const dropTable = async (knexDriver: KnexDriver, table: Table<any>) => {
   if (await knexDriver.getKnex().schema.withSchema(knexDriver.getDbName()).hasTable(table.name)) {
@@ -27,7 +28,9 @@ const knexDriverColumnTypesTests = new KnexDriver(
 
 describe(
   'Column Type Tests',
-  columnTypeTests(knexDriverColumnTypesTests, (table) => dropTable(knexDriverColumnTypesTests, table))
+  columnTypeTests(knexDriverColumnTypesTests, new TransactionContext(), (table) =>
+    dropTable(knexDriverColumnTypesTests, table)
+  )
 );
 
 const knexDriverDynamicRefCol = new KnexDriver(
@@ -58,5 +61,5 @@ const knexDriverCrudTests = new KnexDriver(
 
 describe(
   'CRUD Tests',
-  crudTests(knexDriverCrudTests, (table) => dropTable(knexDriverCrudTests, table))
+  crudTests(knexDriverCrudTests, new TransactionContext(), (table) => dropTable(knexDriverCrudTests, table))
 );

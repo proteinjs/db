@@ -1,6 +1,7 @@
 import { transactionTests, getTransactionTestTable } from '@proteinjs/db';
 import { SpannerDriver } from '../src/SpannerDriver';
 import { getDropTestTable } from './dropTestTable';
+import { TransactionContext } from '@proteinjs/db-transaction-context';
 
 const spannerDriver = new SpannerDriver(
   {
@@ -11,4 +12,7 @@ const spannerDriver = new SpannerDriver(
   getTransactionTestTable
 );
 
-describe('Transaction Tests', transactionTests(spannerDriver, getDropTestTable(spannerDriver)));
+describe(
+  'Transaction Tests',
+  transactionTests(spannerDriver, new TransactionContext(), getDropTestTable(spannerDriver))
+);
