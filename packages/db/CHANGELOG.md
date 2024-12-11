@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.10.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.9.1...@proteinjs/db@1.10.0) (2024-12-10)
+
+
+### Features
+
+* retrieve DefaultTransactionContextFactory via reflection ([bd158bf](https://github.com/proteinjs/db/commit/bd158bf41c2976640bd74e1f079896554775e707))
+
+
+
+
+
 ## [1.9.1](https://github.com/proteinjs/db/compare/@proteinjs/db@1.9.0...@proteinjs/db@1.9.1) (2024-11-07)
 
 

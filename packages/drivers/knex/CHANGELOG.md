@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.2.3](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.2.2...@proteinjs/db-driver-knex@1.2.3) (2024-12-10)
+
+
+### Bug Fixes
+
+* `KnexDriver.start` make sure we create db if it doesn't exist; used by tests [skip ci] ([fd26e85](https://github.com/proteinjs/db/commit/fd26e851191f9dbc4be45c76abfcf102dde22632))
+
+
+
+
+
 ## [1.2.2](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.2.1...@proteinjs/db-driver-knex@1.2.2) (2024-11-07)
 
 **Note:** Version bump only for package @proteinjs/db-driver-knex

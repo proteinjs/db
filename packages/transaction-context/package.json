@@ -1,7 +1,7 @@
 {
-  "name": "@proteinjs/db",
-  "version": "1.10.0",
-  "description": "Db",
+  "name": "@proteinjs/db-transaction-context",
+  "version": "0.1.0",
+  "description": "Db transaction context",
   "publishConfig": {
     "access": "public"
   },
@@ -10,34 +10,25 @@
     "url": "git+https://github.com/proteinjs/db.git"
   },
   "bugs": {
-    "url": "https://github.com/@proteinjs/db/issues"
+    "url": "https://github.com/proteinjs/db/issues"
   },
-  "homepage": "https://github.com/@proteinjs/db#readme",
+  "homepage": "https://github.com/proteinjs/db#readme",
   "author": "Brent Bahry",
   "license": "MIT",
   "scripts": {
     "clean": "rm -rf dist/ node_modules/ generated/",
     "build": "reflection-build && tsc",
-    "watch": "reflection-watch",
-    "test": "jest"
+    "watch": "reflection-watch"
   },
   "dependencies": {
-    "@proteinjs/db-query": "^1.2.9",
+    "@proteinjs/db": "^1.10.0",
     "@proteinjs/logger": "1.0.6",
-    "@proteinjs/reflection": "1.1.9",
-    "@proteinjs/serializer": "1.0.15",
-    "@proteinjs/server-api": "1.5.0",
-    "@proteinjs/service": "1.1.1",
-    "@proteinjs/user-auth": "1.1.1",
-    "@proteinjs/util": "1.4.1",
-    "moment": "2.29.4",
-    "uuid": "8.3.0"
+    "@proteinjs/reflection": "1.1.9"
   },
   "devDependencies": {
     "@proteinjs/reflection-build": "1.0.24",
     "@types/jest": "29.5.5",
     "@types/node": "14.0.27",
-    "@types/uuid": "8.3.0",
     "@typescript-eslint/eslint-plugin": "7.8.0",
     "@typescript-eslint/parser": "7.8.0",
     "eslint": "8.57.0",
