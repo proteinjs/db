@@ -9,5 +9,5 @@ export interface TransactionContextData {
 
 export interface DefaultTransactionContextFactory extends Loadable {
   getTransactionContext(): TransactionContextData;
-  runInContext<T>(data: TransactionContextData, callback: () => Promise<T>): Promise<T>;
+  runInContext<T>(transaction: any, callback: () => Promise<T>): Promise<T>;
 }
