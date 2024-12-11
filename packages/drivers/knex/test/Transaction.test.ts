@@ -1,5 +1,6 @@
 import { transactionTests, getTransactionTestTable, Table } from '@proteinjs/db';
 import { KnexDriver } from '../src/KnexDriver';
+import { TransactionContext } from '@proteinjs/db-transaction-context';
 
 const dropTable = async (knexDriver: KnexDriver, table: Table<any>) => {
   if (await knexDriver.getKnex().schema.withSchema(knexDriver.getDbName()).hasTable(table.name)) {
@@ -19,5 +20,5 @@ const knexDriver = new KnexDriver(
 
 describe(
   'Transaction Tests',
-  transactionTests(knexDriver, (table) => dropTable(knexDriver, table))
+  transactionTests(knexDriver, new TransactionContext(), (table) => dropTable(knexDriver, table))
 );

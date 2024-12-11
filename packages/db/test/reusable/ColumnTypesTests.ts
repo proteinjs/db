@@ -20,6 +20,7 @@ import {
 } from '../../src/Columns';
 import { withRecordColumns, Record } from '../../src/Record';
 import { Table } from '../../src/Table';
+import { DefaultTransactionContextFactory } from '../../src/transaction/TransactionContextFactory';
 
 export interface TestRecord extends Record {
   integerColumn?: number | null;
@@ -69,9 +70,13 @@ export const getColTypeTestTable = (tableName: string) => {
   throw new Error(`Cannot find test table: ${tableName}`);
 };
 
-export const columnTypeTests = (driver: DbDriver, dropTable: (table: Table<any>) => Promise<void>) => {
+export const columnTypeTests = (
+  driver: DbDriver,
+  transactionContextFactory: DefaultTransactionContextFactory,
+  dropTable: (table: Table<any>) => Promise<void>
+) => {
   return () => {
-    const db = new Db(driver, getColTypeTestTable);
+    const db = new Db(driver, getColTypeTestTable, transactionContextFactory);
 
     beforeAll(async () => {
       if (driver.start) {
