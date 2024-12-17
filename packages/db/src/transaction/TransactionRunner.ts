@@ -6,6 +6,12 @@ export const getTransactionRunner = () =>
   typeof self === 'undefined' ? new TransactionRunner() : (getTransactionRunnerService() as TransactionRunner);
 
 export class TransactionRunner implements TransactionRunnerService {
+  public serviceMetadata = {
+    auth: {
+      allUsers: true,
+    },
+  };
+
   async run(ops: Operation<any>[]): Promise<void> {
     const db = getDb();
 
