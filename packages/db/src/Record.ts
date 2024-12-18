@@ -87,7 +87,11 @@ export class RecordSerializer<T extends Record> {
     for (const columnName in serializedRecord) {
       const serializedFieldValue = serializedRecord[columnName];
       try {
-        const { fieldPropertyName, fieldValue } = await fieldSerializer.deserialize(columnName, serializedFieldValue);
+        const { fieldPropertyName, fieldValue } = await fieldSerializer.deserialize(
+          columnName,
+          serializedFieldValue,
+          serializedRecord
+        );
         deserialized[fieldPropertyName] = fieldValue;
       } catch (MissingFieldError) {
         omittedFields.push(columnName);
@@ -121,7 +125,7 @@ export class FieldSerializer<T extends Record> {
     return { columnName: column.name, serializedFieldValue };
   }
 
-  async deserialize(columnName: string, serializedFieldValue: any) {
+  async deserialize(columnName: string, serializedFieldValue: any, serializedRecord: SerializedRecord) {
     const columns: { [prop: string]: Column<any, any> } = this.table.columns;
     let fieldPropertyName = columnName;
     let column = columns[columnName]; // the scenario that the column name is the same as the property name
@@ -143,7 +147,7 @@ export class FieldSerializer<T extends Record> {
 
     let fieldValue = serializedFieldValue;
     if (column.deserialize) {
-      fieldValue = await column.deserialize(serializedFieldValue);
+      fieldValue = await column.deserialize(serializedFieldValue, serializedRecord);
     }
 
     return { fieldPropertyName, fieldValue };

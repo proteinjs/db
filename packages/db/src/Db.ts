@@ -75,7 +75,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
 
   constructor(
     dbDriver?: DbDriver,
-    getTable?: (tableName: string) => Table<any>,
+    private getTable?: (tableName: string) => Table<any>,
     transactionContextFactory?: DefaultTransactionContextFactory,
     private runAsSystem: boolean = false
   ) {
@@ -169,8 +169,8 @@ export class Db<R extends Record = Record> implements DbService<R> {
     }
 
     recordCopy = await this.tableWatcherRunner.runBeforeUpdateTableWatchers(table, recordCopy, qb);
-    const recordSearializer = new RecordSerializer<T>(table);
-    const serializedRecord = await recordSearializer.serialize(recordCopy);
+    const recordSerializer = new RecordSerializer<T>(table);
+    const serializedRecord = await recordSerializer.serialize(recordCopy);
     delete serializedRecord['id'];
     const generateUpdate = (config: DbDriverDmlStatementConfig) =>
       new StatementFactory<T>().update(
@@ -212,7 +212,13 @@ export class Db<R extends Record = Record> implements DbService<R> {
     for (const columnPropertyName in table.columns) {
       const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
       if (typeof column.beforeDelete !== 'undefined') {
-        await column.beforeDelete(table, columnPropertyName, recordsToDelete);
+        await column.beforeDelete(
+          table,
+          columnPropertyName,
+          recordsToDelete,
+          this.getTable,
+          new Db(this.dbDriver, this.getTable, this.transactionContextFactory)
+        );
       }
     }
   }
@@ -257,9 +263,9 @@ export class Db<R extends Record = Record> implements DbService<R> {
     const generateQuery = (config: DbDriverQueryStatementConfig) =>
       qb.toSql(this.statementConfigFactory.getStatementConfig(config));
     const serializedRecords = await this.dbDriver.runQuery(generateQuery, this.currentTransaction);
-    const recordSearializer = new RecordSerializer(table);
+    const recordSerializer = new RecordSerializer(table);
     return await Promise.all(
-      serializedRecords.map(async (serializedRecord) => recordSearializer.deserialize(serializedRecord))
+      serializedRecords.map(async (serializedRecord) => recordSerializer.deserialize(serializedRecord))
     );
   }
 
