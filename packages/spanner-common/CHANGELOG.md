@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.1.0](https://github.com/proteinjs/db/compare/@proteinjs/db-spanner-common@1.0.7...@proteinjs/db-spanner-common@1.1.0) (2025-02-07)
+
+
+### Features
+
+* Dynamic reference column ([#12](https://github.com/proteinjs/db/issues/12)) ([554b2e4](https://github.com/proteinjs/db/commit/554b2e4159f1d692d2ae976461c60f88639ecf22))
+
+
+
+
+
 ## [1.0.7](https://github.com/proteinjs/db/compare/@proteinjs/db-spanner-common@1.0.6...@proteinjs/db-spanner-common@1.0.7) (2024-12-11)
 
 **Note:** Version bump only for package @proteinjs/db-spanner-common

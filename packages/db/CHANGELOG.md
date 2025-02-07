@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.12.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.11.0...@proteinjs/db@1.12.0) (2025-02-07)
+
+
+### Bug Fixes
+
+* TransactionRunnerService auth for authenticated users instead of only admin ([497e13e](https://github.com/proteinjs/db/commit/497e13efbb196bf1a20c593a296a695005e89de4))
+
+
+### Features
+
+* Dynamic reference column ([#12](https://github.com/proteinjs/db/issues/12)) ([554b2e4](https://github.com/proteinjs/db/commit/554b2e4159f1d692d2ae976461c60f88639ecf22))
+
+
+
+
+
 # [1.11.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.10.0...@proteinjs/db@1.11.0) (2024-12-11)
 
 

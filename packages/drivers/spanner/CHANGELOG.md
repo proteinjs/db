@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.8.0](https://github.com/brentbahry/db/compare/@proteinjs/db-driver-spanner@1.7.0...@proteinjs/db-driver-spanner@1.8.0) (2025-02-07)
+
+
+### Features
+
+* Dynamic reference column ([#12](https://github.com/brentbahry/db/issues/12)) ([554b2e4](https://github.com/brentbahry/db/commit/554b2e4159f1d692d2ae976461c60f88639ecf22))
+
+
+
+
+
 # [1.7.0](https://github.com/brentbahry/db/compare/@proteinjs/db-driver-spanner@1.6.3...@proteinjs/db-driver-spanner@1.7.0) (2024-12-11)
 
 
