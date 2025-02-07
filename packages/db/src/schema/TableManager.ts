@@ -76,40 +76,38 @@ export class TableManager {
     }
 
     const dynamicRefColumns: DynamicRefColumnInfo[] = [];
-    const dynamicRefTableNameColumns: string[] = [];
+    const dynamicRefTableNameColumns = new Set<string>();
 
-    // First pass: collect all dynamic reference columns
-    Object.entries(table.columns).forEach(([propertyName, column]) => {
+    // collect both dynamic reference columns and table name columns
+    Object.entries(table.columns).forEach(([_, column]) => {
       if (isDynamicRefColumn(column)) {
         dynamicRefColumns.push({
           columnName: column.name,
           tableColumnName: column.dynamicRefTableColName,
         });
       } else if (isDynamicRefTableNameColumn(column)) {
-        dynamicRefTableNameColumns.push(column.name);
+        dynamicRefTableNameColumns.add(column.name);
       }
     });
 
-    // Second pass: validate that each DynamicReferenceColumn has its required table name column
+    // Validate references and mark used table names
     dynamicRefColumns.forEach(({ columnName, tableColumnName }) => {
-      if (!dynamicRefTableNameColumns.includes(tableColumnName)) {
+      if (!dynamicRefTableNameColumns.has(tableColumnName)) {
         throw new Error(
           `Table ${table.name} has a DynamicReferenceColumn '${columnName}' but is missing its required DynamicReferenceTableNameColumn '${tableColumnName}'`
         );
       }
+      // Mark this table name column as used by removing it from the set
+      dynamicRefTableNameColumns.delete(tableColumnName);
     });
 
-    // Third pass: validate that each DynamicReferenceTableNameColumn is used by a DynamicReferenceColumn
-    dynamicRefTableNameColumns.forEach((tableNameColumnName) => {
-      const hasMatchingRefColumn = dynamicRefColumns.some(
-        ({ tableColumnName }) => tableColumnName === tableNameColumnName
+    // Any remaining table name columns are unused
+    if (dynamicRefTableNameColumns.size > 0) {
+      const unusedColumn = dynamicRefTableNameColumns.values().next().value;
+      throw new Error(
+        `Table ${table.name} has a DynamicReferenceTableNameColumn '${unusedColumn}' but no DynamicReferenceColumn references it`
       );
-      if (!hasMatchingRefColumn) {
-        throw new Error(
-          `Table ${table.name} has a DynamicReferenceTableNameColumn '${tableNameColumnName}' but no DynamicReferenceColumn references it`
-        );
-      }
-    });
+    }
   }
 
   private shouldAlterTable(tableChanges: TableChanges) {
