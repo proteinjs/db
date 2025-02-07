@@ -1,4 +1,12 @@
-import { Table, columnTypeTests, crudTests, getColTypeTestTable, getCrudTestTable } from '@proteinjs/db';
+import {
+  Table,
+  columnTypeTests,
+  crudTests,
+  getColTypeTestTable,
+  getCrudTestTable,
+  getDynamicReferenceColumnTestTable,
+  dynamicReferenceColumnTests,
+} from '@proteinjs/db';
 import { KnexDriver } from '../src/KnexDriver';
 import { TransactionContext } from '@proteinjs/db-transaction-context';
 
@@ -25,6 +33,22 @@ describe(
   )
 );
 
+const knexDriverDynamicRefCol = new KnexDriver(
+  {
+    host: 'localhost',
+    user: 'root',
+    password: '',
+    dbName: 'test',
+  },
+  getDynamicReferenceColumnTestTable
+);
+
+describe(
+  'DynamicReferenceColumn Tests',
+  dynamicReferenceColumnTests(knexDriverDynamicRefCol, (table) => dropTable(knexDriverDynamicRefCol, table))
+);
+
+// driver will be stopped in this test, any tests put after this one will not establish connection
 const knexDriverCrudTests = new KnexDriver(
   {
     host: 'localhost',

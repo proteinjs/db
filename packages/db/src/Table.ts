@@ -1,9 +1,10 @@
 import { Loadable, SourceRepository } from '@proteinjs/reflection';
 import { CustomSerializableObject } from '@proteinjs/serializer';
-import { Record } from './Record';
+import { Record, RecordSerializer } from './Record';
 import { TableSerializerId } from './serializers/TableSerializer';
 import { QueryBuilder } from '@proteinjs/db-query';
 import { Identity, TableOperationsAuth } from './auth/TableAuth';
+import { Db } from './Db';
 
 export const isTable = (obj: any) => obj.__serializerId === TableSerializerId;
 
@@ -51,7 +52,7 @@ export const addDefaultFieldValues = async (table: Table<any>, record: any, runA
         column.options?.forceDefaultValue === true ||
         (typeof column.options?.forceDefaultValue === 'function' && column.options.forceDefaultValue(runAsSystem)))
     ) {
-      record[columnPropertyName] = await column.options.defaultValue(record);
+      record[columnPropertyName] = await column.options.defaultValue(table, record);
     }
   }
 };
@@ -60,7 +61,10 @@ export const addUpdateFieldValues = async (table: Table<any>, record: any) => {
   for (const columnPropertyName in table.columns) {
     const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
     if (column.options?.updateValue) {
-      record[columnPropertyName] = await column.options.updateValue(record);
+      const value = await column.options.updateValue(table, record);
+      if (value !== undefined) {
+        record[columnPropertyName] = value;
+      }
     }
   }
 };
@@ -120,8 +124,14 @@ export type Column<T, Serialized> = {
   oldName?: string;
   options?: ColumnOptions;
   serialize?: (fieldValue: T | null | undefined) => Promise<Serialized | null | undefined>;
-  deserialize?: (serializedFieldValue: Serialized | null) => Promise<T | null | void>;
-  beforeDelete?: (table: Table<any>, columnPropertyName: string, records: any[]) => Promise<void>;
+  deserialize?: (serializedFieldValue: Serialized | null, serializedRecord: any) => Promise<T | null | void>;
+  beforeDelete?: (
+    table: Table<any>,
+    columnPropertyName: string,
+    records: any[],
+    getTable?: (tableName: string) => Table<any>,
+    db?: Db
+  ) => Promise<void>;
 };
 
 export type ColumnOptions = {
@@ -134,11 +144,11 @@ export type ColumnOptions = {
   references?: { table: string };
   nullable?: boolean;
   /** Value stored on insert */
-  defaultValue?: (insertObj: any) => Promise<any>;
+  defaultValue?: (table: Table<any>, insertObj: any) => Promise<any>;
   /** If true, the `defaultValue` function will always provide the value and override any existing value */
   forceDefaultValue?: boolean | ((runAsSystem: boolean) => boolean);
   /** Value stored on update */
-  updateValue?: (updateObj: any) => Promise<any>;
+  updateValue?: (table: Table<any>, updateObj: any) => Promise<any>;
   /** Add conditions to query; called on every query of this table */
   addToQuery?: (qb: QueryBuilder, runAsSystem: boolean) => Promise<void>;
   ui?: {
