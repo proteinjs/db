@@ -3,7 +3,7 @@ import { DbService, ObjectQuery } from '../services/DbService';
 import { getTransactionRunner } from './TransactionRunner';
 import { addDefaultFieldValues, Table } from '../Table';
 import { isInstanceOf } from '@proteinjs/util';
-import { QueryBuilder } from '@proteinjs/db-query';
+import { Condition, QueryBuilder } from '@proteinjs/db-query';
 
 export type OperationQueue<R extends Record = Record> = {
   insert: (...args: Parameters<DbService<R>['insert']>) => Promise<R>;
@@ -144,11 +144,22 @@ export class Transaction implements OperationQueue {
    * Queue a delete.
    *
    * If a `QueryBuilder` is passed in for `query`, changes will not be made to the cached `db`.
-   * Passing in an `ObjectQuery` will update the cached `db`.
+   * Passing in an `ObjectQuery` or a `QueryBuilder` with a `id IN string[]` condition will update the cached `db`.
    */
   delete<R extends Record = Record>(...args: Parameters<DbService<R>['delete']>): void {
     const [table, query] = args;
-    if (!isInstanceOf(query, QueryBuilder)) {
+    if (isInstanceOf(query, QueryBuilder)) {
+      // Process `id IN string[]` condition, if exists
+      const qb = query as QueryBuilder;
+      const recordMap = this.recordMap(table.name);
+      const ids = this.getIdsFromInCondition(qb);
+      ids.forEach((id) => {
+        if (this.onDelete && recordMap[id]) {
+          this.onDelete(table, recordMap[id]);
+        }
+        delete recordMap[id];
+      });
+    } else {
       const objectQuery = query as ObjectQuery<any>;
       const recordMap = this.recordMap(table.name);
       if (objectQuery.id) {
@@ -169,6 +180,41 @@ export class Transaction implements OperationQueue {
     }
 
     this.ops.push({ name: 'delete', args });
+  }
+
+  /**
+   * If a QueryBuilder contains a condition like this:
+   *  `{ field: 'id', operator: 'IN', value: string[] }`
+   * return the ids from the value.
+   * @param qb QueryBuilder
+   */
+  private getIdsFromInCondition(qb: QueryBuilder): string[] {
+    const filterIdInConditions = (nodeId: string): boolean => {
+      const node: any = qb.graph.node(nodeId);
+      if (node.type !== 'CONDITION') {
+        return false;
+      }
+
+      const condition = node as Condition<any>;
+      if (condition.field !== 'id') {
+        return false;
+      }
+
+      if (condition.operator !== 'IN') {
+        return false;
+      }
+
+      return Array.isArray(condition.value) && typeof condition.value[0] === 'string';
+    };
+
+    const rootChildren: string[] = qb.graph.successors(qb.rootId) || [];
+    const idInConditionId = rootChildren.filter(filterIdInConditions)[0];
+    if (!idInConditionId) {
+      return [];
+    }
+
+    const { value } = qb.graph.node(idInConditionId) as Condition<any>;
+    return value;
   }
 
   /**
