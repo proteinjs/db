@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.13.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.12.0...@proteinjs/db@1.13.0) (2025-03-28)
+
+
+### Bug Fixes
+
+* simplify validation for column table name in validateDynamicReferenceColumns ([899d149](https://github.com/proteinjs/db/commit/899d149d87de7356ee488e169003a473a6f8b950))
+
+
+### Features
+
+* `Transaction.delete` added support for updating the cached db when a `QueryBuilder` with a `id IN string[]` condition is passed in. ([211ba0f](https://github.com/proteinjs/db/commit/211ba0f6dfa1e10c281b4c9d2367af57d695b956))
+
+
+
+
+
 # [1.12.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.11.0...@proteinjs/db@1.12.0) (2025-02-07)
 
 
