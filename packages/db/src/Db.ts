@@ -79,7 +79,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     transactionContextFactory?: DefaultTransactionContextFactory,
     private runAsSystem: boolean = false
   ) {
-    this.dbDriver = dbDriver ? dbDriver : this.getDefaultDbDriver();
+    this.dbDriver = dbDriver ? dbDriver : Db.getDefaultDbDriver();
     this.statementConfigFactory = new StatementConfigFactory(this.dbDriver.getDbName(), getTable);
     this.transactionContextFactory = transactionContextFactory
       ? transactionContextFactory
@@ -90,7 +90,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     }
   }
 
-  private getDefaultDbDriver(): DbDriver {
+  static getDefaultDbDriver(): DbDriver {
     if (!Db.defaultDbDriver) {
       const defaultDbDriverFactory = SourceRepository.get().object<DefaultDbDriverFactory>(
         '@proteinjs/db/DefaultDbDriverFactory'
