@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.14.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.13.0...@proteinjs/db@1.14.0) (2025-04-02)
+
+
+### Features
+
+* Expose `Db.getDefaultDbDriver` for ease of access ([e454264](https://github.com/proteinjs/db/commit/e454264bdf4232eac9bbe28328d9494f7ecf8fc7))
+
+
+
+
+
 # [1.13.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.12.0...@proteinjs/db@1.13.0) (2025-03-28)
 
 
