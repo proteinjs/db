@@ -6,6 +6,7 @@ import { ReferenceArray } from './reference/ReferenceArray';
 import { Db } from './Db';
 import { Reference } from './reference/Reference';
 import { QueryBuilderFactory } from './QueryBuilderFactory';
+import { Serializer } from '@proteinjs/serializer';
 
 export class IntegerColumn implements Column<number, number> {
   constructor(
@@ -166,7 +167,7 @@ export class ObjectColumn<T> extends StringColumn<T> {
         options
       ),
       'MAX'
-    ); // MAX is 4gb
+    );
   }
 
   async serialize(fieldValue: T | null | undefined): Promise<string | null> {
@@ -174,7 +175,7 @@ export class ObjectColumn<T> extends StringColumn<T> {
       return null;
     }
 
-    return JSON.stringify(fieldValue);
+    return Serializer.serialize(fieldValue);
   }
 
   async deserialize(serializedFieldValue: string): Promise<T | null> {
@@ -182,7 +183,7 @@ export class ObjectColumn<T> extends StringColumn<T> {
       return null;
     }
 
-    return JSON.parse(serializedFieldValue);
+    return Serializer.deserialize(serializedFieldValue);
   }
 }
 
