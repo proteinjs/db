@@ -3,6 +3,7 @@ import { getDb } from '../Db';
 import { Record } from '../Record';
 import { tableByName } from '../Table';
 import { ReferenceSerializerId } from '../serializers/ReferenceSerializer';
+import { ReferenceCache } from './ReferenceCache';
 
 /**
  * The object returned by Db functions for each field of type ReferenceColumn in a record.
@@ -30,6 +31,15 @@ export class Reference<T extends Record> implements CustomSerializableObject {
 
   async get(): Promise<T | undefined> {
     if (!this._object && this._id) {
+      const cachedObject = ReferenceCache.get().get<T>(this._table, this._id);
+      if (cachedObject) {
+        /**
+         * We don't want to cache this reference in `this._object` in case the reference
+         * is replaced in `ReferenceCache`.
+         */
+        return cachedObject;
+      }
+
       const table = tableByName(this._table);
       const db = getDb();
       this._object = await db.get(table, { id: this._id });
@@ -39,6 +49,13 @@ export class Reference<T extends Record> implements CustomSerializableObject {
   }
 
   getIfExists(): T | undefined {
+    if (!this._object && this._id) {
+      const cachedObject = ReferenceCache.get().get<T>(this._table, this._id);
+      if (cachedObject) {
+        return cachedObject;
+      }
+    }
+
     return this._object;
   }
 

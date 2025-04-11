@@ -5,6 +5,7 @@ export * from './src/Columns';
 export * from './src/Record';
 export * from './src/reference/ReferenceArray';
 export * from './src/reference/Reference';
+export * from './src/reference/ReferenceCache';
 export * from './src/RecordIterator';
 export * from './src/source/SourceRecord';
 export * from './src/QueryBuilderFactory';
