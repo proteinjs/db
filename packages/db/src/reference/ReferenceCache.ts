@@ -87,7 +87,7 @@ export class ReferenceCache {
    */
   setMultiple<T extends { [key: string]: any } & { id: string }>(
     table: string,
-    records: T[] | { [id: string]: any }
+    records: T[] | { [id: string]: T }
   ): void {
     this.ensureTableExists(table);
 
@@ -110,7 +110,10 @@ export class ReferenceCache {
    * @param table Name of the table to reload
    * @param records Either an array of records or an object mapping record IDs to their values
    */
-  reloadTable<T extends { [key: string]: any }>(table: string, records: T[] | { [id: string]: any }): void {
+  reloadTable<T extends { [key: string]: any } & { id: string }>(
+    table: string,
+    records: T[] | { [id: string]: T }
+  ): void {
     this.clearTable(table);
     this.setMultiple(table, records);
   }
