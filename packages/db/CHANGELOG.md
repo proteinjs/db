@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.14.2](https://github.com/proteinjs/db/compare/@proteinjs/db@1.14.1...@proteinjs/db@1.14.2) (2025-04-15)
+
+
+### Bug Fixes
+
+* `ReferenceCache` updated typings of `setMultiple` and `reloadTable` to be constrained by `T` ([26108cf](https://github.com/proteinjs/db/commit/26108cfd5b4429a52166ca3c8359dcbce62d99d1))
+
+
+
+
+
 # [1.14.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.13.0...@proteinjs/db@1.14.0) (2025-04-02)
 
 
