@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/db-spanner-common",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "description": "Common libs for Google Spanner",
   "publishConfig": {
     "access": "public"
@@ -21,12 +21,12 @@
     "watch": "reflection-watch"
   },
   "dependencies": {
-    "@proteinjs/db": "^1.14.2",
-    "@proteinjs/logger": "1.0.7",
+    "@proteinjs/db": "^1.14.3",
+    "@proteinjs/logger": "1.0.8",
     "@proteinjs/reflection": "1.1.10"
   },
   "devDependencies": {
-    "@proteinjs/reflection-build": "1.0.25",
+    "@proteinjs/reflection-build": "1.1.0",
     "@types/jest": "29.5.5",
     "@types/node": "14.0.27",
     "@typescript-eslint/eslint-plugin": "7.8.0",
