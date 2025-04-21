@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/db-driver-knex",
-  "version": "1.4.4",
+  "version": "1.4.5",
   "description": "Db driver for Knex",
   "publishConfig": {
     "access": "public"
@@ -22,10 +22,10 @@
     "test": "jest"
   },
   "dependencies": {
-    "@proteinjs/db": "^1.14.2",
-    "@proteinjs/db-query": "^1.2.10",
-    "@proteinjs/db-transaction-context": "^0.2.4",
-    "@proteinjs/logger": "1.0.7",
+    "@proteinjs/db": "^1.14.3",
+    "@proteinjs/db-query": "^1.2.11",
+    "@proteinjs/db-transaction-context": "^0.2.5",
+    "@proteinjs/logger": "1.0.8",
     "@proteinjs/reflection": "1.1.10",
     "@proteinjs/util": "1.5.0",
     "knex": "0.21.5",
@@ -34,7 +34,7 @@
     "uuid": "8.3.0"
   },
   "devDependencies": {
-    "@proteinjs/reflection-build": "1.0.25",
+    "@proteinjs/reflection-build": "1.1.0",
     "@types/jest": "29.5.5",
     "@types/knex": "0.16.1",
     "@types/node": "14.0.27",
