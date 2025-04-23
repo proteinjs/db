@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/db-ui",
-  "version": "1.3.6",
+  "version": "1.4.0",
   "description": "Db ui components",
   "publishConfig": {
     "access": "public"

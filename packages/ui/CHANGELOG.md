@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.4.0](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.3.6...@proteinjs/db-ui@1.4.0) (2025-04-23)
+
+
+### Features
+
+* Added `/hash-generator` utility page ([d7ef6f0](https://github.com/proteinjs/db/commit/d7ef6f0b9b0fdf79517dea359820416372e8c654))
+
+
+
+
+
 ## [1.3.5](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.3.4...@proteinjs/db-ui@1.3.5) (2025-04-15)
 
 **Note:** Version bump only for package @proteinjs/db-ui
