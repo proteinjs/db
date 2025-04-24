@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.5.0](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.4.0...@proteinjs/db-ui@1.5.0) (2025-04-24)
+
+
+### Features
+
+* Added `QueryOptions` to `Db.query`, `Db.get`, and `QueryTableLoader`. Specifically, added the `preloadReferences` option that enables the caller to specify how references (field values of type `Reference` and `ReferenceArray`) are preloaded. ([8f42373](https://github.com/proteinjs/db/commit/8f42373093eb42114de76bffbb7d735f5b33402c))
+
+
+
+
+
 # [1.4.0](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.3.6...@proteinjs/db-ui@1.4.0) (2025-04-23)
 
 

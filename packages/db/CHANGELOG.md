@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.15.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.14.3...@proteinjs/db@1.15.0) (2025-04-24)
+
+
+### Features
+
+* Added `QueryOptions` to `Db.query`, `Db.get`, and `QueryTableLoader`. Specifically, added the `preloadReferences` option that enables the caller to specify how references (field values of type `Reference` and `ReferenceArray`) are preloaded. ([8f42373](https://github.com/proteinjs/db/commit/8f42373093eb42114de76bffbb7d735f5b33402c))
+
+
+
+
+
 ## [1.14.2](https://github.com/proteinjs/db/compare/@proteinjs/db@1.14.1...@proteinjs/db@1.14.2) (2025-04-15)
 
 
