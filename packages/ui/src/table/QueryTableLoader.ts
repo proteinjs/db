@@ -1,4 +1,13 @@
-import { Query, QueryBuilder, QueryBuilderFactory, Record, SortCriteria, Table, getDb } from '@proteinjs/db';
+import {
+  Query,
+  QueryBuilder,
+  QueryBuilderFactory,
+  QueryOptions,
+  Record,
+  SortCriteria,
+  Table,
+  getDb,
+} from '@proteinjs/db';
 import { RowWindow, TableLoader } from '@proteinjs/ui';
 
 export class QueryTableLoader<T extends Record> implements TableLoader<T> {
@@ -14,7 +23,8 @@ export class QueryTableLoader<T extends Record> implements TableLoader<T> {
   constructor(
     private table: Table<T>,
     private query?: Query<T>,
-    private sort?: SortCriteria<T>[]
+    private sort?: SortCriteria<T>[],
+    private queryOptions?: QueryOptions<T>
   ) {
     // Store separate copies of the query for row count and pagination
     this.rowCountQb = new QueryBuilderFactory().createQueryBuilder(this.table, this.query);
@@ -33,7 +43,7 @@ export class QueryTableLoader<T extends Record> implements TableLoader<T> {
       .createQueryBuilder(this.table, this.paginationQb)
       .sort(sort)
       .paginate({ start: startIndex, end: endIndex });
-    const queryPromise = db.query(this.table, qb);
+    const queryPromise = db.query(this.table, qb, this.queryOptions);
 
     if (skipRowCount) {
       const rows = await queryPromise;

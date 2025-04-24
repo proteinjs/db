@@ -1,4 +1,4 @@
-import { DbService, Query, getDbService } from './services/DbService';
+import { DbService, Query, QueryOptions, getDbService } from './services/DbService';
 import { Service } from '@proteinjs/service';
 import { Loadable, SourceRepository } from '@proteinjs/reflection';
 import {
@@ -23,6 +23,9 @@ import {
   DefaultTransactionContextFactory,
   getDefaultTransactionContextFactory,
 } from './transaction/TransactionContextFactory';
+import { isInstanceOf } from '@proteinjs/util';
+import { Reference } from './reference/Reference';
+import { ReferenceArray } from './reference/ReferenceArray';
 
 /** get `Db` if on server, and `DbService` if on browser */
 export const getDb = <R extends Record = Record>() =>
@@ -126,8 +129,8 @@ export class Db<R extends Record = Record> implements DbService<R> {
     return await this.dbDriver.getTableManager().tableExists(table);
   }
 
-  async get<T extends R>(table: Table<T>, query: Query<T>): Promise<T> {
-    return (await this.query(table, query))[0];
+  async get<T extends R>(table: Table<T>, query: Query<T>, options?: QueryOptions<T>): Promise<T> {
+    return (await this.query(table, query, options))[0];
   }
 
   async insert<T extends R>(table: Table<T>, record: Omit<T, keyof R>): Promise<T> {
@@ -253,7 +256,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     }
   }
 
-  async query<T extends R>(table: Table<T>, query: Query<T>): Promise<T[]> {
+  async query<T extends R>(table: Table<T>, query: Query<T>, options?: QueryOptions<T>): Promise<T[]> {
     if (!this.runAsSystem) {
       this.auth.canQuery(table);
     }
@@ -264,9 +267,35 @@ export class Db<R extends Record = Record> implements DbService<R> {
       qb.toSql(this.statementConfigFactory.getStatementConfig(config));
     const serializedRecords = await this.dbDriver.runQuery(generateQuery, this.currentTransaction);
     const recordSerializer = new RecordSerializer(table);
-    return await Promise.all(
+    const records = await Promise.all(
       serializedRecords.map(async (serializedRecord) => recordSerializer.deserialize(serializedRecord))
     );
+    await this.preloadReferences(records, options);
+    return records;
+  }
+
+  private async preloadReferences(records: any[], queryOptions?: QueryOptions<any>) {
+    const { preloadReferences } = queryOptions || {};
+    if (!preloadReferences?.enabled) {
+      return;
+    }
+
+    for (const record of records) {
+      const fields = Object.entries(record);
+      for (const [fieldPropertyName, fieldValue] of fields) {
+        if (preloadReferences.excludeColumns?.includes(fieldPropertyName)) {
+          continue;
+        }
+
+        if (preloadReferences.includeColumns && !preloadReferences.includeColumns.includes(fieldPropertyName)) {
+          continue;
+        }
+
+        if (isInstanceOf(fieldValue, Reference) || isInstanceOf(fieldValue, ReferenceArray)) {
+          await (fieldValue as Reference<any> | ReferenceArray<any>).get();
+        }
+      }
+    }
   }
 
   async getRowCount<T extends R>(table: Table<T>, query?: Query<T>): Promise<number> {
