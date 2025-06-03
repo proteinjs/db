@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/db-file",
-  "version": "1.2.11",
+  "version": "1.2.12",
   "description": "File storage in the db",
   "publishConfig": {
     "access": "public"
@@ -21,16 +21,16 @@
     "watch": "reflection-watch"
   },
   "dependencies": {
-    "@proteinjs/db": "^1.15.0",
-    "@proteinjs/logger": "1.0.8",
+    "@proteinjs/db": "^1.15.1",
+    "@proteinjs/logger": "1.0.9",
     "@proteinjs/reflection": "1.1.10",
-    "@proteinjs/server-api": "1.5.2",
-    "@proteinjs/service": "1.2.2",
-    "@proteinjs/user": "1.2.14",
+    "@proteinjs/server-api": "1.5.3",
+    "@proteinjs/service": "1.2.3",
+    "@proteinjs/user": "1.2.15",
     "moment": "2.29.4"
   },
   "devDependencies": {
-    "@proteinjs/reflection-build": "1.1.0",
+    "@proteinjs/reflection-build": "1.1.1",
     "@types/jest": "29.5.5",
     "@types/node": "14.0.27",
     "@typescript-eslint/eslint-plugin": "7.8.0",
