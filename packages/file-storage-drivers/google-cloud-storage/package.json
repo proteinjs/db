@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/db-file-storage-driver-gcs",
-  "version": "1.1.12",
+  "version": "1.1.13",
   "description": "File storage in Google Cloud Storage",
   "publishConfig": {
     "access": "public"
@@ -22,13 +22,13 @@
   },
   "dependencies": {
     "@google-cloud/storage": "7.11.2",
-    "@proteinjs/db": "^1.15.1",
-    "@proteinjs/db-file": "^1.2.12",
-    "@proteinjs/logger": "1.0.9",
+    "@proteinjs/db": "^1.15.2",
+    "@proteinjs/db-file": "^1.2.13",
+    "@proteinjs/logger": "1.0.10",
     "@proteinjs/reflection": "1.1.10"
   },
   "devDependencies": {
-    "@proteinjs/reflection-build": "1.1.1",
+    "@proteinjs/reflection-build": "1.2.0",
     "@types/jest": "29.5.5",
     "@types/node": "14.0.27",
     "@typescript-eslint/eslint-plugin": "7.8.0",
