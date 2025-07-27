@@ -166,7 +166,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     let recordCopy = Object.assign({}, record);
     await addUpdateFieldValues(table, recordCopy);
     const qb = new QueryBuilderFactory().getQueryBuilder(table, query);
-    this.addColumnQueries(table, qb);
+    await this.addColumnQueries(table, qb);
     if (!query) {
       qb.condition({ field: 'id', operator: '=', value: recordCopy.id as T[keyof T] });
     }
@@ -262,7 +262,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     }
 
     const qb = new QueryBuilderFactory().getQueryBuilder(table, query);
-    this.addColumnQueries(table, qb);
+    await this.addColumnQueries(table, qb);
     const generateQuery = (config: DbDriverQueryStatementConfig) =>
       qb.toSql(this.statementConfigFactory.getStatementConfig(config));
     const serializedRecords = await this.dbDriver.runQuery(generateQuery, this.currentTransaction);
@@ -305,7 +305,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
 
     const qb = new QueryBuilderFactory().getQueryBuilder(table, query);
     qb.aggregate({ function: 'COUNT', resultProp: 'count' });
-    this.addColumnQueries(table, qb);
+    await this.addColumnQueries(table, qb);
     const generateQuery = (config: DbDriverQueryStatementConfig) =>
       qb.toSql(this.statementConfigFactory.getStatementConfig(config));
     const result = await this.dbDriver.runQuery(generateQuery, this.currentTransaction);
@@ -316,7 +316,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     for (const columnPropertyName in table.columns) {
       const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
       if (column.options?.addToQuery) {
-        column.options.addToQuery(qb, this.runAsSystem);
+        await column.options.addToQuery(qb, this.runAsSystem);
       }
     }
   }
