@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/db-file",
-  "version": "1.2.13",
+  "version": "1.2.14",
   "description": "File storage in the db",
   "publishConfig": {
     "access": "public"
@@ -21,12 +21,12 @@
     "watch": "reflection-watch"
   },
   "dependencies": {
-    "@proteinjs/db": "^1.15.2",
+    "@proteinjs/db": "^1.15.3",
     "@proteinjs/logger": "1.0.10",
     "@proteinjs/reflection": "1.1.10",
-    "@proteinjs/server-api": "1.5.4",
-    "@proteinjs/service": "1.2.4",
-    "@proteinjs/user": "1.2.16",
+    "@proteinjs/server-api": "2.0.0",
+    "@proteinjs/service": "1.2.5",
+    "@proteinjs/user": "1.2.17",
     "moment": "2.29.4"
   },
   "devDependencies": {
