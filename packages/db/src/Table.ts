@@ -151,6 +151,7 @@ export type ColumnOptions = {
   updateValue?: (table: Table<any>, updateObj: any) => Promise<any>;
   /** Add conditions to query; called on every query of this table */
   addToQuery?: (qb: QueryBuilder, runAsSystem: boolean) => Promise<void>;
+  onBeforeInsert?: (insertObj: any & Record, runAsSystem: boolean) => Promise<void>;
   ui?: {
     hidden?: boolean;
   };

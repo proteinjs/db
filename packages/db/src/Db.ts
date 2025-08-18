@@ -141,8 +141,9 @@ export class Db<R extends Record = Record> implements DbService<R> {
     let recordCopy = Object.assign({}, record);
     await addDefaultFieldValues(table, recordCopy, this.runAsSystem);
     recordCopy = await this.tableWatcherRunner.runBeforeInsertTableWatchers(table, recordCopy);
-    const recordSearializer = new RecordSerializer(table);
-    const serializedRecord = await recordSearializer.serialize(recordCopy);
+    await this.addColumnInsertHooks(table, recordCopy);
+    const recordSerializer = new RecordSerializer(table);
+    const serializedRecord = await recordSerializer.serialize(recordCopy);
     const generateInsert = (config: DbDriverDmlStatementConfig) =>
       new StatementFactory<T>().insert(
         table.name,
@@ -317,6 +318,15 @@ export class Db<R extends Record = Record> implements DbService<R> {
       const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
       if (column.options?.addToQuery) {
         await column.options.addToQuery(qb, this.runAsSystem);
+      }
+    }
+  }
+
+  private async addColumnInsertHooks(table: Table<any>, record: any) {
+    for (const columnPropertyName in table.columns) {
+      const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
+      if (column.options?.onBeforeInsert) {
+        await column.options.onBeforeInsert(record, this.runAsSystem);
       }
     }
   }
