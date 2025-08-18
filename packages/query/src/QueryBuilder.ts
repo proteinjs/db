@@ -96,8 +96,22 @@ export class QueryBuilder<T = any> {
   static fromQueryBuilder<T = any>(qb: QueryBuilder<T>, tableName: string): QueryBuilder<T> {
     const newQb = new QueryBuilder<T>(tableName);
 
-    const serializedGraph = graphSerializer.serialize(qb.graph);
-    newQb.graph = graphSerializer.deserialize(serializedGraph);
+    const clonedGraph: Graph = graphSerializer.deserialize(graphSerializer.serialize(qb.graph));
+
+    const subQueries: Array<[string, QueryBuilder]> = [];
+    (qb.graph.nodes() as string[]).forEach((nodeId: string) => {
+      const nodeValue = (qb.graph as any).node(nodeId).value;
+      if (nodeValue instanceof QueryBuilder) {
+        subQueries.push([nodeId, QueryBuilder.fromQueryBuilder(qb.graph.node(nodeId).value, nodeValue.tableName)]);
+      }
+    });
+
+    subQueries.forEach(([nodeId, subQuery]) => {
+      const node = clonedGraph.node(nodeId);
+      clonedGraph.setNode(nodeId, { ...node, value: subQuery });
+    });
+
+    newQb.graph = clonedGraph;
 
     newQb.__serializerId = qb.__serializerId;
     newQb.idCounter = qb.idCounter;
