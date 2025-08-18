@@ -1,6 +1,6 @@
 import { Loadable, SourceRepository } from '@proteinjs/reflection';
 import { CustomSerializableObject } from '@proteinjs/serializer';
-import { isRecordColumn, Record, RecordSerializer } from './Record';
+import { isRecordColumn, Record } from './Record';
 import { TableSerializerId } from './serializers/TableSerializer';
 import { QueryBuilder } from '@proteinjs/db-query';
 import { Identity, TableOperationsAuth } from './auth/TableAuth';

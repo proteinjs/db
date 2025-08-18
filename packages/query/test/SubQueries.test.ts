@@ -40,10 +40,10 @@ describe('QueryBuilder - Sub Query Support', () => {
     // SQL output with named parameters and types for subquery
     result = qb.toSql({ dbName, useParams: true, useNamedParams: true });
     expect(result.sql).toContain(
-      'SELECT * FROM `test`.`Employee` WHERE `id` IN (SELECT * FROM `test`.`Employee` WHERE `department` = @param0);'
+      'SELECT * FROM `test`.`Employee` WHERE `id` IN (SELECT * FROM `test`.`Employee` WHERE `department` = @sq0_param0);'
     );
-    expect(result.namedParams?.params).toEqual({ param0: 'Engineering' });
-    expect(result.namedParams?.types).toEqual({ param0: 'string' });
+    expect(result.namedParams?.params).toEqual({ sq0_param0: 'Engineering' });
+    expect(result.namedParams?.types).toEqual({ sq0_param0: 'string' });
   });
 
   test('Complex query with deeply nested, complex subquery', () => {

@@ -180,6 +180,7 @@ export class StatementParamManager {
   private paramNames: Record<string, any> = {};
   private paramTypes: Record<string, any> = {};
   private paramCounter = 0;
+  private subQueryCounter = 0;
 
   constructor(private config: StatementConfig) {}
 
@@ -192,19 +193,27 @@ export class StatementParamManager {
       const subQuery = value.toSql(this.config);
       if (this.config.useParams) {
         if (this.config.useNamedParams && subQuery.namedParams) {
-          // Merge parameters and types from subquery
+          // Namespace subquery param names to avoid collisions and update SQL accordingly
+          const prefix = `sq${this.subQueryCounter++}_`;
+          let subSql = subQuery.sql.slice(0, -1); // Remove trailing semicolon
+
           for (const key of Object.keys(subQuery.namedParams.params)) {
-            const paramName = `param${this.paramCounter++}`;
-            this.paramNames[paramName] = subQuery.namedParams.params[key];
-            this.paramTypes[paramName] = subQuery.namedParams.types[key];
+            const newName = `${prefix}${key}`;
+            this.paramNames[newName] = subQuery.namedParams.params[key];
+            this.paramTypes[newName] = subQuery.namedParams.types[key];
+
+            // Replace occurrences of @key with @prefix_key in subquery SQL
+            const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(`@${escapedKey}(?=\\b)`, 'g');
+            subSql = subSql.replace(regex, `@${newName}`);
           }
-          return `(${subQuery.sql.slice(0, -1)})`; // Remove the trailing semicolon from subquery SQL
+          return `(${subSql})`;
         } else if (subQuery.params) {
-          // Append parameters from subquery
+          // Append positional parameters from subquery
           this.params.push(...subQuery.params);
         }
       }
-      return `(${subQuery.sql.slice(0, -1)})`; // Subquery SQL for non-parameterized config
+      return `(${subQuery.sql.slice(0, -1)})`; // Subquery SQL for non-parameterized config or when not using named params
     } else if (this.config.useParams) {
       if (this.config.useNamedParams) {
         const paramName = `param${this.paramCounter++}`;
