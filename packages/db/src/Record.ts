@@ -9,6 +9,10 @@ export interface Record {
   updated: moment.Moment;
 }
 
+export function isRecordColumn(column: string): column is keyof Record {
+  return column === 'id' || column === 'created' || column === 'updated';
+}
+
 const recordColumns: Columns<Record> = {
   id: new UuidColumn('id', { ui: { hidden: true } }),
   created: new DateTimeColumn('created', {

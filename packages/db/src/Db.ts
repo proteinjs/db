@@ -141,8 +141,9 @@ export class Db<R extends Record = Record> implements DbService<R> {
     let recordCopy = Object.assign({}, record);
     await addDefaultFieldValues(table, recordCopy, this.runAsSystem);
     recordCopy = await this.tableWatcherRunner.runBeforeInsertTableWatchers(table, recordCopy);
-    const recordSearializer = new RecordSerializer(table);
-    const serializedRecord = await recordSearializer.serialize(recordCopy);
+    await this.addColumnInsertHooks(table, recordCopy);
+    const recordSerializer = new RecordSerializer(table);
+    const serializedRecord = await recordSerializer.serialize(recordCopy);
     const generateInsert = (config: DbDriverDmlStatementConfig) =>
       new StatementFactory<T>().insert(
         table.name,
@@ -166,7 +167,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     let recordCopy = Object.assign({}, record);
     await addUpdateFieldValues(table, recordCopy);
     const qb = new QueryBuilderFactory().getQueryBuilder(table, query);
-    this.addColumnQueries(table, qb);
+    await this.addColumnQueries(table, qb);
     if (!query) {
       qb.condition({ field: 'id', operator: '=', value: recordCopy.id as T[keyof T] });
     }
@@ -262,7 +263,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     }
 
     const qb = new QueryBuilderFactory().getQueryBuilder(table, query);
-    this.addColumnQueries(table, qb);
+    await this.addColumnQueries(table, qb);
     const generateQuery = (config: DbDriverQueryStatementConfig) =>
       qb.toSql(this.statementConfigFactory.getStatementConfig(config));
     const serializedRecords = await this.dbDriver.runQuery(generateQuery, this.currentTransaction);
@@ -305,7 +306,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
 
     const qb = new QueryBuilderFactory().getQueryBuilder(table, query);
     qb.aggregate({ function: 'COUNT', resultProp: 'count' });
-    this.addColumnQueries(table, qb);
+    await this.addColumnQueries(table, qb);
     const generateQuery = (config: DbDriverQueryStatementConfig) =>
       qb.toSql(this.statementConfigFactory.getStatementConfig(config));
     const result = await this.dbDriver.runQuery(generateQuery, this.currentTransaction);
@@ -316,7 +317,16 @@ export class Db<R extends Record = Record> implements DbService<R> {
     for (const columnPropertyName in table.columns) {
       const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
       if (column.options?.addToQuery) {
-        column.options.addToQuery(qb, this.runAsSystem);
+        await column.options.addToQuery(qb, this.runAsSystem);
+      }
+    }
+  }
+
+  private async addColumnInsertHooks(table: Table<any>, record: any) {
+    for (const columnPropertyName in table.columns) {
+      const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
+      if (column.options?.onBeforeInsert) {
+        await column.options.onBeforeInsert(record, this.runAsSystem);
       }
     }
   }

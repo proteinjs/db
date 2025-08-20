@@ -1,6 +1,6 @@
 import { Loadable, SourceRepository } from '@proteinjs/reflection';
 import { CustomSerializableObject } from '@proteinjs/serializer';
-import { Record, RecordSerializer } from './Record';
+import { isRecordColumn, Record } from './Record';
 import { TableSerializerId } from './serializers/TableSerializer';
 import { QueryBuilder } from '@proteinjs/db-query';
 import { Identity, TableOperationsAuth } from './auth/TableAuth';
@@ -44,7 +44,10 @@ export const getColumnByName = (table: Table<any>, columnName: string) => {
 };
 
 export const addDefaultFieldValues = async (table: Table<any>, record: any, runAsSystem: boolean) => {
-  for (const columnPropertyName in table.columns) {
+  // Get defaultFieldValue for Record columns first
+  const columns = Object.keys(table.columns).sort((a, b) => +!isRecordColumn(a) - +!isRecordColumn(b));
+
+  for (const columnPropertyName of columns) {
     const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
     if (
       column.options?.defaultValue &&
@@ -144,13 +147,14 @@ export type ColumnOptions = {
   references?: { table: string };
   nullable?: boolean;
   /** Value stored on insert */
-  defaultValue?: (table: Table<any>, insertObj: any) => Promise<any>;
+  defaultValue?: (table: Table<any>, insertObj: any & Record) => Promise<any>;
   /** If true, the `defaultValue` function will always provide the value and override any existing value */
   forceDefaultValue?: boolean | ((runAsSystem: boolean) => boolean);
   /** Value stored on update */
   updateValue?: (table: Table<any>, updateObj: any) => Promise<any>;
   /** Add conditions to query; called on every query of this table */
   addToQuery?: (qb: QueryBuilder, runAsSystem: boolean) => Promise<void>;
+  onBeforeInsert?: (insertObj: any & Record, runAsSystem: boolean) => Promise<void>;
   ui?: {
     hidden?: boolean;
   };
