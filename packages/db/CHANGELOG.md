@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.16.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.15.3...@proteinjs/db@1.16.0) (2025-08-20)
+
+
+### Features
+
+* Run onBeforeInsert during insert ([c736f62](https://github.com/proteinjs/db/commit/c736f625b7bbee5f02ad364228c7175699e46dff))
+
+
+
+
+
 # [1.15.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.14.3...@proteinjs/db@1.15.0) (2025-04-24)
 
 

@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.3.0](https://github.com/proteinjs/db/compare/@proteinjs/db-query@1.2.13...@proteinjs/db-query@1.3.0) (2025-08-20)
+
+
+### Bug Fixes
+
+* broken subquery test ([c1c449b](https://github.com/proteinjs/db/commit/c1c449b14772d81b9f26ba056a9a6560b880e523))
+
+
+### Features
+
+* Run onBeforeInsert during insert ([c736f62](https://github.com/proteinjs/db/commit/c736f625b7bbee5f02ad364228c7175699e46dff))
+
+
+
+
+
 ## [1.2.7](https://github.com/proteinjs/db/compare/@proteinjs/db-query@1.2.6...@proteinjs/db-query@1.2.7) (2024-08-16)
 
 
