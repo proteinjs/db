@@ -96,25 +96,25 @@ describe('QueryBuilder - Sub Query Support', () => {
       param0: 'Engineering',
       param1: 50000,
       param2: 3,
-      param3: 'HR',
-      param4: 5,
-      param5: 60000,
-      param6: 'IT',
-      param7: 80000,
+      sq0_param0: 'HR',
+      sq0_param1: 5,
+      sq0_param2: 60000,
+      sq0_param3: 'IT',
+      sq0_param4: 80000,
     };
     expect(result.sql).toContain(
-      'SELECT * FROM `test`.`Employee` WHERE (`department` = @param0 OR (`salary` > @param1 AND (`yearsOfExperience` <= @param2 OR `id` IN (SELECT * FROM `test`.`Employee` WHERE (`department` = @param0 AND `yearsOfExperience` > @param1 AND `salary` < @param2) AND (`department` = @param3 OR `salary` >= @param4)))));'
+      'SELECT * FROM `test`.`Employee` WHERE (`department` = @param0 OR (`salary` > @param1 AND (`yearsOfExperience` <= @param2 OR `id` IN (SELECT * FROM `test`.`Employee` WHERE (`department` = @sq0_param0 AND `yearsOfExperience` > @sq0_param1 AND `salary` < @sq0_param2) AND (`department` = @sq0_param3 OR `salary` >= @sq0_param4)))));'
     );
     expect(result.namedParams?.params).toEqual(expectedParams);
     expect(result.namedParams?.types).toEqual({
       param0: 'string',
       param1: 'number',
       param2: 'number',
-      param3: 'string',
-      param4: 'number',
-      param5: 'number',
-      param6: 'string',
-      param7: 'number',
+      sq0_param0: 'string',
+      sq0_param1: 'number',
+      sq0_param2: 'number',
+      sq0_param3: 'string',
+      sq0_param4: 'number',
     });
   });
 
