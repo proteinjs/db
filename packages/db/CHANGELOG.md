@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.17.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.16.0...@proteinjs/db@1.17.0) (2025-09-09)
+
+
+### Features
+
+* enhance TableWatcher API with query mutation capabilities ([b47f903](https://github.com/proteinjs/db/commit/b47f9038caed678ca2cbc66cb4b1f9aa9eb85518))
+
+
+
+
+
 # [1.16.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.15.3...@proteinjs/db@1.16.0) (2025-08-20)
 
 

@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.2.0](https://github.com/proteinjs/db/compare/@proteinjs/db-file-storage-driver-gcs@1.1.18...@proteinjs/db-file-storage-driver-gcs@1.2.0) (2025-09-09)
+
+
+### Features
+
+* enhance TableWatcher API with query mutation capabilities ([b47f903](https://github.com/proteinjs/db/commit/b47f9038caed678ca2cbc66cb4b1f9aa9eb85518))
+
+
+
+
+
 ## [1.1.15](https://github.com/proteinjs/db/compare/@proteinjs/db-file-storage-driver-gcs@1.1.14...@proteinjs/db-file-storage-driver-gcs@1.1.15) (2025-08-20)
 
 **Note:** Version bump only for package @proteinjs/db-file-storage-driver-gcs
