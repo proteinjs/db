@@ -72,6 +72,15 @@ export interface TableWatcher<R extends Record = Record> extends Loadable {
   afterInsert?<T extends R>(record: T): Promise<void>;
   beforeUpdate?<T extends R>(record: Partial<T>, qb: QueryBuilder<T>): Promise<Partial<T>>;
   afterUpdate?<T extends R>(recordUpdateCount: number, record: Partial<T>, qb: QueryBuilder<T>): Promise<void>;
-  beforeDelete?<T extends R>(recordsToDelete: T[], qb: QueryBuilder<T>): Promise<void>;
-  afterDelete?<T extends R>(recordDeleteCount: number, deletedRecords: T[], qb: QueryBuilder<T>): Promise<void>;
+  beforeDelete?<T extends R>(
+    recordsToDelete: T[],
+    initialQb: QueryBuilder<T>,
+    deleteQb: QueryBuilder<T>
+  ): Promise<void>;
+  afterDelete?<T extends R>(
+    recordDeleteCount: number,
+    deletedRecords: T[],
+    initialQb: QueryBuilder<T>,
+    deleteQb: QueryBuilder<T>
+  ): Promise<void>;
 }

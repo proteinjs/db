@@ -205,10 +205,10 @@ export class Db<R extends Record = Record> implements DbService<R> {
     const generateDelete = (config: DbDriverDmlStatementConfig) =>
       new StatementFactory<T>().delete(table.name, deleteQb, this.statementConfigFactory.getStatementConfig(config));
     await this.runColumnBeforeDeletes(table, recordsToDelete);
-    await this.tableWatcherRunner.runBeforeDeleteTableWatchers(table, recordsToDelete, qb);
+    await this.tableWatcherRunner.runBeforeDeleteTableWatchers(table, recordsToDelete, qb, deleteQb);
     const recordDeleteCount = await this.dbDriver.runDml(generateDelete, this.currentTransaction);
     await this.runCascadeDeletions(table, recordsToDeleteIds);
-    await this.tableWatcherRunner.runAfterDeleteTableWatchers(table, recordDeleteCount, recordsToDelete, qb);
+    await this.tableWatcherRunner.runAfterDeleteTableWatchers(table, recordDeleteCount, recordsToDelete, qb, deleteQb);
     return recordDeleteCount;
   }
 

@@ -117,7 +117,8 @@ export class TableWatcherRunner<R extends Record = Record> {
   async runBeforeDeleteTableWatchers<T extends R>(
     table: Table<T>,
     recordsToDelete: T[],
-    qb: QueryBuilder<T>
+    initialQb: QueryBuilder<T>,
+    deleteQb: QueryBuilder<T>
   ): Promise<void> {
     const tableWatcherMap = TableWatcherRunner.tableWatcherMap[table.name];
     if (!tableWatcherMap) {
@@ -130,10 +131,10 @@ export class TableWatcherRunner<R extends Record = Record> {
     }
 
     this.logger.info({ message: `(${table.name}) Running before-delete table watchers` });
-    const qbCopy = QueryBuilder.fromQueryBuilder(qb, table.name);
+    const initialQbCopy = QueryBuilder.fromQueryBuilder(initialQb, table.name);
     for (const tableWatcher of tableWatchers) {
       this.logger.info({ message: `(${table.name}) Running ${tableWatcher.name()}.beforeDelete` });
-      await tableWatcher.beforeDelete(recordsToDelete, qbCopy);
+      await tableWatcher.beforeDelete(recordsToDelete, initialQbCopy, deleteQb);
       this.logger.info({ message: `(${table.name}) Finished running ${tableWatcher.name()}.beforeDelete` });
     }
     this.logger.info({ message: `(${table.name}) Finished running before-delete table watchers` });
@@ -143,7 +144,8 @@ export class TableWatcherRunner<R extends Record = Record> {
     table: Table<T>,
     recordDeleteCount: number,
     deletedRecords: T[],
-    qb: QueryBuilder<T>
+    initialQb: QueryBuilder<T>,
+    deleteQb: QueryBuilder<T>
   ): Promise<void> {
     const tableWatcherMap = TableWatcherRunner.tableWatcherMap[table.name];
     if (!tableWatcherMap) {
@@ -156,10 +158,10 @@ export class TableWatcherRunner<R extends Record = Record> {
     }
 
     this.logger.info({ message: `(${table.name}) Running after-delete table watchers` });
-    const qbCopy = QueryBuilder.fromQueryBuilder(qb, table.name);
+    const initialQbCopy = QueryBuilder.fromQueryBuilder(initialQb, table.name);
     for (const tableWatcher of tableWatchers) {
       this.logger.info({ message: `(${table.name}) Running ${tableWatcher.name()}.afterDelete` });
-      await tableWatcher.afterDelete(recordDeleteCount, deletedRecords, qbCopy);
+      await tableWatcher.afterDelete(recordDeleteCount, deletedRecords, initialQbCopy, deleteQb);
       this.logger.info({ message: `(${table.name}) Finished running ${tableWatcher.name()}.afterDelete` });
     }
     this.logger.info({ message: `(${table.name}) Finished running after-delete table watchers` });

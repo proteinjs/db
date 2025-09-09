@@ -37,7 +37,11 @@ export class GoogleCloudStorageTableWatcher implements TableWatcher<File> {
     return new FileTable();
   }
 
-  async beforeDelete<T extends File>(recordsToDelete: T[], qb: QueryBuilder<T>): Promise<void> {
+  async beforeDelete<T extends File>(
+    recordsToDelete: T[],
+    initialQb: QueryBuilder<T>,
+    deleteQb: QueryBuilder<T>
+  ): Promise<void> {
     const fileIdsToDelete = recordsToDelete.map((record) => record.id);
     for (const fileId of fileIdsToDelete) {
       const file = this.storage.bucket(this.bucketName).file(fileId);
