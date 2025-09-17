@@ -33,7 +33,7 @@ export interface LogicalGroup<T> {
 export interface Condition<T> {
   field: keyof T;
   operator: Operator;
-  value?: T[keyof T] | T[keyof T][] | QueryBuilder<T> | null;
+  value?: T[keyof T] | T[keyof T][] | QueryBuilder | null;
 }
 
 interface InternalCondition<T> extends Condition<T> {
