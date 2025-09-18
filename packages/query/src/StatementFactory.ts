@@ -197,7 +197,10 @@ export class StatementParamManager {
           const prefix = `sq${this.subQueryCounter++}_`;
           let subSql = subQuery.sql.slice(0, -1); // Remove trailing semicolon
 
-          for (const key of Object.keys(subQuery.namedParams.params)) {
+          // Replace longer keys first to avoid double-replacement
+          const keys = Object.keys(subQuery.namedParams.params).sort((a, b) => b.length - a.length);
+
+          for (const key of keys) {
             const newName = `${prefix}${key}`;
             this.paramNames[newName] = subQuery.namedParams.params[key];
             this.paramTypes[newName] = subQuery.namedParams.types[key];
