@@ -1,6 +1,6 @@
 import { CustomSerializer } from '@proteinjs/serializer';
 import { Graph } from '@proteinjs/util';
-import { QueryBuilder } from '@proteinjs/db-query';
+import { QueryBuilder } from '../QueryBuilder';
 
 type SerializedQueryBuilder = {
   tableName: string;
