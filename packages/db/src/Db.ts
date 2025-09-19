@@ -207,7 +207,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     await this.runColumnBeforeDeletes(table, recordsToDelete);
     await this.tableWatcherRunner.runBeforeDeleteTableWatchers(table, recordsToDelete, qb, deleteQb);
     const recordDeleteCount = await this.dbDriver.runDml(generateDelete, this.currentTransaction);
-    await this.runCascadeDeletions(table, recordsToDeleteIds);
+    await this.runCascadeDeletions(table, recordsToDelete);
     await this.tableWatcherRunner.runAfterDeleteTableWatchers(table, recordDeleteCount, recordsToDelete, qb, deleteQb);
     return recordDeleteCount;
   }
@@ -227,7 +227,12 @@ export class Db<R extends Record = Record> implements DbService<R> {
     }
   }
 
-  private async runCascadeDeletions(table: Table<any>, deletedRecordIds: string[]) {
+  private async runCascadeDeletions(table: Table<any>, deletedRecords: Record[]) {
+    const deletedRecordIds = deletedRecords.map((record) => record.id);
+    if (deletedRecordIds.length < 1) {
+      return;
+    }
+
     if (table.cascadeDeleteReferences().length < 1) {
       return;
     }
