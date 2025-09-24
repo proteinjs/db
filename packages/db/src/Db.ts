@@ -167,7 +167,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     let recordCopy = Object.assign({}, record);
     await addUpdateFieldValues(table, recordCopy);
     const qb = new QueryBuilderFactory().getQueryBuilder(table, query);
-    await this.addColumnQueries(table, qb);
+    await this.addColumnQueries(table, qb, 'write');
     if (!query) {
       qb.condition({ field: 'id', operator: '=', value: recordCopy.id as T[keyof T] });
     }
@@ -193,8 +193,23 @@ export class Db<R extends Record = Record> implements DbService<R> {
       this.auth.canDelete(table);
     }
 
+    const _query = async <T extends R>(table: Table<T>, query: Query<T>) => {
+      const qb = new QueryBuilderFactory().getQueryBuilder(table, query);
+      await this.addColumnQueries(table, qb, 'delete');
+
+      const generateQuery = (config: DbDriverQueryStatementConfig) =>
+        qb.toSql(this.statementConfigFactory.getStatementConfig(config));
+      const serializedRecords = await this.dbDriver.runQuery(generateQuery, this.currentTransaction);
+      const recordSerializer = new RecordSerializer(table);
+      const records = await Promise.all(
+        serializedRecords.map(async (serializedRecord) => recordSerializer.deserialize(serializedRecord))
+      );
+      await this.preloadReferences(records);
+      return records;
+    };
+
     const qb = new QueryBuilderFactory().getQueryBuilder(table, query);
-    const recordsToDelete = await this.query(table, qb);
+    const recordsToDelete = await _query(table, qb);
     if (recordsToDelete.length == 0) {
       return 0;
     }
@@ -268,7 +283,9 @@ export class Db<R extends Record = Record> implements DbService<R> {
     }
 
     const qb = new QueryBuilderFactory().getQueryBuilder(table, query);
+
     await this.addColumnQueries(table, qb);
+
     const generateQuery = (config: DbDriverQueryStatementConfig) =>
       qb.toSql(this.statementConfigFactory.getStatementConfig(config));
     const serializedRecords = await this.dbDriver.runQuery(generateQuery, this.currentTransaction);
@@ -318,11 +335,15 @@ export class Db<R extends Record = Record> implements DbService<R> {
     return result[0]['count'];
   }
 
-  private async addColumnQueries<T extends R>(table: Table<T>, qb: QueryBuilder<T>) {
+  private async addColumnQueries<T extends R>(
+    table: Table<T>,
+    qb: QueryBuilder<T>,
+    operation: 'read' | 'write' | 'delete' = 'read'
+  ) {
     for (const columnPropertyName in table.columns) {
       const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
       if (column.options?.addToQuery) {
-        await column.options.addToQuery(qb, this.runAsSystem);
+        await column.options.addToQuery(qb, this.runAsSystem, operation);
       }
     }
   }
