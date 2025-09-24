@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.8.13](https://github.com/brentbahry/db/compare/@proteinjs/db-driver-spanner@1.8.12...@proteinjs/db-driver-spanner@1.8.13) (2025-09-24)
+
+**Note:** Version bump only for package @proteinjs/db-driver-spanner
+
+
+
+
+
 ## [1.8.11](https://github.com/brentbahry/db/compare/@proteinjs/db-driver-spanner@1.8.10...@proteinjs/db-driver-spanner@1.8.11) (2025-09-09)
 
 **Note:** Version bump only for package @proteinjs/db-driver-spanner

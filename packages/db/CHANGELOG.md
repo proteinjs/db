@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.18.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.17.1...@proteinjs/db@1.18.0) (2025-09-24)
+
+
+### Features
+
+* provide operation context to column queries ([#16](https://github.com/proteinjs/db/issues/16)) ([b7c7d3b](https://github.com/proteinjs/db/commit/b7c7d3bc051f3907a917fe67ad9ee4008e61f13c))
+
+
+
+
+
 # [1.17.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.16.0...@proteinjs/db@1.17.0) (2025-09-09)
 
 
