@@ -209,7 +209,8 @@ export class Db<R extends Record = Record> implements DbService<R> {
     };
 
     const qb = new QueryBuilderFactory().getQueryBuilder(table, query);
-    const recordsToDelete = await _query(table, qb);
+    await this.addColumnQueries(table, qb, 'delete');
+    const recordsToDelete = await this._query(table, qb);
     if (recordsToDelete.length == 0) {
       return 0;
     }
@@ -278,13 +279,18 @@ export class Db<R extends Record = Record> implements DbService<R> {
   }
 
   async query<T extends R>(table: Table<T>, query: Query<T>, options?: QueryOptions<T>): Promise<T[]> {
+    const qb = new QueryBuilderFactory().getQueryBuilder(table, query);
+
+    // Public query interface always runs column queries
+    await this.addColumnQueries(table, qb);
+
+    return this._query(table, qb, options);
+  }
+
+  private async _query<T extends R>(table: Table<T>, qb: QueryBuilder, options?: QueryOptions<T>): Promise<T[]> {
     if (!this.runAsSystem) {
       this.auth.canQuery(table);
     }
-
-    const qb = new QueryBuilderFactory().getQueryBuilder(table, query);
-
-    await this.addColumnQueries(table, qb);
 
     const generateQuery = (config: DbDriverQueryStatementConfig) =>
       qb.toSql(this.statementConfigFactory.getStatementConfig(config));
