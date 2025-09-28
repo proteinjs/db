@@ -148,6 +148,8 @@ export class SpannerDriver implements DbDriver {
       handleCaseSensitivity: this.handleCaseSensitivity.bind(this),
     });
 
+    const startTime = process.hrtime.bigint();
+
     try {
       this.logger.debug({ message: `Executing query`, obj: { sql, params: namedParams } });
       const [rows] = await runner.run({
@@ -155,11 +157,17 @@ export class SpannerDriver implements DbDriver {
         params: namedParams?.params,
         types: namedParams?.types,
       });
+      const durationMs = Number(process.hrtime.bigint() - startTime) / 1_000_000;
+      this.logger.debug({
+        message: `Query executed`,
+        obj: { sql, durationMs, rowCount: rows.length },
+      });
       return rows.map((row) => row.toJSON());
     } catch (error: any) {
+      const durationMs = Number(process.hrtime.bigint() - startTime) / 1_000_000;
       this.logger.error({
         message: `Failed when executing query`,
-        obj: { sql, params: namedParams, errorDetails: error.details },
+        obj: { sql, params: namedParams, errorDetails: error.details, durationMs },
       });
       throw error;
     }
@@ -196,6 +204,8 @@ export class SpannerDriver implements DbDriver {
       getDriverColumnType: this.getColumnType.bind(this),
     });
 
+    const startTime = process.hrtime.bigint();
+
     try {
       this.logger.debug({ message: `Executing dml`, obj: { sql, params: namedParams } });
       const [rowCount] = await runner.runUpdate({
@@ -203,11 +213,17 @@ export class SpannerDriver implements DbDriver {
         params: namedParams?.params,
         types: namedParams?.types,
       });
+      const durationMs = Number(process.hrtime.bigint() - startTime) / 1_000_000;
+      this.logger.debug({
+        message: `Dml executed`,
+        obj: { sql, durationMs, rowCount },
+      });
       return rowCount;
     } catch (error: any) {
+      const durationMs = Number(process.hrtime.bigint() - startTime) / 1_000_000;
       this.logger.error({
         message: `Failed when executing dml`,
-        obj: { sql, params: namedParams, errorDetails: error.details },
+        obj: { sql, params: namedParams, errorDetails: error.details, durationMs },
       });
       throw error;
     }
@@ -230,12 +246,19 @@ export class SpannerDriver implements DbDriver {
    * Execute a schema write operation.
    */
   async runUpdateSchema(sql: string): Promise<void> {
+    const startTime = process.hrtime.bigint();
     try {
       this.logger.debug({ message: `Executing schema update`, obj: { sql } });
       const [operation] = await this.getSpannerDb().updateSchema(sql);
       await operation.promise();
+      const durationMs = Number(process.hrtime.bigint() - startTime) / 1_000_000;
+      this.logger.debug({ message: `Schema update executed`, obj: { sql, durationMs } });
     } catch (error: any) {
-      this.logger.error({ message: `Failed when executing schema update`, obj: { sql, errorDetails: error.details } });
+      const durationMs = Number(process.hrtime.bigint() - startTime) / 1_000_000;
+      this.logger.error({
+        message: `Failed when executing schema update`,
+        obj: { sql, errorDetails: error.details, durationMs },
+      });
       throw error;
     }
   }
