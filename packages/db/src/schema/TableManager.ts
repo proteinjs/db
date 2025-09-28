@@ -239,10 +239,11 @@ export class TableManager {
 
     if (table.indexes) {
       for (const index of table.indexes) {
-        const serializedColumns = JSON.stringify(index.columns);
+        const columns = index.columns.map((x) => table.columns[x as string]!.name);
+        const serializedColumns = JSON.stringify(columns);
         currentIndexMap[serializedColumns] = true;
         if (!existingIndexMap[serializedColumns]) {
-          indexesToCreate.push({ name: index.name, columns: index.columns as string[] });
+          indexesToCreate.push({ name: index.name, columns });
         }
       }
     }

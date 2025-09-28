@@ -16,9 +16,9 @@ export class SpannerSchemaOperations implements SchemaOperations {
   constructor(private spannerDriver: SpannerDriver) {}
 
   async createTable(table: Table<any>) {
-    const indexes: { name?: string; columns: string | string[]; unique?: boolean }[] = [];
-    for (const index of table.indexes) {
-      indexes.push({ name: index.name, columns: index.columns as string[] });
+    const indexes: { name?: string; columns: string[]; unique?: boolean }[] = [];
+    for (const { name, columns } of table.indexes) {
+      indexes.push({ name, columns: columns.map((x) => table.columns[x as string]!.name) });
     }
 
     const serializedColumns: { name: string; type: string; nullable?: boolean }[] = [];
@@ -29,7 +29,11 @@ export class SpannerSchemaOperations implements SchemaOperations {
       serializedColumns.push({ name: column.name, type: columnType, nullable: column.options?.nullable });
       this.logger.info({ message: `[${table.name}] Creating column: ${column.name} (${column.constructor.name})` });
       if (column.options?.unique?.unique) {
-        indexes.push({ name: column.options.unique.indexName, columns: column.name, unique: true });
+        indexes.push({
+          name: column.options.unique.indexName,
+          columns: [table.columns[column.name]!.name],
+          unique: true,
+        });
         this.logger.info({ message: `[${table.name}.${column.name}] Adding unique constraint` });
       }
 
@@ -47,11 +51,11 @@ export class SpannerSchemaOperations implements SchemaOperations {
       const createIndexSql = new StatementFactory().createIndex(index, table.name).sql;
       const indexName = StatementUtil.getIndexName(table.name, index);
       this.logger.info({
-        message: `[${table.name}] Creating index: ${indexName} (${typeof index.columns === 'string' ? index.columns : index.columns.join(', ')})`,
+        message: `[${table.name}] Creating index: ${indexName} (${index.columns.join(', ')})`,
       });
       await this.spannerDriver.runUpdateSchema(createIndexSql);
       this.logger.info({
-        message: `[${table.name}] Created index: ${indexName} (${typeof index.columns === 'string' ? index.columns : index.columns.join(', ')})`,
+        message: `[${table.name}] Created index: ${indexName} (${index.columns.join(', ')})`,
       });
     }
   }

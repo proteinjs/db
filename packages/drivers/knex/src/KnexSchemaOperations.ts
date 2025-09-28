@@ -36,7 +36,7 @@ export class KnexSchemaOperations implements SchemaOperations {
               (columnPropertyName) => table.columns[columnPropertyName as string].name
             );
             tableBuilder.index(columnNames, index.name);
-            this.logger.info({ message: `[${table.name}] Creating index: ${columnNames}` });
+            this.logger.info({ message: `[${table.name}] Creating index: ${index.name}` });
           }
         }
       })
@@ -79,7 +79,7 @@ export class KnexSchemaOperations implements SchemaOperations {
         }
 
         for (const index of tableChanges.indexesToDrop) {
-          tableBuilder.dropIndex(index.columns);
+          tableBuilder.dropIndex(index.columns, index.name);
           this.logger.info({ message: `[${table.name}] Dropping index: ${JSON.stringify(index)}` });
         }
 
@@ -102,7 +102,8 @@ export class KnexSchemaOperations implements SchemaOperations {
         }
 
         for (const index of tableChanges.indexesToCreate) {
-          tableBuilder.index(index.columns);
+          tableBuilder.index(index.columns, index.name);
+          this.logger.info({ message: `[${table.name}] Creating index: ${JSON.stringify(index)}` });
           this.logger.info({ message: `[${table.name}] Creating index:`, obj: { index } });
         }
       })

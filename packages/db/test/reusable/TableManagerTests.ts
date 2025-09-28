@@ -33,6 +33,31 @@ class UserTestTable extends Table<User> {
   ];
 }
 
+interface MappedIndexUser extends Record {
+  emailAddress: string;
+  accountStatus: string;
+  createdOn: Date;
+}
+
+class MappedIndexUserTable extends Table<MappedIndexUser> {
+  name = 'db_test_mapped_index_user';
+  columns = withRecordColumns<MappedIndexUser>({
+    emailAddress: new StringColumn('email_address'),
+    accountStatus: new StringColumn('account_status'),
+    createdOn: new DateColumn('created_on'),
+  });
+  indexes = [
+    {
+      name: 'db_test_mapped_index_user_email_index',
+      columns: ['emailAddress'] as (keyof MappedIndexUser)[],
+    },
+    {
+      name: 'db_test_mapped_index_user_status_email_index',
+      columns: ['accountStatus', 'emailAddress'] as (keyof MappedIndexUser)[],
+    },
+  ];
+}
+
 interface ColumnTypes extends Record {
   integer: number;
   bigInteger: number;
@@ -88,6 +113,7 @@ export const tableManagerTests = (
     afterEach(async () => {
       await dropTable(new ColumnTypesTable());
       await dropTable(new UserTestTable());
+      await dropTable(new MappedIndexUserTable());
     });
 
     afterAll(async () => {
@@ -525,6 +551,47 @@ export const tableManagerTests = (
       // expect(foreignKeys[TestColumnTypesTable.columns.string2.name]['REFERENCED_COLUMN_NAME']).toBe('name');
       // expect(foreignKeys[TestColumnTypesTable.columns.text.name]['REFERENCED_TABLE_NAME']).toBe('user');
       // expect(foreignKeys[TestColumnTypesTable.columns.text.name]['REFERENCED_COLUMN_NAME']).toBe('id');
+    });
+
+    test('creates index with different column name mapping', async () => {
+      const mappedIndexUserTable = new MappedIndexUserTable();
+      await tableManager.loadTable(mappedIndexUserTable);
+      expect(await tableManager.tableExists(mappedIndexUserTable)).toBeTruthy();
+      const indexes = await tableManager.schemaMetadata.getIndexes(mappedIndexUserTable);
+      expect(JSON.stringify(indexes['db_test_mapped_index_user_email_index'])).toBe(
+        JSON.stringify(['email_address'])
+      );
+      expect(JSON.stringify(indexes['db_test_mapped_index_user_status_email_index'])).toBe(
+        JSON.stringify(['account_status', 'email_address'])
+      );
+    });
+
+    test('alters index with different column name mapping', async () => {
+      const mappedIndexUserTable = new MappedIndexUserTable();
+      await tableManager.loadTable(mappedIndexUserTable);
+      expect(await tableManager.tableExists(mappedIndexUserTable)).toBeTruthy();
+      let indexes = await tableManager.schemaMetadata.getIndexes(mappedIndexUserTable);
+      expect(JSON.stringify(indexes['db_test_mapped_index_user_email_index'])).toBe(JSON.stringify(['email_address']));
+      expect(JSON.stringify(indexes['db_test_mapped_index_user_status_email_index'])).toBe(
+        JSON.stringify(['account_status', 'email_address'])
+      );
+      mappedIndexUserTable.indexes = [
+        {
+          name: 'db_test_mapped_index_user_email_index',
+          columns: ['emailAddress'] as (keyof MappedIndexUser)[],
+        },
+        {
+          name: 'db_test_mapped_index_user_created_email_index',
+          columns: ['createdOn', 'emailAddress'] as (keyof MappedIndexUser)[],
+        },
+      ];
+      await tableManager.loadTable(mappedIndexUserTable);
+      indexes = await tableManager.schemaMetadata.getIndexes(mappedIndexUserTable);
+      expect(JSON.stringify(indexes['db_test_mapped_index_user_email_index'])).toBe(JSON.stringify(['email_address']));
+      expect(JSON.stringify(indexes['db_test_mapped_index_user_created_email_index'])).toBe(
+        JSON.stringify(['created_on', 'email_address'])
+      );
+      expect(JSON.stringify(indexes['db_test_mapped_index_user_status_email_index'])).toBeFalsy();
     });
 
     test('create index', async () => {
