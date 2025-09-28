@@ -5,7 +5,7 @@ import { KnexDriver } from './KnexDriver';
 import { getColumnFactory } from './getColumnFactory';
 
 export class KnexSchemaOperations implements SchemaOperations {
-  private logger = new Logger({ name: this.constructor.name, logLevel: 'debug' });
+  private logger = new Logger({ name: this.constructor.name });
 
   constructor(private knexDriver: KnexDriver) {}
 
