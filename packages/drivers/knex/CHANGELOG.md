@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.4.14](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.4.13...@proteinjs/db-driver-knex@1.4.14) (2025-09-28)
+
+
+### Bug Fixes
+
+* always use column name when creating indexes ([#18](https://github.com/proteinjs/db/issues/18)) ([6e80a8f](https://github.com/proteinjs/db/commit/6e80a8fe37ac3b92d7a9b6b60fa9239f5c504646))
+
+
+
+
+
 ## [1.4.13](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.4.12...@proteinjs/db-driver-knex@1.4.13) (2025-09-24)
 
 **Note:** Version bump only for package @proteinjs/db-driver-knex

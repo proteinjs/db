@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.18.1](https://github.com/proteinjs/db/compare/@proteinjs/db@1.18.0...@proteinjs/db@1.18.1) (2025-09-28)
+
+
+### Bug Fixes
+
+* always use column name when creating indexes ([#18](https://github.com/proteinjs/db/issues/18)) ([6e80a8f](https://github.com/proteinjs/db/commit/6e80a8fe37ac3b92d7a9b6b60fa9239f5c504646))
+* remove duplicate query logic ([#17](https://github.com/proteinjs/db/issues/17)) ([1bd0ecf](https://github.com/proteinjs/db/commit/1bd0ecfd88bf203e6d8b9659935fbd79e4f2f9fd))
+
+
+
+
+
 # [1.18.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.17.1...@proteinjs/db@1.18.0) (2025-09-24)
 
 
