@@ -558,9 +558,7 @@ export const tableManagerTests = (
       await tableManager.loadTable(mappedIndexUserTable);
       expect(await tableManager.tableExists(mappedIndexUserTable)).toBeTruthy();
       const indexes = await tableManager.schemaMetadata.getIndexes(mappedIndexUserTable);
-      expect(JSON.stringify(indexes['db_test_mapped_index_user_email_index'])).toBe(
-        JSON.stringify(['email_address'])
-      );
+      expect(JSON.stringify(indexes['db_test_mapped_index_user_email_index'])).toBe(JSON.stringify(['email_address']));
       expect(JSON.stringify(indexes['db_test_mapped_index_user_status_email_index'])).toBe(
         JSON.stringify(['account_status', 'email_address'])
       );
