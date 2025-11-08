@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.5.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.4.15...@proteinjs/db-driver-knex@1.5.0) (2025-11-08)
+
+
+### Features
+
+* Reverse cascade delete ([#20](https://github.com/proteinjs/db/issues/20)) ([8aa734f](https://github.com/proteinjs/db/commit/8aa734f7c5cb2398ebced01f31cc62898d22aae0))
+
+
+
+
+
 ## [1.4.14](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.4.13...@proteinjs/db-driver-knex@1.4.14) (2025-09-28)
 
 

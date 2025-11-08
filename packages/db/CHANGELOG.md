@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.19.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.18.2...@proteinjs/db@1.19.0) (2025-11-08)
+
+
+### Features
+
+* Reverse cascade delete ([#20](https://github.com/proteinjs/db/issues/20)) ([8aa734f](https://github.com/proteinjs/db/commit/8aa734f7c5cb2398ebced01f31cc62898d22aae0))
+
+
+
+
+
 ## [1.18.1](https://github.com/proteinjs/db/compare/@proteinjs/db@1.18.0...@proteinjs/db@1.18.1) (2025-09-28)
 
 

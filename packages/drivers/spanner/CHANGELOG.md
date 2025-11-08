@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.9.0](https://github.com/brentbahry/db/compare/@proteinjs/db-driver-spanner@1.8.15...@proteinjs/db-driver-spanner@1.9.0) (2025-11-08)
+
+
+### Features
+
+* Reverse cascade delete ([#20](https://github.com/brentbahry/db/issues/20)) ([8aa734f](https://github.com/brentbahry/db/commit/8aa734f7c5cb2398ebced01f31cc62898d22aae0))
+
+
+
+
+
 ## [1.8.14](https://github.com/brentbahry/db/compare/@proteinjs/db-driver-spanner@1.8.13...@proteinjs/db-driver-spanner@1.8.14) (2025-09-28)
 
 
