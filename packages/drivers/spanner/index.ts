@@ -1,4 +1,4 @@
 export * from './src/SpannerDriver';
 export * from './src/SpannerConfig';
 
-export * from './test/dropTestTable';
+export * from './test/util/dropTestTable';

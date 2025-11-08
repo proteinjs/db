@@ -7,7 +7,7 @@ import {
   getDynamicReferenceColumnTestTable,
 } from '@proteinjs/db';
 import { SpannerDriver } from '../src/SpannerDriver';
-import { getDropTestTable } from './dropTestTable';
+import { getDropTestTable } from './util/dropTestTable';
 import { TransactionContext } from '@proteinjs/db-transaction-context';
 
 const spannerDriverCrudTests = new SpannerDriver(

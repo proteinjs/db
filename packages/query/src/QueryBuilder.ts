@@ -463,7 +463,11 @@ export class QueryBuilder<T = any> {
 
     let sql = 'SELECT ';
     if (select?.fields) {
-      sql += select.fields.map((field) => `\`${String(field)}\``).join(', ');
+      const resolved = select.fields.map((field) => {
+        const col = config.resolveFieldName ? config.resolveFieldName(this.tableName, String(field)) : String(field);
+        return `\`${col}\``;
+      });
+      sql += resolved.join(', ');
     } else if (aggregates.length > 0) {
       sql += aggregates.join(', ');
     } else {

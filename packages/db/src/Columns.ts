@@ -8,6 +8,11 @@ import { Reference } from './reference/Reference';
 import { QueryBuilderFactory } from './QueryBuilderFactory';
 import { Serializer } from '@proteinjs/serializer';
 
+export interface ReferenceColumnOptions extends ColumnOptions {
+  /** If true, when a record in the referenced table is deleted, this record is deleted */
+  reverseCascadeDelete?: boolean;
+}
+
 export class IntegerColumn implements Column<number, number> {
   constructor(
     public name: string,
@@ -212,11 +217,13 @@ export class ReferenceArrayColumn<T extends Record> extends ObjectColumn<Referen
    * @param cascadeDelete if true referenced records will be deleted when this record is deleted
    * @param options generic column options
    */
+  public reverseCascadeDelete: boolean;
+
   constructor(
     name: string,
     public referenceTable: string,
     public cascadeDelete: boolean,
-    options?: ColumnOptions
+    options?: ReferenceColumnOptions
   ) {
     super(
       name,
@@ -229,6 +236,7 @@ export class ReferenceArrayColumn<T extends Record> extends ObjectColumn<Referen
         options
       )
     );
+    this.reverseCascadeDelete = !!options?.reverseCascadeDelete;
   }
 
   async serialize(fieldValue: ReferenceArray<T> | null | undefined): Promise<string | null> {
@@ -290,11 +298,13 @@ export class ReferenceColumn<T extends Record> extends StringColumn<Reference<T>
    * @param cascadeDelete if true referenced record will be deleted when this record is deleted
    * @param options generic column options
    */
+  public reverseCascadeDelete: boolean;
+
   constructor(
     name: string,
     public referenceTable: string,
     public cascadeDelete: boolean,
-    options?: ColumnOptions
+    options?: ReferenceColumnOptions
   ) {
     super(
       name,
@@ -308,6 +318,7 @@ export class ReferenceColumn<T extends Record> extends StringColumn<Reference<T>
       ),
       36
     );
+    this.reverseCascadeDelete = !!options?.reverseCascadeDelete;
   }
 
   async serialize(fieldValue: Reference<T> | null | undefined): Promise<string | null> {
@@ -451,11 +462,13 @@ export class DynamicReferenceTableNameColumn extends StringColumn<string> {
  */
 
 export class DynamicReferenceColumn<T extends Record> extends StringColumn<Reference<T>> {
+  public reverseCascadeDelete: boolean;
+
   constructor(
     name: string,
     public dynamicRefTableColName: string,
     public cascadeDelete: boolean = false,
-    options?: ColumnOptions
+    options?: ReferenceColumnOptions
   ) {
     super(
       name,
@@ -469,6 +482,7 @@ export class DynamicReferenceColumn<T extends Record> extends StringColumn<Refer
       ),
       36
     );
+    this.reverseCascadeDelete = !!options?.reverseCascadeDelete;
   }
 
   async serialize(fieldValue: Reference<T> | null | undefined): Promise<string | null> {

@@ -1,5 +1,5 @@
 import { StatementFactory, Table } from '@proteinjs/db';
-import { SpannerDriver } from '../src/SpannerDriver';
+import { SpannerDriver } from '../../src/SpannerDriver';
 
 /**
  * @internal This function is intended to be used only in tests.
