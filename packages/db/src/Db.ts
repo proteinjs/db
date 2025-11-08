@@ -8,6 +8,7 @@ import {
   tableByName,
   addDefaultFieldValues,
   addUpdateFieldValues,
+  getTables,
 } from './Table';
 import { Record, RecordSerializer, SerializedRecord } from './Record';
 import { Logger } from '@proteinjs/logger';
@@ -193,21 +194,6 @@ export class Db<R extends Record = Record> implements DbService<R> {
       this.auth.canDelete(table);
     }
 
-    const _query = async <T extends R>(table: Table<T>, query: Query<T>) => {
-      const qb = new QueryBuilderFactory().getQueryBuilder(table, query);
-      await this.addColumnQueries(table, qb, 'delete');
-
-      const generateQuery = (config: DbDriverQueryStatementConfig) =>
-        qb.toSql(this.statementConfigFactory.getStatementConfig(config));
-      const serializedRecords = await this.dbDriver.runQuery(generateQuery, this.currentTransaction);
-      const recordSerializer = new RecordSerializer(table);
-      const records = await Promise.all(
-        serializedRecords.map(async (serializedRecord) => recordSerializer.deserialize(serializedRecord))
-      );
-      await this.preloadReferences(records);
-      return records;
-    };
-
     const qb = new QueryBuilderFactory().getQueryBuilder(table, query);
     await this.addColumnQueries(table, qb, 'delete');
     const recordsToDelete = await this._query(table, qb);
@@ -224,6 +210,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     await this.tableWatcherRunner.runBeforeDeleteTableWatchers(table, recordsToDelete, qb, deleteQb);
     const recordDeleteCount = await this.dbDriver.runDml(generateDelete, this.currentTransaction);
     await this.runCascadeDeletions(table, recordsToDelete);
+    await this.runColumnReverseCascadeDeletions(table, recordsToDelete);
     await this.tableWatcherRunner.runAfterDeleteTableWatchers(table, recordDeleteCount, recordsToDelete, qb, deleteQb);
     return recordDeleteCount;
   }
@@ -275,6 +262,153 @@ export class Db<R extends Record = Record> implements DbService<R> {
       this.logger.info({
         message: `Cascade deleted ${deleteCount} record${deleteCount == 1 ? '' : 's'}`,
       });
+    }
+  }
+
+  /**
+   * Reverse cascades driven by column-level flags on reference columns only.
+   * Supports:
+   *  - ReferenceColumn
+   *  - DynamicReferenceColumn
+   *  - ReferenceArrayColumn (stringified JSON) via LIKE-prefilter + exact check
+   */
+  private async runColumnReverseCascadeDeletions(table: Table<any>, deletedRecords: Record[]): Promise<void> {
+    const deletedIds = deletedRecords.map((r) => r.id);
+    if (deletedIds.length === 0) {
+      return;
+    }
+
+    const deletedIdSet = new Set<string>(deletedIds);
+    const allTables = getTables();
+
+    for (const referencingTable of allTables) {
+      for (const colPropName in referencingTable.columns) {
+        const col = referencingTable.columns[colPropName] as any;
+
+        // Only act if the column explicitly opted in
+        if (!col || col.reverseCascadeDelete !== true) {
+          continue;
+        }
+
+        // DynamicReferenceColumn: has dynamicRefTableColName
+        if (typeof col.dynamicRefTableColName === 'string' && col.dynamicRefTableColName.length > 0) {
+          const dynTableProp = getColumnPropertyName(referencingTable, col.dynamicRefTableColName);
+          if (!dynTableProp) {
+            continue;
+          }
+
+          const qb = new QueryBuilderFactory().getQueryBuilder(referencingTable);
+          await this.addColumnQueries(referencingTable, qb, 'read');
+
+          qb.condition({ field: dynTableProp as any, operator: '=', value: table.name as any });
+          qb.condition({ field: colPropName as any, operator: 'IN', value: deletedIds as any });
+
+          this.logger.info({
+            message: `Executing reverse cascade (dynamic) for table: ${table.name}`,
+            obj: { referencingTable: referencingTable.name, columnPropertyName: colPropName, deletedIds },
+          });
+
+          const deleteCount = await this.delete(referencingTable, qb);
+          this.logger.info({
+            message: `Reverse cascade (dynamic) deleted ${deleteCount} record${deleteCount == 1 ? '' : 's'}`,
+          });
+          continue;
+        }
+
+        // ReferenceColumn/ReferenceArrayColumn must match the target table
+        if (col.referenceTable !== table.name) {
+          continue;
+        }
+
+        const ctorName = col.constructor?.name;
+
+        if (ctorName === 'ReferenceColumn') {
+          const qb = new QueryBuilderFactory().getQueryBuilder(referencingTable);
+          await this.addColumnQueries(referencingTable, qb, 'read');
+          qb.condition({ field: colPropName as any, operator: 'IN', value: deletedIds as any });
+
+          this.logger.info({
+            message: `Executing reverse cascade (ReferenceColumn) for table: ${table.name}`,
+            obj: { referencingTable: referencingTable.name, columnPropertyName: colPropName, deletedIds },
+          });
+
+          const deleteCount = await this.delete(referencingTable, qb);
+          this.logger.info({
+            message: `Reverse cascade (ReferenceColumn) deleted ${deleteCount} record${deleteCount == 1 ? '' : 's'}`,
+          });
+        } else if (ctorName === 'ReferenceArrayColumn') {
+          await this.reverseDeleteReferenceArrayHolders(referencingTable, colPropName, deletedIds, deletedIdSet);
+        } else {
+          continue;
+        }
+      }
+    }
+  }
+
+  /**
+   * Reverse cascade for ReferenceArrayColumn that stores stringified JSON array of IDs.
+   * Strategy:
+   *  1) LIKE prefilter with %"<id>"% in chunks
+   *  2) Exact check in memory via deserialized ReferenceArray._ids
+   *  3) Delete by primary key in chunks
+   */
+  private async reverseDeleteReferenceArrayHolders(
+    referencingTable: Table<any>,
+    columnPropertyName: string,
+    deletedIds: string[],
+    deletedIdSet: Set<string>
+  ): Promise<void> {
+    const likeChunkSize = 100;
+    const deleteChunkSize = 1000;
+
+    this.logger.info({
+      message: `Executing reverse cascade (ReferenceArrayColumn) for table`,
+      obj: { referencingTable: referencingTable.name, columnPropertyName, deletedIdsCount: deletedIds.length },
+    });
+
+    for (const idsChunk of this.chunk(deletedIds, likeChunkSize)) {
+      const qb = new QueryBuilderFactory().getQueryBuilder(referencingTable);
+      await this.addColumnQueries(referencingTable, qb, 'read');
+
+      qb.select({ fields: ['id', columnPropertyName] });
+      qb.and([{ field: columnPropertyName, operator: 'IS NOT NULL' }]);
+
+      const likeConds = idsChunk.map((id) => {
+        const escaped = String(id).replace(/"/g, '\\"');
+        return { field: columnPropertyName, operator: 'LIKE' as const, value: `%"${escaped}"%` };
+      });
+      qb.or(likeConds);
+
+      const candidates = await this._query(referencingTable, qb);
+
+      const holderIdsToDelete: string[] = [];
+      for (const rec of candidates) {
+        const refArr = rec[columnPropertyName] as ReferenceArray<Record> | null | undefined;
+        const ids = (refArr && (refArr as any)._ids ? (refArr as any)._ids : []) as string[];
+        if (!ids?.length) {
+          continue;
+        }
+        if (ids.some((x) => deletedIdSet.has(x))) {
+          holderIdsToDelete.push(rec.id);
+        }
+      }
+
+      if (holderIdsToDelete.length === 0) {
+        continue;
+      }
+
+      const uniqueIds = Array.from(new Set(holderIdsToDelete));
+      for (const delChunk of this.chunk(uniqueIds, deleteChunkSize)) {
+        const delQb = new QueryBuilderFactory()
+          .getQueryBuilder(referencingTable)
+          .condition({ field: 'id', operator: 'IN', value: delChunk });
+
+        const deleteCount = await this.delete(referencingTable, delQb);
+        this.logger.info({
+          message: `Reverse cascade (ReferenceArrayColumn) deleted ${deleteCount} record${deleteCount == 1 ? '' : 's'}`,
+          obj: { referencingTable: referencingTable.name, columnPropertyName, batchSize: delChunk.length },
+        });
+      }
     }
   }
 
@@ -404,5 +538,17 @@ export class Db<R extends Record = Record> implements DbService<R> {
         this.currentTransaction = undefined;
       }
     });
+  }
+
+  // Utility: simple chunker
+  private chunk<T>(arr: T[], size: number): T[][] {
+    if (size <= 0) {
+      return [arr];
+    }
+    const out: T[][] = [];
+    for (let i = 0; i < arr.length; i += size) {
+      out.push(arr.slice(i, i + size));
+    }
+    return out;
   }
 }
