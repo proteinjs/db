@@ -4,9 +4,12 @@ import { Record } from './Record';
 import { Table } from './Table';
 import { QueryBuilder } from '@proteinjs/db-query';
 
+const getEnvVar = (key: string): string | undefined =>
+  typeof process !== 'undefined' && process.env ? process.env[key] : undefined;
+
 export class TableWatcherRunner<R extends Record = Record> {
   private static tableWatcherMap: TableWatcherMap;
-  private logger = new Logger({ name: this.constructor.name });
+  private logger = new Logger({ name: this.constructor.name, logLevel: getEnvVar('DB_LOG_LEVEL') as any });
 
   constructor() {
     if (!TableWatcherRunner.tableWatcherMap) {

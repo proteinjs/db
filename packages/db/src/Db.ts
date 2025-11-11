@@ -33,6 +33,9 @@ export const getDb = <R extends Record = Record>() =>
   typeof self === 'undefined' ? new Db<R>() : (getDbService() as Db<R>);
 export const getDbAsSystem = <R extends Record = Record>() => new Db<R>(undefined, undefined, undefined, true);
 
+const getEnvVar = (key: string): string | undefined =>
+  typeof process !== 'undefined' && process.env ? process.env[key] : undefined;
+
 export type DbDriverQueryStatementConfig = ParameterizationConfig & {
   prefixTablesWithDb?: boolean;
   getDriverColumnType?: (tableName: string, columnName: string) => string;
@@ -65,7 +68,7 @@ export interface DbDriver {
 export class Db<R extends Record = Record> implements DbService<R> {
   private static defaultDbDriver: DbDriver;
   private dbDriver: DbDriver;
-  private logger = new Logger({ name: this.constructor.name });
+  private logger = new Logger({ name: this.constructor.name, logLevel: getEnvVar('DB_LOG_LEVEL') as any });
   private statementConfigFactory: StatementConfigFactory;
   private auth = new TableAuth();
   private tableWatcherRunner = new TableWatcherRunner<R>();

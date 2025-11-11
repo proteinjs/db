@@ -5,12 +5,15 @@ import { SchemaMetadata } from './SchemaMetadata';
 import { DbDriver } from '../Db';
 import { DynamicReferenceColumn, DynamicReferenceTableNameColumn } from '../Columns';
 
+const getEnvVar = (key: string): string | undefined =>
+  typeof process !== 'undefined' && process.env ? process.env[key] : undefined;
+
 export interface ColumnTypeFactory {
   getType(column: Column<any, any>): string;
 }
 
 export class TableManager {
-  private logger = new Logger({ name: this.constructor.name });
+  private logger = new Logger({ name: this.constructor.name, logLevel: getEnvVar('DB_LOG_LEVEL') as any });
   public columnTypeFactory: ColumnTypeFactory;
   public schemaOperations: SchemaOperations;
   public schemaMetadata: SchemaMetadata;

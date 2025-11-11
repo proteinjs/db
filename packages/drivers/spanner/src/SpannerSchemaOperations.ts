@@ -10,8 +10,11 @@ import {
 import { SpannerDriver } from './SpannerDriver';
 import { SpannerColumnTypeFactory } from './SpannerColumnTypeFactory';
 
+const getEnvVar = (key: string): string | undefined =>
+  typeof process !== 'undefined' && process.env ? process.env[key] : undefined;
+
 export class SpannerSchemaOperations implements SchemaOperations {
-  private logger = new Logger({ name: this.constructor.name });
+  private logger = new Logger({ name: this.constructor.name, logLevel: getEnvVar('DB_LOG_LEVEL') as any });
 
   constructor(private spannerDriver: SpannerDriver) {}
 

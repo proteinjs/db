@@ -4,8 +4,11 @@ import { Column, Table, SchemaOperations, TableChanges } from '@proteinjs/db';
 import { KnexDriver } from './KnexDriver';
 import { getColumnFactory } from './getColumnFactory';
 
+const getEnvVar = (key: string): string | undefined =>
+  typeof process !== 'undefined' && process.env ? process.env[key] : undefined;
+
 export class KnexSchemaOperations implements SchemaOperations {
-  private logger = new Logger({ name: this.constructor.name });
+  private logger = new Logger({ name: this.constructor.name, logLevel: getEnvVar('DB_LOG_LEVEL') as any });
 
   constructor(private knexDriver: KnexDriver) {}
 
