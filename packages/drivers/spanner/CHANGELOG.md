@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.10.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.9.0...@proteinjs/db-driver-spanner@1.10.0) (2025-11-13)
+
+
+### Bug Fixes
+
+* Re-work db and drivers to separate test utils into a separate build (ie. @proteinjs/db/test). ([70c85e0](https://github.com/proteinjs/db/commit/70c85e0c1e3399e001d37be01adfd9ac13abd109))
+
+
+### Features
+
+* Expose `DB_LOG_LEVEL` so tests can ignore noisy logs like table creation. ([4799938](https://github.com/proteinjs/db/commit/4799938827c4c426655ff3936cbe72a1b9c2de4d))
+
+
+
+
+
 # [1.9.0](https://github.com/brentbahry/db/compare/@proteinjs/db-driver-spanner@1.8.15...@proteinjs/db-driver-spanner@1.9.0) (2025-11-08)
 
 
