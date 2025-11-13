@@ -15,7 +15,9 @@
   },
   "typesVersions": {
     "*": {
-      "test": ["dist/generated/test/index.d.ts"]
+      "test": [
+        "dist/generated/test/index.d.ts"
+      ]
     }
   },
   "description": "Db driver for Knex",
