@@ -1,5 +1,5 @@
 import { DbDriver, DefaultDbDriverFactory } from '@proteinjs/db';
-import { KnexDriver } from '../../src/KnexDriver';
+import { KnexDriver } from '@proteinjs/db-driver-knex';
 
 const knexDriver = new KnexDriver({
   host: 'localhost',

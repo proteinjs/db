@@ -1,5 +1,5 @@
 import { dynamicReferenceColumnTests } from '@proteinjs/db/test';
-import { SpannerDriver } from '../src/SpannerDriver';
+import { SpannerDriver } from '@proteinjs/db-driver-spanner';
 import { getDropTestTable } from './util/getDropTestTable';
 import '../generated/test/index';
 

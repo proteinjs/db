@@ -1,5 +1,5 @@
 import { Table } from '@proteinjs/db';
-import { KnexDriver } from '../../src/KnexDriver';
+import { KnexDriver } from '@proteinjs/db-driver-knex';
 
 export const getDropTestTable = (knexDriver: KnexDriver) => {
   return async (table: Table<any>) => {

@@ -1,5 +1,5 @@
 import { transactionTests } from '@proteinjs/db/test';
-import { KnexDriver } from '../src/KnexDriver';
+import { KnexDriver } from '@proteinjs/db-driver-knex';
 import { TransactionContext } from '@proteinjs/db-transaction-context';
 import { getDropTestTable } from './util/getDropTestTable';
 import '../generated/test/index';

@@ -14,6 +14,12 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "typeRoots": ["./node_modules/@types"],
-    "types": ["node", "jest"]
+    "types": ["node", "jest"],
+    "baseUrl": ".",
+    "paths": {
+      "@proteinjs/db-driver-knex": ["index.ts"],
+      "@proteinjs/db-driver-knex/*": ["src/*"],
+      "@proteinjs/db-driver-knex/test": ["test/index.ts"]
+    }
   }
 }

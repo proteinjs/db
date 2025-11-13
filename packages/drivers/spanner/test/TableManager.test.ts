@@ -1,5 +1,5 @@
 import { tableManagerTests } from '@proteinjs/db/test';
-import { SpannerDriver } from '../src/SpannerDriver';
+import { SpannerDriver } from '@proteinjs/db-driver-spanner';
 import { SpannerColumnTypeFactory } from '../src/SpannerColumnTypeFactory';
 import { getDropTestTable } from './util/getDropTestTable';
 import '../generated/test/index';

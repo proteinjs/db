@@ -1,5 +1,5 @@
 import { columnTypeTests } from '@proteinjs/db/test';
-import { SpannerDriver } from '../src/SpannerDriver';
+import { SpannerDriver } from '@proteinjs/db-driver-spanner';
 import { getDropTestTable } from './util/getDropTestTable';
 import { TransactionContext } from '@proteinjs/db-transaction-context';
 import '../generated/test/index';

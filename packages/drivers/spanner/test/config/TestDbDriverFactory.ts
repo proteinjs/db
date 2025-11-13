@@ -1,5 +1,5 @@
 import { DbDriver, DefaultDbDriverFactory } from '@proteinjs/db';
-import { SpannerDriver } from '../../src/SpannerDriver';
+import { SpannerDriver } from '@proteinjs/db-driver-spanner';
 
 const spannerDriver = new SpannerDriver({
   projectId: 'proteinjs-test',
