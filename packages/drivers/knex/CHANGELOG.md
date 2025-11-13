@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.6.1](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.6.0...@proteinjs/db-driver-knex@1.6.1) (2025-11-13)
+
+
+### Bug Fixes
+
+* Any package (in this case, the drivers) that exports test utilities needs to import local source through the package (ie. `import { SpannerDriver' } from '@proteinjs/db-driver-spanner'`) in those utilities. Relative path imports to the src will result in type mismatches in the consuming package's test files. ([e92f361](https://github.com/proteinjs/db/commit/e92f361369d6cfee2657384ad543e1317caa124c))
+
+
+
+
+
 # [1.6.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.5.0...@proteinjs/db-driver-knex@1.6.0) (2025-11-13)
 
 
