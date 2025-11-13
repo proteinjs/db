@@ -1,57 +1,13 @@
-import {
-  columnTypeTests,
-  crudTests,
-  dynamicReferenceColumnTests,
-  getColTypeTestTable,
-  getCrudTestTable,
-  getDynamicReferenceColumnTestTable,
-} from '@proteinjs/db';
+import { crudTests } from '@proteinjs/db/test';
 import { SpannerDriver } from '../src/SpannerDriver';
-import { getDropTestTable } from './util/dropTestTable';
+import { getDropTestTable } from './util/getDropTestTable';
 import { TransactionContext } from '@proteinjs/db-transaction-context';
+import '../generated/test/index';
 
-const spannerDriverCrudTests = new SpannerDriver(
-  {
-    projectId: 'proteinjs-test',
-    instanceName: 'proteinjs-test',
-    databaseName: 'test',
-  },
-  getCrudTestTable
-);
+const spannerDriver = new SpannerDriver({
+  projectId: 'proteinjs-test',
+  instanceName: 'proteinjs-test',
+  databaseName: 'test',
+});
 
-describe(
-  'CRUD Tests',
-  crudTests(spannerDriverCrudTests, new TransactionContext(), getDropTestTable(spannerDriverCrudTests))
-);
-
-const spannerDriverColumnTypesTests = new SpannerDriver(
-  {
-    projectId: 'proteinjs-test',
-    instanceName: 'proteinjs-test',
-    databaseName: 'test',
-  },
-  getColTypeTestTable
-);
-
-describe(
-  'Column Type Tests',
-  columnTypeTests(
-    spannerDriverColumnTypesTests,
-    new TransactionContext(),
-    getDropTestTable(spannerDriverColumnTypesTests)
-  )
-);
-
-const spannerDriverDynamicRefColTests = new SpannerDriver(
-  {
-    projectId: 'proteinjs-test',
-    instanceName: 'proteinjs-test',
-    databaseName: 'test',
-  },
-  getDynamicReferenceColumnTestTable
-);
-
-describe(
-  'DynamicReferenceColumn Tests',
-  dynamicReferenceColumnTests(spannerDriverDynamicRefColTests, getDropTestTable(spannerDriverDynamicRefColTests))
-);
+describe('CRUD Tests', crudTests(spannerDriver, new TransactionContext(), getDropTestTable(spannerDriver)));

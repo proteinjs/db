@@ -1,4 +1,4 @@
-import { crudTests } from '@proteinjs/db/test';
+import { columnTypeTests } from '@proteinjs/db/test';
 import { KnexDriver } from '../src/KnexDriver';
 import { TransactionContext } from '@proteinjs/db-transaction-context';
 import { getDropTestTable } from './util/getDropTestTable';
@@ -11,4 +11,4 @@ const knexDriver = new KnexDriver({
   dbName: 'test',
 });
 
-describe('CRUD Tests', crudTests(knexDriver, new TransactionContext(), getDropTestTable(knexDriver)));
+describe('Column Type Tests', columnTypeTests(knexDriver, new TransactionContext(), getDropTestTable(knexDriver)));

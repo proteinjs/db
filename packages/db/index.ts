@@ -25,11 +25,4 @@ export * from './src/services/DbService';
 export * from './src/services/MigrationRunnerService';
 export * from './src/services/TransactionRunnerService';
 
-export * from './test/reusable/TableManagerTests';
-export * from './test/reusable/CrudTests';
-export * from './test/reusable/ColumnTypesTests';
-export * from './test/reusable/DynamicReferenceColumn';
-export * from './test/reusable/TransactionTests';
-export * from './test/reusable/CascadeDeleteTests';
-
 export * from '@proteinjs/db-query';

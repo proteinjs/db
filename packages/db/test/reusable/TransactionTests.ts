@@ -1,64 +1,11 @@
 import { QueryBuilder } from '@proteinjs/db-query';
-import { DbDriver, Db } from '../../src/Db';
-import { withRecordColumns, Record } from '../../src/Record';
-import { BooleanColumn, DateColumn, StringColumn } from '../../src/Columns';
-import { Table } from '../../src/Table';
-import { DefaultTransactionContextFactory } from '../../src/transaction/TransactionContextFactory';
-
-interface Employee extends Record {
-  name: string;
-  department?: string;
-  jobTitle?: string | null;
-  isRemote?: boolean;
-  startDate?: Date;
-  object?: string;
-}
-
-class EmployeeTestTable extends Table<Employee> {
-  name = 'db_transaction_test_employee';
-  columns = withRecordColumns<Employee>({
-    name: new StringColumn('name'),
-    department: new StringColumn('department'),
-    isRemote: new BooleanColumn('is_remote'),
-    jobTitle: new StringColumn('job_title'),
-    startDate: new DateColumn('start_date'),
-    object: new StringColumn('object'),
-  });
-}
-
-interface ReservedWordTest extends Record {
-  name: string;
-  order?: string;
-  select?: string;
-  join?: string;
-}
-
-class ReservedWordTestTable extends Table<ReservedWordTest> {
-  name = 'db_transaction_test_reserved_word';
-  columns = withRecordColumns<ReservedWordTest>({
-    name: new StringColumn('name'),
-    order: new StringColumn('order'),
-    select: new StringColumn('select'),
-    join: new StringColumn('join'),
-  });
-}
-
-/**
- * Used for testing purposes only.
- *  */
-export const getTransactionTestTable = (tableName: string) => {
-  const employeeTable = new EmployeeTestTable();
-  if (employeeTable.name == tableName) {
-    return new EmployeeTestTable();
-  }
-
-  const reservedWordTestTable = new ReservedWordTestTable();
-  if (reservedWordTestTable.name == tableName) {
-    return new ReservedWordTestTable();
-  }
-
-  throw new Error(`Cannot find test table: ${tableName}`);
-};
+import { DbDriver, Db, Record, Table, DefaultTransactionContextFactory } from '@proteinjs/db';
+import { DbTestEnvironment } from '../util/DbTestEnvironment';
+import {
+  TransactionEmployee,
+  TransactionReservedWordTest,
+  transactionTestTables,
+} from '../util/tables/transactionTestTables';
 
 export const transactionTests = (
   driver: DbDriver,
@@ -66,36 +13,22 @@ export const transactionTests = (
   dropTable: (table: Table<any>) => Promise<void>
 ) => {
   return () => {
-    const db = new Db(driver, getTransactionTestTable, transactionContextFactory);
+    const db = new Db(driver, undefined, transactionContextFactory);
+    const testEnv = new DbTestEnvironment(driver, dropTable);
 
-    beforeAll(async () => {
-      if (driver.start) {
-        await driver.start();
-      }
-
-      await driver.getTableManager().loadTable(new EmployeeTestTable());
-      await driver.getTableManager().loadTable(new ReservedWordTestTable());
-    });
-
-    afterAll(async () => {
-      await dropTable(new EmployeeTestTable());
-      await dropTable(new ReservedWordTestTable());
-
-      if (driver.stop) {
-        await driver.stop();
-      }
-    });
+    beforeAll(async () => await testEnv.beforeAll(), 10000);
+    afterAll(async () => await testEnv.afterAll(), 10000);
 
     test('Transaction with successful operations', async () => {
-      const testEmployee1: Omit<Employee, keyof Record> = {
+      const testEmployee1: Omit<TransactionEmployee, keyof Record> = {
         name: 'Veronica',
         department: 'Engineering',
       };
-      const testEmployee2: Omit<Employee, keyof Record> = {
+      const testEmployee2: Omit<TransactionEmployee, keyof Record> = {
         name: 'Brent',
         department: 'Engineering',
       };
-      const emplyeeTable: Table<Employee> = new EmployeeTestTable();
+      const emplyeeTable: Table<TransactionEmployee> = transactionTestTables.TransactionEmployee;
 
       // Execute multiple operations in a transaction
       const results = await db.runTransaction(async () => {
@@ -117,7 +50,7 @@ export const transactionTests = (
       expect(updatedEmp2.department).toBe('Engineering');
 
       // Clean up
-      const qb = new QueryBuilder<Employee>(emplyeeTable.name).condition({
+      const qb = new QueryBuilder<TransactionEmployee>(emplyeeTable.name).condition({
         field: 'id',
         operator: 'IN',
         value: [results.emp1.id, results.emp2.id],
@@ -126,15 +59,15 @@ export const transactionTests = (
     });
 
     test('Transaction rollback on error', async () => {
-      const testEmployee1: Omit<Employee, keyof Record> = {
+      const testEmployee1: Omit<TransactionEmployee, keyof Record> = {
         name: 'Veronica',
         department: 'Engineering',
       };
-      const testEmployee2: Omit<Employee, keyof Record> = {
+      const testEmployee2: Omit<TransactionEmployee, keyof Record> = {
         name: 'Brent',
         department: undefined, // This will cause an error
       };
-      const emplyeeTable: Table<Employee> = new EmployeeTestTable();
+      const emplyeeTable: Table<TransactionEmployee> = transactionTestTables.TransactionEmployee;
 
       let insertedId: string | undefined;
 
@@ -156,11 +89,11 @@ export const transactionTests = (
     });
 
     test('Nested transactions are not allowed', async () => {
-      const testEmployee: Omit<Employee, keyof Record> = {
+      const testEmployee: Omit<TransactionEmployee, keyof Record> = {
         name: 'Veronica',
         department: 'Engineering',
       };
-      const emplyeeTable: Table<Employee> = new EmployeeTestTable();
+      const emplyeeTable: Table<TransactionEmployee> = transactionTestTables.TransactionEmployee;
 
       await expect(
         db.runTransaction(async () => {
@@ -176,11 +109,11 @@ export const transactionTests = (
     });
 
     test('Transaction isolation', async () => {
-      const testEmployee: Omit<Employee, keyof Record> = {
+      const testEmployee: Omit<TransactionEmployee, keyof Record> = {
         name: 'Veronica',
         department: 'Engineering',
       };
-      const emplyeeTable: Table<Employee> = new EmployeeTestTable();
+      const emplyeeTable: Table<TransactionEmployee> = transactionTestTables.TransactionEmployee;
 
       // Start a transaction but don't commit immediately
       const transactionPromise = db.runTransaction(async () => {
@@ -202,18 +135,18 @@ export const transactionTests = (
     });
 
     test('Transaction with multiple table operations', async () => {
-      const testEmployee: Omit<Employee, keyof Record> = {
+      const testEmployee: Omit<TransactionEmployee, keyof Record> = {
         name: 'Veronica',
         department: 'Engineering',
       };
-      const testReservedWord: Omit<ReservedWordTest, keyof Record> = {
+      const testReservedWord: Omit<TransactionReservedWordTest, keyof Record> = {
         name: 'Test',
         order: '1',
         select: 'Option 1',
       };
 
-      const emplyeeTable: Table<Employee> = new EmployeeTestTable();
-      const reservedWordTable: Table<ReservedWordTest> = new ReservedWordTestTable();
+      const emplyeeTable: Table<TransactionEmployee> = transactionTestTables.TransactionEmployee;
+      const reservedWordTable: Table<TransactionReservedWordTest> = transactionTestTables.TransactionReservedWord;
 
       // Execute operations on multiple tables in a transaction
       const results = await db.runTransaction(async () => {

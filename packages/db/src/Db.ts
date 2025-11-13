@@ -68,6 +68,7 @@ export interface DbDriver {
 export class Db<R extends Record = Record> implements DbService<R> {
   private static defaultDbDriver: DbDriver;
   private dbDriver: DbDriver;
+  private getTable: (tableName: string) => Table<any>;
   private logger = new Logger({ name: this.constructor.name, logLevel: getEnvVar('DB_LOG_LEVEL') as any });
   private statementConfigFactory: StatementConfigFactory;
   private auth = new TableAuth();
@@ -82,11 +83,12 @@ export class Db<R extends Record = Record> implements DbService<R> {
 
   constructor(
     dbDriver?: DbDriver,
-    private getTable?: (tableName: string) => Table<any>,
+    getTable?: (tableName: string) => Table<any>,
     transactionContextFactory?: DefaultTransactionContextFactory,
     private runAsSystem: boolean = false
   ) {
     this.dbDriver = dbDriver ? dbDriver : Db.getDefaultDbDriver();
+    this.getTable = getTable ?? tableByName;
     this.statementConfigFactory = new StatementConfigFactory(this.dbDriver.getDbName(), getTable);
     this.transactionContextFactory = transactionContextFactory
       ? transactionContextFactory
@@ -244,7 +246,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     }
 
     for (const cascadeDeleteReference of table.cascadeDeleteReferences()) {
-      const referenceTable = tableByName(cascadeDeleteReference.table);
+      const referenceTable = this.getTable(cascadeDeleteReference.table);
       const referenceColumnPropertyName = getColumnPropertyName(referenceTable, cascadeDeleteReference.referenceColumn);
       this.logger.info({
         message: `Executing cascade delete for table: ${table.name}`,

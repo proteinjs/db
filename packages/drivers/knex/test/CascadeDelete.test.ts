@@ -1,9 +1,8 @@
-import { cascadeDeleteTests } from '@proteinjs/db';
+import { cascadeDeleteTests } from '@proteinjs/db/test';
 import { KnexDriver } from '../src/KnexDriver';
 import { TransactionContext } from '@proteinjs/db-transaction-context';
 import { getDropTestTable } from './util/getDropTestTable';
-require('@proteinjs/db/test');
-require('../generated/test/index');
+import '../generated/test/index';
 
 const knexDriver = new KnexDriver({
   host: 'localhost',

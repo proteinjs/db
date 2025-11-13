@@ -1,74 +1,6 @@
-import { Db, DbDriver } from '../../src/Db';
-import { Moment } from 'moment';
-import { ReferenceArray } from '../../src/reference/ReferenceArray';
-import { Reference } from '../../src/reference/Reference';
-import {
-  IntegerColumn,
-  StringColumn,
-  FloatColumn,
-  DecimalColumn,
-  BooleanColumn,
-  DateColumn,
-  DateTimeColumn,
-  BinaryColumn,
-  UuidColumn,
-  PasswordColumn,
-  ObjectColumn,
-  ArrayColumn,
-  ReferenceArrayColumn,
-  ReferenceColumn,
-} from '../../src/Columns';
-import { withRecordColumns, Record } from '../../src/Record';
-import { Table } from '../../src/Table';
-import { DefaultTransactionContextFactory } from '../../src/transaction/TransactionContextFactory';
-
-export interface TestRecord extends Record {
-  integerColumn?: number | null;
-  stringColumn?: string | null;
-  floatColumn?: number | null;
-  decimalColumn?: number | null;
-  booleanColumn?: boolean | null;
-  dateColumn?: Date | null;
-  dateTimeColumn?: Moment | null;
-  binaryColumn?: number | null;
-  uuidColumn?: string | null;
-  passwordColumn?: string | null;
-  objectColumn?: any | null;
-  arrayColumn?: any[] | null;
-  referenceArrayColumn?: ReferenceArray<any> | null;
-  referenceColumn?: Reference<any> | null;
-}
-
-export class TestTable extends Table<TestRecord> {
-  public name = 'db_test_table';
-  public columns = withRecordColumns<TestRecord>({
-    integerColumn: new IntegerColumn('integer_column'),
-    stringColumn: new StringColumn('string_column', {}, 255),
-    floatColumn: new FloatColumn('float_column'),
-    decimalColumn: new DecimalColumn('decimal_column'),
-    booleanColumn: new BooleanColumn('boolean_column'),
-    dateColumn: new DateColumn('date_column'),
-    dateTimeColumn: new DateTimeColumn('date_time_column'),
-    binaryColumn: new BinaryColumn('binary_column'),
-    uuidColumn: new UuidColumn('uuid_column'),
-    passwordColumn: new PasswordColumn('password_column'),
-    objectColumn: new ObjectColumn('object_column'),
-    arrayColumn: new ArrayColumn('array_column'),
-    referenceArrayColumn: new ReferenceArrayColumn('reference_array_column', 'reference_table', false),
-    referenceColumn: new ReferenceColumn('reference_column', 'reference_table', false),
-  });
-}
-
-/**
- * Used for testing purposes only.
- *  */
-export const getColTypeTestTable = (tableName: string) => {
-  const testTable = new TestTable();
-  if (testTable.name === tableName) {
-    return new TestTable();
-  }
-  throw new Error(`Cannot find test table: ${tableName}`);
-};
+import { Db, DbDriver, Record, Table, DefaultTransactionContextFactory } from '@proteinjs/db';
+import { DbTestEnvironment } from '../util/DbTestEnvironment';
+import { columnTypesTestTables, TestRecord } from '../util/tables/columnTypesTestTables';
 
 export const columnTypeTests = (
   driver: DbDriver,
@@ -76,19 +8,11 @@ export const columnTypeTests = (
   dropTable: (table: Table<any>) => Promise<void>
 ) => {
   return () => {
-    const db = new Db(driver, getColTypeTestTable, transactionContextFactory);
+    const db = new Db(driver, undefined, transactionContextFactory);
+    const testEnv = new DbTestEnvironment(driver, dropTable);
 
-    beforeAll(async () => {
-      if (driver.start) {
-        await driver.start();
-      }
-
-      await driver.getTableManager().loadTable(new TestTable());
-    });
-
-    afterAll(async () => {
-      await dropTable(new TestTable());
-    });
+    beforeAll(async () => await testEnv.beforeAll(), 10000);
+    afterAll(async () => await testEnv.afterAll(), 10000);
 
     test('Insert record with all null values', async () => {
       const testRecord: Omit<TestRecord, keyof Record> = {
@@ -108,7 +32,7 @@ export const columnTypeTests = (
         referenceColumn: null,
       };
 
-      const testTable: Table<TestRecord> = new TestTable();
+      const testTable: Table<TestRecord> = columnTypesTestTables.Test;
       const insertedRecord = await db.insert(testTable, testRecord);
       const fetchedRecord = await db.get(testTable, { id: insertedRecord.id });
 
@@ -150,7 +74,7 @@ export const columnTypeTests = (
         referenceColumn: undefined,
       };
 
-      const testTable: Table<TestRecord> = new TestTable();
+      const testTable: Table<TestRecord> = columnTypesTestTables.Test;
 
       await expect(db.insert(testTable, testRecord)).rejects.toThrow();
     });

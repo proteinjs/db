@@ -1,64 +1,7 @@
 import { QueryBuilder } from '@proteinjs/db-query';
-import { DbDriver, Db } from '../../src/Db';
-import { withRecordColumns, Record } from '../../src/Record';
-import { BooleanColumn, DateColumn, StringColumn } from '../../src/Columns';
-import { Table } from '../../src/Table';
-import { DefaultTransactionContextFactory } from '../../src/transaction/TransactionContextFactory';
-
-export interface Employee extends Record {
-  name: string;
-  department?: string;
-  jobTitle?: string | null;
-  isRemote?: boolean;
-  startDate?: Date;
-  object?: string;
-}
-
-export class EmployeeTestTable extends Table<Employee> {
-  name = 'db_test_employee';
-  columns = withRecordColumns<Employee>({
-    name: new StringColumn('name'),
-    department: new StringColumn('department'),
-    isRemote: new BooleanColumn('is_remote'),
-    jobTitle: new StringColumn('job_title'),
-    startDate: new DateColumn('start_date'),
-    object: new StringColumn('object'),
-  });
-}
-
-export interface ReservedWordTest extends Record {
-  name: string;
-  order?: string;
-  select?: string;
-  join?: string;
-}
-
-export class ReservedWordTestTable extends Table<ReservedWordTest> {
-  name = 'db_test_reserved_word';
-  columns = withRecordColumns<ReservedWordTest>({
-    name: new StringColumn('name'),
-    order: new StringColumn('order'),
-    select: new StringColumn('select'),
-    join: new StringColumn('join'),
-  });
-}
-
-/**
- * Used for testing purposes only.
- *  */
-export const getCrudTestTable = (tableName: string) => {
-  const employeeTable = new EmployeeTestTable();
-  if (employeeTable.name == tableName) {
-    return new EmployeeTestTable();
-  }
-
-  const reservedWordTestTable = new ReservedWordTestTable();
-  if (reservedWordTestTable.name == tableName) {
-    return new ReservedWordTestTable();
-  }
-
-  throw new Error(`Cannot find test table: ${tableName}`);
-};
+import { DbDriver, Db, Record, Table, DefaultTransactionContextFactory } from '@proteinjs/db';
+import { DbTestEnvironment } from '../util/DbTestEnvironment';
+import { crudTestTables, Employee, ReservedWordTest } from '../util/tables/crudTestTables';
 
 export const crudTests = (
   driver: DbDriver,
@@ -66,29 +9,15 @@ export const crudTests = (
   dropTable: (table: Table<any>) => Promise<void>
 ) => {
   return () => {
-    const db = new Db(driver, getCrudTestTable, transactionContextFactory);
+    const db = new Db(driver, undefined, transactionContextFactory);
+    const testEnv = new DbTestEnvironment(driver, dropTable);
 
-    beforeAll(async () => {
-      if (driver.start) {
-        await driver.start();
-      }
-
-      await driver.getTableManager().loadTable(new EmployeeTestTable());
-      await driver.getTableManager().loadTable(new ReservedWordTestTable());
-    });
-
-    afterAll(async () => {
-      await dropTable(new EmployeeTestTable());
-      await dropTable(new ReservedWordTestTable());
-
-      if (driver.stop) {
-        await driver.stop();
-      }
-    });
+    beforeAll(async () => await testEnv.beforeAll(), 10000);
+    afterAll(async () => await testEnv.afterAll(), 10000);
 
     test('Insert', async () => {
       const testEmployee: Omit<Employee, keyof Record> = { name: 'Veronica' };
-      const emplyeeTable: Table<Employee> = new EmployeeTestTable();
+      const emplyeeTable: Table<Employee> = crudTestTables.Employee;
       const insertedEmployee = await db.insert(emplyeeTable, testEmployee);
       const fetchedEmployee = await db.get(emplyeeTable, { id: insertedEmployee.id });
       expect(fetchedEmployee).toBeTruthy();
@@ -97,7 +26,7 @@ export const crudTests = (
 
     test('Update', async () => {
       const testEmployee: Omit<Employee, keyof Record> = { name: 'Veronica' };
-      const emplyeeTable: Table<Employee> = new EmployeeTestTable();
+      const emplyeeTable: Table<Employee> = crudTestTables.Employee;
       const insertedEmployee = await db.insert(emplyeeTable, testEmployee);
       const updateCount = await db.update(
         emplyeeTable,
@@ -118,7 +47,7 @@ export const crudTests = (
 
     test('Delete', async () => {
       const testEmployee: Omit<Employee, keyof Record> = { name: 'Veronica' };
-      const emplyeeTable: Table<Employee> = new EmployeeTestTable();
+      const emplyeeTable: Table<Employee> = crudTestTables.Employee;
       const insertedEmployee = await db.insert(emplyeeTable, testEmployee);
       let fetchedEmployee = await db.get(emplyeeTable, { id: insertedEmployee.id });
       expect(fetchedEmployee).toBeTruthy();
@@ -132,7 +61,7 @@ export const crudTests = (
       const testEmployee1: Omit<Employee, keyof Record> = { name: 'Veronica', department: 'Cake Factory' };
       const testEmployee2: Omit<Employee, keyof Record> = { name: 'Brent', department: 'Cake Factory' };
       const testEmployee3: Omit<Employee, keyof Record> = { name: 'Sean', department: 'Pug Playhouse' };
-      const emplyeeTable: Table<Employee> = new EmployeeTestTable();
+      const emplyeeTable: Table<Employee> = crudTestTables.Employee;
       const fetchedEmployee1 = await db.insert(emplyeeTable, testEmployee1);
       const fetchedEmployee2 = await db.insert(emplyeeTable, testEmployee2);
       const fetchedEmployee3 = await db.insert(emplyeeTable, testEmployee3);
@@ -152,7 +81,7 @@ export const crudTests = (
       const testEmployee1: Omit<Employee, keyof Record> = { name: 'Veronica', department: 'Cake Factory' };
       const testEmployee2: Omit<Employee, keyof Record> = { name: 'Brent', department: 'Cake Factory' };
       const testEmployee3: Omit<Employee, keyof Record> = { name: 'Sean', department: 'Pug Playhouse' };
-      const emplyeeTable: Table<Employee> = new EmployeeTestTable();
+      const emplyeeTable: Table<Employee> = crudTestTables.Employee;
       const fetchedEmployee1 = await db.insert(emplyeeTable, testEmployee1);
       const fetchedEmployee2 = await db.insert(emplyeeTable, testEmployee2);
       const fetchedEmployee3 = await db.insert(emplyeeTable, testEmployee3);
@@ -173,7 +102,7 @@ export const crudTests = (
         jobTitle: null,
         isRemote: false,
       };
-      const emplyeeTable: Table<Employee> = new EmployeeTestTable();
+      const emplyeeTable: Table<Employee> = crudTestTables.Employee;
       const insertedEmployee = await db.insert(emplyeeTable, testEmployee);
       const fetchedEmployee = await db.get(emplyeeTable, { id: insertedEmployee.id });
 
@@ -189,7 +118,7 @@ export const crudTests = (
         jobTitle: 'Cowboy',
         isRemote: false,
       };
-      const emplyeeTable: Table<Employee> = new EmployeeTestTable();
+      const emplyeeTable: Table<Employee> = crudTestTables.Employee;
       const insertedEmployee = await db.insert(emplyeeTable, testEmployee);
       const fetchedEmployee = await db.get(emplyeeTable, { id: insertedEmployee.id });
       expect(fetchedEmployee).toBeTruthy();
@@ -205,7 +134,7 @@ export const crudTests = (
         jobTitle: null,
         isRemote: false,
       };
-      const emplyeeTable: Table<Employee> = new EmployeeTestTable();
+      const emplyeeTable: Table<Employee> = crudTestTables.Employee;
       const insertedEmployee = await db.insert(emplyeeTable, testEmployee);
 
       const qb = new QueryBuilder<Employee>(emplyeeTable.name)
@@ -223,7 +152,7 @@ export const crudTests = (
       const testEmployee1: Omit<Employee, keyof Record> = { name: 'Veronica', jobTitle: 'Engineer' };
       const testEmployee2: Omit<Employee, keyof Record> = { name: 'Zenyatta', jobTitle: null };
       const testEmployee3: Omit<Employee, keyof Record> = { name: 'Cassidy', jobTitle: 'Cowboy' };
-      const emplyeeTable: Table<Employee> = new EmployeeTestTable();
+      const emplyeeTable: Table<Employee> = crudTestTables.Employee;
       const insertedEmployee1 = await db.insert(emplyeeTable, testEmployee1);
       const insertedEmployee2 = await db.insert(emplyeeTable, testEmployee2);
       const insertedEmployee3 = await db.insert(emplyeeTable, testEmployee3);
@@ -270,7 +199,7 @@ export const crudTests = (
         jobTitle: 'Cowboy',
         startDate: new Date('2016-05-24T00:00:00Z'),
       };
-      const emplyeeTable: Table<Employee> = new EmployeeTestTable();
+      const emplyeeTable: Table<Employee> = crudTestTables.Employee;
 
       const insertedEmployee1 = await db.insert(emplyeeTable, testEmployee1);
       const insertedEmployee2 = await db.insert(emplyeeTable, testEmployee2);
@@ -308,7 +237,7 @@ export const crudTests = (
         name: 'Cassidy',
         jobTitle: 'Cowboy',
       };
-      const emplyeeTable: Table<Employee> = new EmployeeTestTable();
+      const emplyeeTable: Table<Employee> = crudTestTables.Employee;
 
       const insertedEmployee1 = await db.insert(emplyeeTable, testEmployee1);
       const insertedEmployee2 = await db.insert(emplyeeTable, testEmployee2);
@@ -337,7 +266,7 @@ export const crudTests = (
     test('CRUD operations with undefined values', async () => {
       const testEmployee1: Omit<Employee, keyof Record> = { name: 'Veronica', jobTitle: 'Software Engineer' };
       const testEmployee2: Omit<Employee, keyof Record> = { name: 'Brent', jobTitle: undefined };
-      const emplyeeTable: Table<Employee> = new EmployeeTestTable();
+      const emplyeeTable: Table<Employee> = crudTestTables.Employee;
 
       // Insert operation with undefined values
       await expect(db.insert(emplyeeTable, testEmployee2)).rejects.toThrow();
@@ -370,7 +299,7 @@ export const crudTests = (
 
     test('Insert with reserved words', async () => {
       const testRecord: Omit<ReservedWordTest, keyof Record> = { name: 'Test Name', order: '1', select: 'Option 1' };
-      const table: Table<ReservedWordTest> = new ReservedWordTestTable();
+      const table: Table<ReservedWordTest> = crudTestTables.ReservedWordTest;
       const insertedRecord = await db.insert(table, testRecord);
       const fetchedRecord = await db.get(table, { id: insertedRecord.id });
       expect(fetchedRecord).toBeTruthy();
@@ -379,7 +308,7 @@ export const crudTests = (
 
     test('Update with reserved words', async () => {
       const testRecord: Omit<ReservedWordTest, keyof Record> = { name: 'Test Name', order: '1', select: 'Option 1' };
-      const table: Table<ReservedWordTest> = new ReservedWordTestTable();
+      const table: Table<ReservedWordTest> = crudTestTables.ReservedWordTest;
       const insertedRecord = await db.insert(table, testRecord);
       const updateCount = await db.update(
         table,
@@ -400,7 +329,7 @@ export const crudTests = (
 
     test('Delete with reserved words', async () => {
       const testRecord: Omit<ReservedWordTest, keyof Record> = { name: 'Test Name', order: '1', select: 'Option 1' };
-      const table: Table<ReservedWordTest> = new ReservedWordTestTable();
+      const table: Table<ReservedWordTest> = crudTestTables.ReservedWordTest;
       const insertedRecord = await db.insert(table, testRecord);
       let fetchedRecord = await db.get(table, { id: insertedRecord.id });
       expect(fetchedRecord).toBeTruthy();
@@ -414,7 +343,7 @@ export const crudTests = (
       const testRecord1: Omit<ReservedWordTest, keyof Record> = { name: 'Test Name 1', order: '1', select: 'Option 1' };
       const testRecord2: Omit<ReservedWordTest, keyof Record> = { name: 'Test Name 2', order: '1', select: 'Option 1' };
       const testRecord3: Omit<ReservedWordTest, keyof Record> = { name: 'Test Name 3', order: '2', select: 'Option 2' };
-      const table: Table<ReservedWordTest> = new ReservedWordTestTable();
+      const table: Table<ReservedWordTest> = crudTestTables.ReservedWordTest;
       const insertedRecord1 = await db.insert(table, testRecord1);
       const insertedRecord2 = await db.insert(table, testRecord2);
       const insertedRecord3 = await db.insert(table, testRecord3);
@@ -434,7 +363,7 @@ export const crudTests = (
       const testRecord1: Omit<ReservedWordTest, keyof Record> = { name: 'Test Name 1', order: '1', select: 'Option 1' };
       const testRecord2: Omit<ReservedWordTest, keyof Record> = { name: 'Test Name 2', order: '2', select: 'Option 2' };
       const testRecord3: Omit<ReservedWordTest, keyof Record> = { name: 'Test Name 3', order: '3', select: 'Option 3' };
-      const table: Table<ReservedWordTest> = new ReservedWordTestTable();
+      const table: Table<ReservedWordTest> = crudTestTables.ReservedWordTest;
 
       const insertedRecord1 = await db.insert(table, testRecord1);
       const insertedRecord2 = await db.insert(table, testRecord2);
@@ -463,7 +392,7 @@ export const crudTests = (
     test('Query with reserved words and subquery', async () => {
       const testRecord1: Omit<ReservedWordTest, keyof Record> = { name: 'Test Name 1', order: '1', select: 'Option 1' };
       const testRecord2: Omit<ReservedWordTest, keyof Record> = { name: 'Test Name 2', order: '2', select: 'Option 2' };
-      const table: Table<ReservedWordTest> = new ReservedWordTestTable();
+      const table: Table<ReservedWordTest> = crudTestTables.ReservedWordTest;
 
       const insertedRecord1 = await db.insert(table, testRecord1);
       const insertedRecord2 = await db.insert(table, testRecord2);
@@ -497,7 +426,7 @@ export const crudTests = (
         isRemote: true,
         startDate: new Date('2024-04-01T00:00:00Z'),
       };
-      const emplyeeTable: Table<Employee> = new EmployeeTestTable();
+      const emplyeeTable: Table<Employee> = crudTestTables.Employee;
       const insertedEmployee = await db.insert(emplyeeTable, testEmployee);
 
       const queryNameInsensitive = new QueryBuilder<Employee>(emplyeeTable.name).condition(

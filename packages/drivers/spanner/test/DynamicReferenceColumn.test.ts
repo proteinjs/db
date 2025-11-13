@@ -1,7 +1,6 @@
-import { cascadeDeleteTests } from '@proteinjs/db/test';
+import { dynamicReferenceColumnTests } from '@proteinjs/db/test';
 import { SpannerDriver } from '../src/SpannerDriver';
 import { getDropTestTable } from './util/getDropTestTable';
-import { TransactionContext } from '@proteinjs/db-transaction-context';
 import '../generated/test/index';
 
 const spannerDriver = new SpannerDriver({
@@ -10,7 +9,4 @@ const spannerDriver = new SpannerDriver({
   databaseName: 'test',
 });
 
-describe(
-  'Cascade Delete Tests',
-  cascadeDeleteTests(spannerDriver, new TransactionContext(), getDropTestTable(spannerDriver))
-);
+describe('DynamicReferenceColumn Tests', dynamicReferenceColumnTests(spannerDriver, getDropTestTable(spannerDriver)));

@@ -1,7 +1,8 @@
-import { Table, tableManagerTests } from '@proteinjs/db';
+import { tableManagerTests } from '@proteinjs/db/test';
 import { KnexDriver } from '../src/KnexDriver';
 import { KnexColumnTypeFactory } from '../src/KnexColumnTypeFactory';
 import { getDropTestTable } from './util/getDropTestTable';
+import '../generated/test/index';
 
 const knexDriver = new KnexDriver({
   host: 'localhost',

@@ -1,6 +1,4 @@
 import {
-  BinaryColumn,
-  BooleanColumn,
   DateColumn,
   DateTimeColumn,
   DecimalColumn,
@@ -9,87 +7,18 @@ import {
   ObjectColumn,
   StringColumn,
   UuidColumn,
-} from '../../src/Columns';
-import { DbDriver } from '../../src/Db';
-import { Record, withRecordColumns } from '../../src/Record';
-import { Column, Table } from '../../src/Table';
-
-interface User extends Record {
-  name: string;
-  email: string;
-  active: boolean;
-}
-
-class UserTestTable extends Table<User> {
-  name = 'db_test_user';
-  columns = withRecordColumns<User>({
-    name: new StringColumn('name'),
-    email: new StringColumn('email'),
-    active: new BooleanColumn('active'),
-  });
-  indexes = [
-    { name: 'db_test_user_email_index', columns: ['email'] as (keyof User)[] },
-    { name: 'db_test_user_active_email_index', columns: ['active', 'email'] as (keyof User)[] },
-  ];
-}
-
-interface MappedIndexUser extends Record {
-  emailAddress: string;
-  accountStatus: string;
-  createdOn: Date;
-}
-
-class MappedIndexUserTable extends Table<MappedIndexUser> {
-  name = 'db_test_mapped_index_user';
-  columns = withRecordColumns<MappedIndexUser>({
-    emailAddress: new StringColumn('email_address'),
-    accountStatus: new StringColumn('account_status'),
-    createdOn: new DateColumn('created_on'),
-  });
-  indexes = [
-    {
-      name: 'db_test_mapped_index_user_email_index',
-      columns: ['emailAddress'] as (keyof MappedIndexUser)[],
-    },
-    {
-      name: 'db_test_mapped_index_user_status_email_index',
-      columns: ['accountStatus', 'emailAddress'] as (keyof MappedIndexUser)[],
-    },
-  ];
-}
-
-interface ColumnTypes extends Record {
-  integer: number;
-  bigInteger: number;
-  text: string;
-  string: string;
-  float: number;
-  decimal: number;
-  boolean: boolean;
-  date: Date;
-  dateTime: moment.Moment;
-  binary: boolean;
-  object: any;
-  uuid: string;
-}
-
-class ColumnTypesTable extends Table<ColumnTypes> {
-  name = 'db_test_column_types';
-  columns = withRecordColumns<ColumnTypes>({
-    integer: new IntegerColumn('integer', { nullable: true }),
-    bigInteger: new IntegerColumn('big_integer', { nullable: false }, true),
-    string: new StringColumn('string', { references: { table: 'db_test_user' } }),
-    text: new StringColumn('text', undefined, 'MAX'),
-    float: new FloatColumn('float', { defaultValue: async () => 0.5 }),
-    decimal: new DecimalColumn('decimal'),
-    boolean: new BooleanColumn('boolean'),
-    date: new DateColumn('date'),
-    dateTime: new DateTimeColumn('date_time'),
-    binary: new BinaryColumn('binary'),
-    object: new ObjectColumn('object'),
-    uuid: new UuidColumn('uuid', { unique: { unique: true } }),
-  });
-}
+  DbDriver,
+  Column,
+  Table,
+} from '@proteinjs/db';
+import { DbTestEnvironment } from '../util/DbTestEnvironment';
+import {
+  ColumnTypesTable,
+  MappedIndexUser,
+  MappedIndexUserTable,
+  tableManagerTestTables,
+  UserTestTable,
+} from '../util/tables/tableManagerTestTables';
 
 export const tableManagerTests = (
   driver: DbDriver,
@@ -103,23 +32,15 @@ export const tableManagerTests = (
 ) => {
   return () => {
     const tableManager = driver.getTableManager();
+    const testEnv = new DbTestEnvironment(driver, dropTable);
 
-    beforeAll(async () => {
-      if (driver.start) {
-        await driver.start();
-      }
-    });
+    beforeAll(async () => await testEnv.beforeAll(), 10000);
+    afterAll(async () => await testEnv.afterAll(), 10000);
 
     afterEach(async () => {
-      await dropTable(new ColumnTypesTable());
-      await dropTable(new UserTestTable());
-      await dropTable(new MappedIndexUserTable());
-    });
-
-    afterAll(async () => {
-      if (driver.stop) {
-        await driver.stop();
-      }
+      await dropTable(tableManagerTestTables.ColumnTypes);
+      await dropTable(tableManagerTestTables.User);
+      await dropTable(tableManagerTestTables.MappedIndexUser);
     });
 
     test('create primary key', async () => {
