@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/db-driver-spanner",
-  "version": "1.10.1",
+  "version": "1.10.2",
   "main": "./dist/generated/index.js",
   "types": "./dist/generated/index.d.ts",
   "exports": {
@@ -42,16 +42,16 @@
   },
   "dependencies": {
     "@google-cloud/spanner": "7.5.0",
-    "@proteinjs/db": "^1.20.0",
-    "@proteinjs/db-query": "^1.4.0",
-    "@proteinjs/db-spanner-common": "^1.1.17",
-    "@proteinjs/db-transaction-context": "^0.2.17",
-    "@proteinjs/logger": "1.0.11",
+    "@proteinjs/db": "^1.20.1",
+    "@proteinjs/db-query": "^1.4.1",
+    "@proteinjs/db-spanner-common": "^1.1.18",
+    "@proteinjs/db-transaction-context": "^0.2.18",
+    "@proteinjs/logger": "1.0.12",
     "@proteinjs/reflection": "1.1.10",
     "@proteinjs/util": "1.5.0"
   },
   "devDependencies": {
-    "@proteinjs/reflection-build": "1.4.0",
+    "@proteinjs/reflection-build": "1.4.1",
     "@types/jest": "29.5.5",
     "@types/node": "14.0.27",
     "@typescript-eslint/eslint-plugin": "7.8.0",
