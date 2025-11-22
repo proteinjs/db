@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.20.3](https://github.com/proteinjs/db/compare/@proteinjs/db@1.20.2...@proteinjs/db@1.20.3) (2025-11-22)
+
+
+### Bug Fixes
+
+* `RecordSerializer.serialize` fixed `undefined` error message to actually render field property name. ([68e016c](https://github.com/proteinjs/db/commit/68e016ceef43a8acea90219677aa6a137a4775dc))
+
+
+
+
+
 # [1.20.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.19.0...@proteinjs/db@1.20.0) (2025-11-13)
 
 
