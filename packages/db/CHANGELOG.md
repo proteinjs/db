@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.21.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.20.3...@proteinjs/db@1.21.0) (2026-02-12)
+
+
+### Features
+
+* `ReferenceCache` added `getAll` api to return all cached records for the provided table. ([c71f344](https://github.com/proteinjs/db/commit/c71f344ebddc197bd26842fd1093f5b8d236cbc7))
+
+
+
+
+
 ## [1.20.3](https://github.com/proteinjs/db/compare/@proteinjs/db@1.20.2...@proteinjs/db@1.20.3) (2025-11-22)
 
 
