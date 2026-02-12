@@ -46,6 +46,15 @@ export class ReferenceCache {
   }
 
   /**
+   * Returns all cached records for a table.
+   *
+   * @param table Name of the table to return all records for
+   */
+  getAll<T>(table: string): T[] {
+    return Object.values(this.cache[table] ?? {}) as T[];
+  }
+
+  /**
    * Sets a single record in the cache
    *
    * @param table Name of the table to add the record to
