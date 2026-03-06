@@ -225,17 +225,7 @@ export class ReferenceArrayColumn<T extends Record> extends ObjectColumn<Referen
     public cascadeDelete: boolean,
     options?: ReferenceColumnOptions
   ) {
-    super(
-      name,
-      Object.assign(
-        {
-          ui: {
-            hidden: true,
-          },
-        },
-        options
-      )
-    );
+    super(name, options);
     this.reverseCascadeDelete = !!options?.reverseCascadeDelete;
   }
 
@@ -306,18 +296,7 @@ export class ReferenceColumn<T extends Record> extends StringColumn<Reference<T>
     public cascadeDelete: boolean,
     options?: ReferenceColumnOptions
   ) {
-    super(
-      name,
-      Object.assign(
-        {
-          ui: {
-            hidden: true,
-          },
-        },
-        options
-      ),
-      36
-    );
+    super(name, options, 36);
     this.reverseCascadeDelete = !!options?.reverseCascadeDelete;
   }
 

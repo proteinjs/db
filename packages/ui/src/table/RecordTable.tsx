@@ -2,7 +2,15 @@ import React from 'react';
 import { Delete, Add } from '@mui/icons-material';
 import S from 'string';
 import { CustomRenderer, TableButton, Table as TableComponent, TableLoader, TableProps } from '@proteinjs/ui';
-import { Column, QueryBuilderFactory, Record, Table, getDb } from '@proteinjs/db';
+import {
+  Column,
+  QueryBuilderFactory,
+  Record,
+  ReferenceArrayColumn,
+  ReferenceColumn,
+  Table,
+  getDb,
+} from '@proteinjs/db';
 import { QueryTableLoader } from './QueryTableLoader';
 import { newRecordFormLink, recordFormLink } from '../pages/RecordFormPage';
 import { recordTableLink } from '../pages/RecordTablePage';
@@ -95,6 +103,30 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
 
   function getDefaultRenderer(column: Column<any, any>): CustomRenderer<T, any> {
     return (value: any) => {
+      console.log(
+        column.constructor?.name,
+        isInstanceOf(column, ReferenceColumn),
+        isInstanceOf(column, ReferenceArrayColumn),
+        isInstanceOf(column, ObjectColumn),
+        isInstanceOf(column, StringColumn)
+      );
+      if (isInstanceOf(column, ReferenceColumn)) {
+        return value?._id || '';
+      }
+      if (isInstanceOf(column, ReferenceArrayColumn)) {
+        return value?._ids?.join(', ') || '';
+      }
+      if (value && typeof value === 'object') {
+        if ('_id' in value && typeof value._id === 'string') {
+          return value._id;
+        }
+        if ('_ids' in value && Array.isArray(value._ids)) {
+          return value._ids.join(', ');
+        }
+      }
+      if (isInstanceOf(column, ObjectColumn) || isInstanceOf(column, ArrayColumn)) {
+        return JSON.stringify(value);
+      }
       if (
         isInstanceOf(column, IntegerColumn) ||
         isInstanceOf(column, FloatColumn) ||
@@ -103,7 +135,7 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
         return value != null ? value.toString() : '';
       }
       if (isInstanceOf(column, StringColumn)) {
-        return value || '';
+        return value != null ? String(value) : '';
       }
       if (isInstanceOf(column, BooleanColumn)) {
         return value ? '✅' : '❌';
@@ -113,9 +145,6 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
       }
       if (isInstanceOf(column, DateTimeColumn)) {
         return value ? moment(value).format('YYYY-MM-DD HH:mm:ss') : '';
-      }
-      if (isInstanceOf(column, ObjectColumn) || isInstanceOf(column, ArrayColumn)) {
-        return JSON.stringify(value);
       }
       return value != null ? value.toString() : '';
     };

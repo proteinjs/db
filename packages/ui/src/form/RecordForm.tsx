@@ -3,7 +3,18 @@ import S from 'string';
 import moment from 'moment';
 import { StringUtil, isInstanceOf } from '@proteinjs/util';
 import { Form, Fields, textField, FormButtons } from '@proteinjs/ui';
-import { Table, Record, Column, getDbService, DateTimeColumn, BooleanColumn } from '@proteinjs/db';
+import {
+  Table,
+  Record,
+  Column,
+  getDbService,
+  DateTimeColumn,
+  BooleanColumn,
+  Reference,
+  ReferenceArray,
+  ReferenceColumn,
+  ReferenceArrayColumn,
+} from '@proteinjs/db';
 import { recordTableLink } from '../pages/RecordTablePage';
 import { recordFormLink } from '../pages/RecordFormPage';
 import { getRecordFormCustomization } from './RecordFormCustomization';
@@ -13,9 +24,68 @@ export type RecordFormProps<T extends Record> = {
   record?: T;
 };
 
+type PlainObject = { [key: string]: unknown };
+
+function isObject(value: unknown): value is PlainObject {
+  return typeof value === 'object' && value !== null;
+}
+
+function isReferenceValue(value: unknown): value is { _table: string; _id: string | null } {
+  return (
+    isObject(value) &&
+    typeof value['_table'] === 'string' &&
+    (typeof value['_id'] === 'string' || value['_id'] === null)
+  );
+}
+
+function isReferenceArrayValue(value: unknown): value is { _table: string; _ids: string[] } {
+  return isObject(value) && typeof value['_table'] === 'string' && Array.isArray(value['_ids']);
+}
+
+function parseReferenceId(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const id = value.trim();
+  return id ? id : null;
+}
+
+function parseReferenceIds(value: unknown): string[] {
+  if (typeof value !== 'string') {
+    return [];
+  }
+
+  return value
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+}
+
+function parseBooleanValue(value: unknown): boolean | null {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'true') {
+    return true;
+  }
+  if (normalized === 'false') {
+    return false;
+  }
+
+  return null;
+}
+
 export function RecordForm<T extends Record>({ table, record }: RecordFormProps<T>) {
   const isNewRecord = typeof record === 'undefined';
   const recordFormCustomization = getRecordFormCustomization(table.name);
+
   return (
     <Form
       name={S(table.name).humanize().s}
@@ -29,6 +99,10 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
     />
   );
 
+  function getColumn(columnPropertyName: string) {
+    return (table.columns as any)[columnPropertyName] as Column<T, any>;
+  }
+
   function getColumns() {
     const columns: { [columnPropertyName: string]: Column<T, any> } = {};
     const nameColumn = (table.columns as any)['name'] as Column<T, any>;
@@ -37,7 +111,7 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
     }
 
     for (const columnPropertyName in table.columns) {
-      const column = (table.columns as any)[columnPropertyName] as Column<T, any>;
+      const column = getColumn(columnPropertyName);
       if (columnPropertyName == 'name' || columnPropertyName == 'created' || columnPropertyName == 'updated') {
         continue;
       }
@@ -50,8 +124,8 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
     }
 
     if (!isNewRecord) {
-      columns['created'] = (table.columns as any)['created'] as Column<T, any>;
-      columns['updated'] = (table.columns as any)['updated'] as Column<T, any>;
+      columns['created'] = getColumn('created');
+      columns['updated'] = getColumn('updated');
     }
 
     return columns;
@@ -88,6 +162,35 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
     }
 
     return Object.keys(columns) as (keyof T)[];
+  }
+
+  function getFieldValue(columnPropertyName: string, fieldValue: unknown) {
+    const column = getColumn(columnPropertyName);
+    const currentValue = record ? (record as any)[columnPropertyName] : undefined;
+
+    if (isReferenceValue(currentValue)) {
+      const id = parseReferenceId(fieldValue);
+      return id ? new Reference(currentValue._table, id) : null;
+    }
+
+    if (isReferenceArrayValue(currentValue)) {
+      return new ReferenceArray(currentValue._table, parseReferenceIds(fieldValue));
+    }
+
+    if (isInstanceOf(column, ReferenceColumn)) {
+      const id = parseReferenceId(fieldValue);
+      return id ? new Reference(column.referenceTable, id) : null;
+    }
+
+    if (isInstanceOf(column, ReferenceArrayColumn)) {
+      return new ReferenceArray(column.referenceTable, parseReferenceIds(fieldValue));
+    }
+
+    if (isInstanceOf(column, BooleanColumn)) {
+      return parseBooleanValue(fieldValue);
+    }
+
+    return fieldValue;
   }
 
   function buttons(): FormButtons<any> {
@@ -133,7 +236,7 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
 
           for (const columnPropertyName in fields) {
             const field = fields[columnPropertyName];
-            (record as any)[columnPropertyName] = field.field.value;
+            (record as any)[columnPropertyName] = getFieldValue(columnPropertyName, field.field.value);
           }
 
           await getDbService().update(table, record);
@@ -159,7 +262,7 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
           const record: any = {};
           for (const columnPropertyName in fields) {
             const field = fields[columnPropertyName];
-            (record as any)[columnPropertyName] = field.field.value;
+            record[columnPropertyName] = getFieldValue(columnPropertyName, field.field.value);
           }
 
           newRecord = await getDbService().insert(table, record);
@@ -178,11 +281,16 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
     }
 
     for (const columnPropertyName in fields) {
-      const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
+      const column = getColumn(columnPropertyName);
       const field = fields[columnPropertyName].field;
       let fieldValue = (record as any)[columnPropertyName];
+
       if (moment.isMoment(fieldValue)) {
         fieldValue = fieldValue.format('ddd, MMM Do YY, h:mm:ss a');
+      } else if (isReferenceValue(fieldValue)) {
+        fieldValue = fieldValue._id || '';
+      } else if (isReferenceArrayValue(fieldValue)) {
+        fieldValue = fieldValue._ids.join(', ');
       } else if (isInstanceOf(column, BooleanColumn)) {
         fieldValue = fieldValue == true ? 'True' : 'False';
       }
