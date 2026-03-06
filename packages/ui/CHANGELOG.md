@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.5.18](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.5.17...@proteinjs/db-ui@1.5.18) (2026-03-06)
+
+
+### Bug Fixes
+
+* `RecordTable` should gracefully handle reference columns that for some reason don't identify as `ReferenceColumn` via `isInstanceOf`. ([83be615](https://github.com/proteinjs/db/commit/83be61590f63e71a49efe452cef4f6a9ec66f945))
+
+
+
+
+
 ## [1.5.16](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.5.15...@proteinjs/db-ui@1.5.16) (2026-02-12)
 
 **Note:** Version bump only for package @proteinjs/db-ui
