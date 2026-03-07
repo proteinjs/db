@@ -15,6 +15,7 @@ import {
 // note: this might be specific to maria db
 export class KnexColumnTypeFactory {
   getType(column: Column<any, any>): string {
+    const originalColumn = column;
     if (isInstanceOf(column, IntegerColumn)) {
       return (column as IntegerColumn).large ? 'bigint' : 'int';
     } else if (isInstanceOf(column, UuidColumn)) {
@@ -35,6 +36,6 @@ export class KnexColumnTypeFactory {
       return (column as BinaryColumn).maxLength === 'MAX' ? 'longblob' : 'blob';
     }
 
-    throw new Error(`Invalid column type: ${column.constructor.name}, must extend a base column`);
+    throw new Error(`Invalid column type: ${originalColumn.constructor.name}, must extend a base column`);
   }
 }

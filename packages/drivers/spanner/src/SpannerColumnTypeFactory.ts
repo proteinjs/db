@@ -16,6 +16,7 @@ import { JsonColumn } from '@proteinjs/db-spanner-common';
 export class SpannerColumnTypeFactory {
   getType(column: Column<any, any>, isQueryOrDml?: boolean): string {
     let type: string;
+    const originalColumn = column;
 
     if (isInstanceOf(column, IntegerColumn)) {
       type = 'INT64';
@@ -38,7 +39,7 @@ export class SpannerColumnTypeFactory {
     } else if (isInstanceOf(column, JsonColumn)) {
       type = 'JSON';
     } else {
-      throw new Error(`Invalid column type: ${column.constructor.name}, must extend a base column`);
+      throw new Error(`Invalid column type: ${originalColumn.constructor.name}, must extend a base column`);
     }
 
     return isQueryOrDml ? type.toLowerCase() : type;
