@@ -14,6 +14,7 @@ import {
 } from '@proteinjs/db';
 
 export const getColumnFactory = (column: Column<any, any>): ColumnFactory => {
+  const originalColumn = column;
   if (isInstanceOf(column, IntegerColumn)) {
     return new IntegerColumnFactory();
   } else if (isInstanceOf(column, UuidColumn)) {
@@ -34,7 +35,7 @@ export const getColumnFactory = (column: Column<any, any>): ColumnFactory => {
     return new BinaryColumnFactory();
   }
 
-  throw new Error(`Invalid column type: ${column.constructor.name}, must extend a base column`);
+  throw new Error(`Invalid column type: ${originalColumn.constructor.name}, must extend a base column`);
 };
 
 export interface ColumnFactory {
