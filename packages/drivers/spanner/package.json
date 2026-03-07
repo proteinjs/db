@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/db-driver-spanner",
-  "version": "1.10.7",
+  "version": "1.10.8",
   "main": "./dist/generated/index.js",
   "types": "./dist/generated/index.d.ts",
   "exports": {
