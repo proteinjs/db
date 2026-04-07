@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.21.4](https://github.com/proteinjs/db/compare/@proteinjs/db@1.21.3...@proteinjs/db@1.21.4) (2026-04-07)
+
+
+### Bug Fixes
+
+* skip no-op updates in SourceRecordLoader to preserve updated timestamp ([d5491b3](https://github.com/proteinjs/db/commit/d5491b3f9124222642e7514456d59bebe323fd7e))
+
+
+
+
+
 ## [1.21.2](https://github.com/proteinjs/db/compare/@proteinjs/db@1.21.1...@proteinjs/db@1.21.2) (2026-03-06)
 
 
