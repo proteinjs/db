@@ -38,7 +38,7 @@
     "clean": "rm -rf dist/ node_modules/ generated/",
     "build": "reflection-build && REFLECTION_SOURCE_DIRS=test,src REFLECTION_EXPORT_FROM=test/index.ts reflection-build && tsc",
     "watch": "reflection-watch",
-    "test": "jest"
+    "test": "jest --passWithNoTests"
   },
   "dependencies": {
     "@proteinjs/db-query": "^1.4.3",

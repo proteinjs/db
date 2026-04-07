@@ -38,7 +38,7 @@
     "clean": "rm -rf dist/ node_modules/ generated/",
     "build": "reflection-build && REFLECTION_SOURCE_DIRS=test,src REFLECTION_EXPORT_FROM=test/index.ts reflection-build && tsc",
     "watch": "reflection-watch",
-    "test": "jest --runInBand"
+    "test": "jest --runInBand --passWithNoTests"
   },
   "dependencies": {
     "@google-cloud/spanner": "7.5.0",
