@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.21.5](https://github.com/proteinjs/db/compare/@proteinjs/db@1.21.4...@proteinjs/db@1.21.5) (2026-04-08)
+
+
+### Bug Fixes
+
+* add --passWithNoTests to jest test scripts ([5d09cb3](https://github.com/proteinjs/db/commit/5d09cb3857546d5955307c651a177df86d167da6))
+
+
+
+
+
 ## [1.21.4](https://github.com/proteinjs/db/compare/@proteinjs/db@1.21.3...@proteinjs/db@1.21.4) (2026-04-07)
 
 

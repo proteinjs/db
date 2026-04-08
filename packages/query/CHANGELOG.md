@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.4.4](https://github.com/proteinjs/db/compare/@proteinjs/db-query@1.4.3...@proteinjs/db-query@1.4.4) (2026-04-08)
+
+
+### Bug Fixes
+
+* add --passWithNoTests to jest test scripts ([5d09cb3](https://github.com/proteinjs/db/commit/5d09cb3857546d5955307c651a177df86d167da6))
+
+
+
+
+
 # [1.4.0](https://github.com/proteinjs/db/compare/@proteinjs/db-query@1.3.2...@proteinjs/db-query@1.4.0) (2025-11-08)
 
 
