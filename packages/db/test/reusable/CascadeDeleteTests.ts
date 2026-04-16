@@ -40,8 +40,8 @@ export const cascadeDeleteTests = (
     const db = new Db(driver, undefined, transactionContextFactory);
     const testEnv = new DbTestEnvironment(driver, dropTable);
 
-    beforeAll(async () => await testEnv.beforeAll(), 30000);
-    afterAll(async () => await testEnv.afterAll(), 30000);
+    beforeAll(async () => await testEnv.beforeAll(), 10000);
+    afterAll(async () => await testEnv.afterAll(), 10000);
 
     /**
      * -------------------- Cascade Delete (holder → referenced) --------------------

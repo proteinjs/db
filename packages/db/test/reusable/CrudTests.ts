@@ -12,8 +12,8 @@ export const crudTests = (
     const db = new Db(driver, undefined, transactionContextFactory);
     const testEnv = new DbTestEnvironment(driver, dropTable);
 
-    beforeAll(async () => await testEnv.beforeAll(), 30000);
-    afterAll(async () => await testEnv.afterAll(), 30000);
+    beforeAll(async () => await testEnv.beforeAll(), 10000);
+    afterAll(async () => await testEnv.afterAll(), 10000);
 
     test('Insert', async () => {
       const testEmployee: Omit<Employee, keyof Record> = { name: 'Veronica' };
@@ -417,7 +417,7 @@ export const crudTests = (
       // Clean up
       await db.delete(table, { id: insertedRecord1.id });
       await db.delete(table, { id: insertedRecord2.id });
-    }, 30000);
+    }, 10000);
 
     test('Case sensitivity', async () => {
       const testEmployee: Omit<Employee, keyof Record> = {

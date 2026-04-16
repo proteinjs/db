@@ -34,8 +34,8 @@ export const tableManagerTests = (
     const tableManager = driver.getTableManager();
     const testEnv = new DbTestEnvironment(driver, dropTable);
 
-    beforeAll(async () => await testEnv.beforeAll(), 30000);
-    afterAll(async () => await testEnv.afterAll(), 30000);
+    beforeAll(async () => await testEnv.beforeAll(), 10000);
+    afterAll(async () => await testEnv.afterAll(), 10000);
 
     afterEach(async () => {
       await dropTable(tableManagerTestTables.ColumnTypes);

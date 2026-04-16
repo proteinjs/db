@@ -14,8 +14,8 @@ export const dynamicReferenceColumnTests = (driver: DbDriver, dropTable: (table:
     const db = new Db(driver);
     const testEnv = new DbTestEnvironment(driver, dropTable);
 
-    beforeAll(async () => await testEnv.beforeAll(), 30000);
-    afterAll(async () => await testEnv.afterAll(), 30000);
+    beforeAll(async () => await testEnv.beforeAll(), 10000);
+    afterAll(async () => await testEnv.afterAll(), 10000);
 
     test('should handle references to different types', async () => {
       // Create an engineer
