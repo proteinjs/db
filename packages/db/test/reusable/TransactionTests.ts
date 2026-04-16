@@ -16,8 +16,8 @@ export const transactionTests = (
     const db = new Db(driver, undefined, transactionContextFactory);
     const testEnv = new DbTestEnvironment(driver, dropTable);
 
-    beforeAll(async () => await testEnv.beforeAll(), 10000);
-    afterAll(async () => await testEnv.afterAll(), 10000);
+    beforeAll(async () => await testEnv.beforeAll(), 30000);
+    afterAll(async () => await testEnv.afterAll(), 30000);
 
     test('Transaction with successful operations', async () => {
       const testEmployee1: Omit<TransactionEmployee, keyof Record> = {
