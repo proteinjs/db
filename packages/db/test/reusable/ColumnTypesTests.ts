@@ -11,8 +11,8 @@ export const columnTypeTests = (
     const db = new Db(driver, undefined, transactionContextFactory);
     const testEnv = new DbTestEnvironment(driver, dropTable);
 
-    beforeAll(async () => await testEnv.beforeAll(), 10000);
-    afterAll(async () => await testEnv.afterAll(), 10000);
+    beforeAll(async () => await testEnv.beforeAll(), 30000);
+    afterAll(async () => await testEnv.afterAll(), 30000);
 
     test('Insert record with all null values', async () => {
       const testRecord: Omit<TestRecord, keyof Record> = {
