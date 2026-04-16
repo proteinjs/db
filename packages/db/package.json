@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/db",
-  "version": "1.21.7",
+  "version": "1.21.8",
   "main": "./dist/generated/index.js",
   "types": "./dist/generated/index.d.ts",
   "exports": {
@@ -41,19 +41,19 @@
     "test": "jest --passWithNoTests"
   },
   "dependencies": {
-    "@proteinjs/db-query": "^1.4.6",
-    "@proteinjs/logger": "^1.0.17",
+    "@proteinjs/db-query": "^1.4.7",
+    "@proteinjs/logger": "^1.0.18",
     "@proteinjs/reflection": "^1.1.11",
-    "@proteinjs/serializer": "^1.1.6",
-    "@proteinjs/server-api": "^3.0.4",
-    "@proteinjs/service": "^1.2.13",
-    "@proteinjs/user-auth": "^1.1.11",
+    "@proteinjs/serializer": "^1.1.7",
+    "@proteinjs/server-api": "^3.0.5",
+    "@proteinjs/service": "^1.2.14",
+    "@proteinjs/user-auth": "^1.1.12",
     "@proteinjs/util": "^1.6.0",
     "moment": "2.29.4",
     "uuid": "8.3.0"
   },
   "devDependencies": {
-    "@proteinjs/reflection-build": "^1.4.5",
+    "@proteinjs/reflection-build": "^1.4.6",
     "@types/jest": "29.5.5",
     "@types/node": "14.0.27",
     "@types/uuid": "8.3.0",
