@@ -67,11 +67,12 @@ export class SourceRecordLoader {
   /**
    * Compare source record fields against the existing DB record to detect actual changes.
    * Only fields present on the source record are compared (ignoring `created`, `updated`).
-   * Uses serialization to normalize values (e.g. Reference objects, Moment, JSON) before comparison.
+   * Uses serialization to normalize values (e.g. Reference objects, Moment, JSON) before
+   * comparison, then delegates to {@link findMismatchPath}.
    *
-   * The comparison checks that every value in the source record exists with the same value
-   * in the existing DB record. Extra keys in the DB record are ignored — table watchers
-   * and hooks may enrich records with additional data after insert/update.
+   * Object-valued fields (e.g. `JsonColumn` blobs) are treated as source-authoritative:
+   * any structural drift, including extra keys left behind by earlier source versions,
+   * triggers a rewrite. Primitive columns retain their existing semantics.
    */
   private async hasChanges(table: Table<any>, sourceRecord: any, existingRecord: any): Promise<boolean> {
     const serializer = new RecordSerializer(table);
@@ -92,11 +93,43 @@ export class SourceRecordLoader {
     return false;
   }
 
+  private async getSourceRecordsMap() {
+    const sourceRecordsMap: SourceRecordsMap = {};
+    const sourceRecordTables = getSourceRecordTables();
+    for (const sourceRecordTable of sourceRecordTables) {
+      if (!sourceRecordsMap[sourceRecordTable.name]) {
+        sourceRecordsMap[sourceRecordTable.name] = { table: sourceRecordTable, records: [], recordIds: [] };
+      }
+    }
+
+    const sourceRecordLoaders = getSourceRecordLoaders();
+    for (const sourceRecordLoader of sourceRecordLoaders) {
+      if (!sourceRecordsMap[sourceRecordLoader.table.name]) {
+        sourceRecordsMap[sourceRecordLoader.table.name] = {
+          table: sourceRecordLoader.table,
+          records: [],
+          recordIds: [],
+        };
+      }
+
+      sourceRecordsMap[sourceRecordLoader.table.name].records.push(sourceRecordLoader.record);
+      sourceRecordsMap[sourceRecordLoader.table.name].recordIds.push(sourceRecordLoader.record.id);
+    }
+
+    return sourceRecordsMap;
+  }
+
   /**
    * Find the first point of divergence between source and existing values.
    * Returns a description of the mismatch path, or null if they match.
-   * For objects, extra keys in `existing` are ignored — they may have been added by
-   * table watchers or hooks after the source record was loaded.
+   *
+   * For object-valued fields (e.g. a `JsonColumn` blob), source is treated as
+   * fully authoritative: any structural drift — extra keys in existing, missing
+   * keys in existing, or value differences anywhere in the subtree — produces
+   * a mismatch. Comparison goes through {@link SourceRecordLoader.canonicalStringify}
+   * so that key ordering (which backing stores may canonicalize alphabetically)
+   * does not cause false positives.
+   *
    * For arrays, order and length must match exactly.
    */
   private findMismatchPath(source: any, existing: any, path: string): string | null {
@@ -139,47 +172,45 @@ export class SourceRecordLoader {
       return null;
     }
 
-    for (const key of Object.keys(source)) {
-      // Skip undefined values — they don't survive JSON serialization (JSON.stringify
-      // drops undefined), so the DB record won't have them.
-      if (source[key] === undefined) {
-        continue;
-      }
-      if (!(key in existing)) {
-        return `${path}.${key}: key missing in existing`;
-      }
-      const result = this.findMismatchPath(source[key], existing[key], `${path}.${key}`);
-      if (result) {
-        return result;
-      }
+    // Both values are non-null, non-array objects. Treat source as authoritative:
+    // any structural drift triggers a mismatch. Canonical stringify normalizes
+    // key order so storage-side canonicalization (e.g. Spanner alphabetizes JSON
+    // keys) doesn't register as drift.
+    if (this.canonicalStringify(source) !== this.canonicalStringify(existing)) {
+      return `${path}: object differs`;
     }
-
     return null;
   }
 
-  private async getSourceRecordsMap() {
-    const sourceRecordsMap: SourceRecordsMap = {};
-    const sourceRecordTables = getSourceRecordTables();
-    for (const sourceRecordTable of sourceRecordTables) {
-      if (!sourceRecordsMap[sourceRecordTable.name]) {
-        sourceRecordsMap[sourceRecordTable.name] = { table: sourceRecordTable, records: [], recordIds: [] };
-      }
+  /**
+   * Canonical JSON stringification with recursively sorted object keys.
+   *
+   * Why this exists: some stores (notably Spanner) canonicalize JSON object
+   * keys alphabetically on storage. Source records declared in TypeScript
+   * code don't guarantee alphabetical key order, so a plain `JSON.stringify`
+   * comparison between source and the existing DB value would produce false
+   * mismatches driven purely by key ordering. Sorting keys on both sides
+   * normalizes them so semantic equality maps to string equality.
+   *
+   * Arrays preserve order (order is semantic for arrays); only object keys
+   * are sorted.
+   */
+  private canonicalStringify(value: unknown): string {
+    if (value === null || typeof value !== 'object') {
+      return JSON.stringify(value);
     }
-
-    const sourceRecordLoaders = getSourceRecordLoaders();
-    for (const sourceRecordLoader of sourceRecordLoaders) {
-      if (!sourceRecordsMap[sourceRecordLoader.table.name]) {
-        sourceRecordsMap[sourceRecordLoader.table.name] = {
-          table: sourceRecordLoader.table,
-          records: [],
-          recordIds: [],
-        };
-      }
-
-      sourceRecordsMap[sourceRecordLoader.table.name].records.push(sourceRecordLoader.record);
-      sourceRecordsMap[sourceRecordLoader.table.name].recordIds.push(sourceRecordLoader.record.id);
+    if (Array.isArray(value)) {
+      // Mirror JSON.stringify: undefined array elements serialize as `null`.
+      return '[' + value.map((v) => (v === undefined ? 'null' : this.canonicalStringify(v))).join(',') + ']';
     }
-
-    return sourceRecordsMap;
+    // Mirror JSON.stringify: skip object properties whose value is `undefined`.
+    // This keeps source records that declare optional fields (as `undefined`)
+    // from being treated as drift vs existing rows that simply don't have the
+    // field — `undefined` would never have been written to the DB.
+    const obj = value as Record<string, unknown>;
+    const keys = Object.keys(obj)
+      .filter((k) => obj[k] !== undefined)
+      .sort();
+    return '{' + keys.map((k) => JSON.stringify(k) + ':' + this.canonicalStringify(obj[k])).join(',') + '}';
   }
 }
