@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.21.9](https://github.com/proteinjs/db/compare/@proteinjs/db@1.21.8...@proteinjs/db@1.21.9) (2026-04-18)
+
+
+### Bug Fixes
+
+* **db:** make SourceRecordLoader source-authoritative for JSON columns ([b282ac3](https://github.com/proteinjs/db/commit/b282ac30c3447b26ea59b0bd0f5dc437cd316ffe))
+
+
+
+
+
 ## [1.21.5](https://github.com/proteinjs/db/compare/@proteinjs/db@1.21.4...@proteinjs/db@1.21.5) (2026-04-08)
 
 

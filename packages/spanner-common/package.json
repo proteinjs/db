@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/db-spanner-common",
-  "version": "1.1.29",
+  "version": "1.1.30",
   "description": "Common libs for Google Spanner",
   "publishConfig": {
     "access": "public"
@@ -21,7 +21,7 @@
     "watch": "reflection-watch"
   },
   "dependencies": {
-    "@proteinjs/db": "^1.21.8",
+    "@proteinjs/db": "^1.21.9",
     "@proteinjs/logger": "^1.0.18",
     "@proteinjs/reflection": "^1.1.11"
   },

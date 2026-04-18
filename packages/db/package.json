@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/db",
-  "version": "1.21.8",
+  "version": "1.21.9",
   "main": "./dist/generated/index.js",
   "types": "./dist/generated/index.d.ts",
   "exports": {
