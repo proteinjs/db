@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.1.32](https://github.com/proteinjs/db/compare/@proteinjs/db-spanner-common@1.1.31...@proteinjs/db-spanner-common@1.1.32) (2026-06-08)
+
+
+### Bug Fixes
+
+* support top-level array values in JsonColumn ([6a4922b](https://github.com/proteinjs/db/commit/6a4922bb40487bb3e251a66408557c0d74635607))
+
+
+
+
+
 ## [1.1.30](https://github.com/proteinjs/db/compare/@proteinjs/db-spanner-common@1.1.29...@proteinjs/db-spanner-common@1.1.30) (2026-04-18)
 
 **Note:** Version bump only for package @proteinjs/db-spanner-common

@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/db-spanner-common",
-  "version": "1.1.31",
+  "version": "1.1.32",
   "description": "Common libs for Google Spanner",
   "publishConfig": {
     "access": "public"
