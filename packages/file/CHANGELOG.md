@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.3.0](https://github.com/proteinjs/db/compare/@proteinjs/db-file@1.2.49...@proteinjs/db-file@1.3.0) (2026-06-19)
+
+
+### Features
+
+* add optional preview self-reference to File table ([77c52d4](https://github.com/proteinjs/db/commit/77c52d4fd84b0029553f09af28bd17046609ad91))
+
+
+
+
+
 ## [1.2.47](https://github.com/proteinjs/db/compare/@proteinjs/db-file@1.2.46...@proteinjs/db-file@1.2.47) (2026-04-18)
 
 **Note:** Version bump only for package @proteinjs/db-file
