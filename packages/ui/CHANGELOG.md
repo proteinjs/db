@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.5.28](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.5.27...@proteinjs/db-ui@1.5.28) (2026-07-03)
+
+
+### Bug Fixes
+
+* remove leftover debug console.log firing on every RecordTable cell render ([6398849](https://github.com/proteinjs/db/commit/6398849ce563f6693f16f5f41d4a3851af994261))
+
+
+
+
+
 ## [1.5.26](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.5.25...@proteinjs/db-ui@1.5.26) (2026-04-18)
 
 **Note:** Version bump only for package @proteinjs/db-ui
