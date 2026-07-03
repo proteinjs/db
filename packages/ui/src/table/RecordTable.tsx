@@ -103,13 +103,6 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
 
   function getDefaultRenderer(column: Column<any, any>): CustomRenderer<T, any> {
     return (value: any) => {
-      console.log(
-        column.constructor?.name,
-        isInstanceOf(column, ReferenceColumn),
-        isInstanceOf(column, ReferenceArrayColumn),
-        isInstanceOf(column, ObjectColumn),
-        isInstanceOf(column, StringColumn)
-      );
       if (isInstanceOf(column, ReferenceColumn)) {
         return value?._id || '';
       }
