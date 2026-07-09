@@ -8,6 +8,7 @@ import {
   tableByName,
 } from '@proteinjs/db';
 import { SpannerConfig } from './SpannerConfig';
+import { SpannerLivenessMonitor } from './SpannerLivenessMonitor';
 import { Logger } from '@proteinjs/logger';
 import { Statement } from '@proteinjs/db-query';
 import { SpannerSchemaOperations } from './SpannerSchemaOperations';
@@ -21,6 +22,7 @@ export class SpannerDriver implements DbDriver {
   private static SPANNER: Spanner;
   private static SPANNER_INSTANCE: Instance;
   private static SPANNER_DB: Database;
+  private static LIVENESS_MONITOR: SpannerLivenessMonitor;
   private logger = new Logger({ name: this.constructor.name });
   private config: SpannerConfig;
   public getTable: ((name: string) => Table<any>) | undefined;
@@ -55,6 +57,7 @@ export class SpannerDriver implements DbDriver {
   private getSpannerDb(): Database {
     if (!SpannerDriver.SPANNER_DB) {
       SpannerDriver.SPANNER_DB = this.getSpannerInstance().database(this.config.databaseName);
+      SpannerDriver.LIVENESS_MONITOR = new SpannerLivenessMonitor(SpannerDriver.SPANNER_DB).start();
     }
 
     return SpannerDriver.SPANNER_DB;
@@ -169,6 +172,7 @@ export class SpannerDriver implements DbDriver {
         message: `Failed when executing query`,
         obj: { sql, params: namedParams, errorDetails: error.details, durationMs },
       });
+      SpannerDriver.LIVENESS_MONITOR.reportError(error);
       throw error;
     }
   }
@@ -225,6 +229,7 @@ export class SpannerDriver implements DbDriver {
         message: `Failed when executing dml`,
         obj: { sql, params: namedParams, errorDetails: error.details, durationMs },
       });
+      SpannerDriver.LIVENESS_MONITOR.reportError(error);
       throw error;
     }
   }
