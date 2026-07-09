@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.10.18](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.10.17...@proteinjs/db-driver-spanner@1.10.18) (2026-07-09)
+
+
+### Bug Fixes
+
+* survive Spanner session-pool errors with a liveness policy instead of crashing ([6165726](https://github.com/proteinjs/db/commit/6165726d618b820fb2ffcec0860c1ca558ee94ee))
+
+
+
+
+
 ## [1.10.17](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.10.16...@proteinjs/db-driver-spanner@1.10.17) (2026-06-08)
 
 **Note:** Version bump only for package @proteinjs/db-driver-spanner
