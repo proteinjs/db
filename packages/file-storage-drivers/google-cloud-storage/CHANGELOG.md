@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.2.32](https://github.com/proteinjs/db/compare/@proteinjs/db-file-storage-driver-gcs@1.2.31...@proteinjs/db-file-storage-driver-gcs@1.2.32) (2026-07-10)
+
+**Note:** Version bump only for package @proteinjs/db-file-storage-driver-gcs
+
+
+
+
+
 ## [1.2.31](https://github.com/proteinjs/db/compare/@proteinjs/db-file-storage-driver-gcs@1.2.30...@proteinjs/db-file-storage-driver-gcs@1.2.31) (2026-06-19)
 
 **Note:** Version bump only for package @proteinjs/db-file-storage-driver-gcs
