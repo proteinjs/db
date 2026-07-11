@@ -34,12 +34,22 @@ export class SpannerDriver implements DbDriver {
 
   private getSpanner(): Spanner {
     if (!SpannerDriver.SPANNER) {
+      // gRPC channel keepalive (2026-07-11 flow-hang investigation): a long-lived idle HTTP/2
+      // channel can die SILENTLY (NAT/VPN/middlebox drops with no RST) — in-flight and subsequent
+      // calls then wait forever with zero open sockets and no error, wedging whatever await rides
+      // them. Keepalive pings detect the dead channel within ~40s and fail calls over to gRPC's
+      // reconnect + the client's retry machinery. Callers may override via spannerOptions.
+      const keepalive = {
+        'grpc.keepalive_time_ms': Number(process.env.SPANNER_GRPC_KEEPALIVE_TIME_MS || 30_000),
+        'grpc.keepalive_timeout_ms': Number(process.env.SPANNER_GRPC_KEEPALIVE_TIMEOUT_MS || 10_000),
+        'grpc.keepalive_permit_without_calls': 1,
+      };
       if (this.config.spannerOptions) {
         SpannerDriver.SPANNER = new Spanner(
-          Object.assign({ projectId: this.config.projectId }, this.config.spannerOptions)
+          Object.assign({ projectId: this.config.projectId }, keepalive, this.config.spannerOptions)
         );
       } else {
-        SpannerDriver.SPANNER = new Spanner({ projectId: this.config.projectId });
+        SpannerDriver.SPANNER = new Spanner({ projectId: this.config.projectId, ...keepalive });
       }
     }
 
