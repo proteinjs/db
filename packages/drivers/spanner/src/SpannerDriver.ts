@@ -155,11 +155,15 @@ export class SpannerDriver implements DbDriver {
 
     try {
       this.logger.debug({ message: `Executing query`, obj: { sql, params: namedParams } });
-      const [rows] = await runner.run({
+      const [rows] = await this.logIfStalled(
+        'spanner query',
         sql,
-        params: namedParams?.params,
-        types: namedParams?.types,
-      });
+        runner.run({
+          sql,
+          params: namedParams?.params,
+          types: namedParams?.types,
+        })
+      );
       const durationMs = Number(process.hrtime.bigint() - startTime) / 1_000_000;
       this.logger.debug({
         message: `Query executed`,
@@ -190,11 +194,17 @@ export class SpannerDriver implements DbDriver {
       return await this.executeDml(generateStatement, transaction);
     }
 
-    return await this.getSpannerDb().runTransactionAsync(async (transaction) => {
-      const rowCount = await this.executeDml(generateStatement, transaction);
-      await transaction.commit();
-      return rowCount;
-    });
+    // Stalls in the transaction wrapper itself (session acquisition / begin / commit) happen
+    // OUTSIDE executeDml's instrumentation — wrap the whole round trip too.
+    return await this.logIfStalled(
+      'spanner dml transaction',
+      '(runTransactionAsync)',
+      this.getSpannerDb().runTransactionAsync(async (transaction) => {
+        const rowCount = await this.executeDml(generateStatement, transaction);
+        await transaction.commit();
+        return rowCount;
+      })
+    );
   }
 
   private async executeDml(
@@ -212,11 +222,15 @@ export class SpannerDriver implements DbDriver {
 
     try {
       this.logger.debug({ message: `Executing dml`, obj: { sql, params: namedParams } });
-      const [rowCount] = await runner.runUpdate({
+      const [rowCount] = await this.logIfStalled(
+        'spanner dml',
         sql,
-        params: namedParams?.params,
-        types: namedParams?.types,
-      });
+        runner.runUpdate({
+          sql,
+          params: namedParams?.params,
+          types: namedParams?.types,
+        })
+      );
       const durationMs = Number(process.hrtime.bigint() - startTime) / 1_000_000;
       this.logger.debug({
         message: `Dml executed`,
@@ -240,10 +254,47 @@ export class SpannerDriver implements DbDriver {
    * @returns the return of the `fn`
    */
   async runTransaction<T>(fn: (transaction: Transaction) => Promise<T>): Promise<T> {
-    return await this.getSpannerDb().runTransactionAsync(async (transaction) => {
-      const result = await fn(transaction);
-      await transaction.commit();
-      return result;
+    return await this.logIfStalled(
+      'spanner transaction',
+      '(runTransactionAsync)',
+      this.getSpannerDb().runTransactionAsync(async (transaction) => {
+        const result = await fn(transaction);
+        await transaction.commit();
+        return result;
+      })
+    );
+  }
+
+  /**
+   * Stall diagnostics (2026-07-10 flow-hang investigation): background flow tasks intermittently
+   * wedge between model calls with every model-layer guard silent — the remaining awaits on that
+   * path are Spanner ops, and this client has NO acquire/read timeouts (a wedged session/gRPC
+   * stream waits forever). Logs ops still pending at 30s and 120s — with the op and statement —
+   * then keeps waiting: pure diagnosis, zero behavior change.
+   */
+  private logIfStalled<T>(op: string, sql: string, promise: PromiseLike<T>, timeoutMs = 30_000): Promise<T> {
+    let settled = false;
+    const logStall = (afterMs: number) =>
+      this.logger.error({
+        message: `Spanner op stalled: ${op}`,
+        obj: { afterMs, sql: String(sql).slice(0, 200) },
+      });
+    const t1 = setTimeout(() => {
+      if (!settled) {
+        logStall(timeoutMs);
+      }
+    }, timeoutMs);
+    const t2 = setTimeout(() => {
+      if (!settled) {
+        logStall(120_000);
+      }
+    }, 120_000);
+    t1.unref?.();
+    t2.unref?.();
+    return Promise.resolve(promise).finally(() => {
+      settled = true;
+      clearTimeout(t1);
+      clearTimeout(t2);
     });
   }
 
