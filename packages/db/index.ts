@@ -1,6 +1,7 @@
 export * from './src/Db';
 export * from './src/Table';
 export * from './src/auth/TableAuth';
+export * from './src/auth/TableServiceAuth';
 export * from './src/Columns';
 export * from './src/Record';
 export * from './src/reference/ReferenceArray';

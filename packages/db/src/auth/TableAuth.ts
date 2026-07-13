@@ -63,7 +63,7 @@ export class TableAuth {
   }
 
   canDelete(table: Table<any>, api: 'db' | 'service' = 'db'): void {
-    if (!this.canAccess(table, api, 'query')) {
+    if (!this.canAccess(table, api, 'delete')) {
       throw new Error(`User is not authorized to delete records from table: ${table.name}`);
     }
   }

@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.22.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.21.10...@proteinjs/db@1.22.0) (2026-07-10)
+
+
+### Bug Fixes
+
+* bump @proteinjs/service to ^1.3.0 (ServiceError export) ([bd50dc4](https://github.com/proteinjs/db/commit/bd50dc49ac813f3ab7c1bd2af1614353b0e20e34))
+
+
+### Features
+
+* serviceProtectedColumns table auth + canDelete grant fix ([a2c664a](https://github.com/proteinjs/db/commit/a2c664adcc2d6a0d60a98dcc95efd185a76a6709))
+
+
+
+
+
 ## [1.21.9](https://github.com/proteinjs/db/compare/@proteinjs/db@1.21.8...@proteinjs/db@1.21.9) (2026-04-18)
 
 

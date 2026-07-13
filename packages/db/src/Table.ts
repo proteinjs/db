@@ -92,6 +92,15 @@ export abstract class Table<T extends Record> implements Loadable, CustomSeriali
   public auth?: {
     db?: TableOperationsAuth;
     service?: TableOperationsAuth;
+    /**
+     * Columns that can never be WRITTEN through the generic `DbService` RPC path: a service-path
+     * insert/update that sets one of these to a non-null value is rejected with a clean
+     * `ServiceError` before the operation runs (see `TableServiceAuth`). Server-side code using
+     * `Db` directly is unaffected. Use when a table must stay client-writable overall but a
+     * column's writes are reserved to server logic — e.g. `chat.parent`, which only
+     * `FlowConversation.createConversation` may set.
+     */
+    serviceProtectedColumns?: (keyof T & string)[];
     ui?: {
       recordTable?: Identity;
       recordForm?: Identity;
