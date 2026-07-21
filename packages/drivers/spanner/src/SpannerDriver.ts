@@ -34,16 +34,25 @@ export class SpannerDriver implements DbDriver {
 
   private getSpanner(): Spanner {
     if (!SpannerDriver.SPANNER) {
-      // gRPC channel keepalive (2026-07-11 flow-hang investigation): a long-lived idle HTTP/2
-      // channel can die SILENTLY (NAT/VPN/middlebox drops with no RST) — in-flight and subsequent
-      // calls then wait forever with zero open sockets and no error, wedging whatever await rides
-      // them. Keepalive pings detect the dead channel within ~40s and fail calls over to gRPC's
-      // reconnect + the client's retry machinery. Callers may override via spannerOptions.
-      const keepalive = {
-        'grpc.keepalive_time_ms': Number(process.env.SPANNER_GRPC_KEEPALIVE_TIME_MS || 30_000),
-        'grpc.keepalive_timeout_ms': Number(process.env.SPANNER_GRPC_KEEPALIVE_TIMEOUT_MS || 10_000),
-        'grpc.keepalive_permit_without_calls': 1,
-      };
+      // gRPC channel keepalive (2026-07-11 flow-hang investigation): a call in flight on a dead
+      // transport (NAT/VPN/middlebox drop with no RST) waits forever with zero open sockets and
+      // no error, wedging whatever await rides it. Keepalive pings during ACTIVE calls detect the
+      // dead channel within ~40s and fail the call over to gRPC's reconnect + retry machinery.
+      // Deliberately NOT `permit_without_calls`: idle-channel pings are treated as protocol abuse
+      // by some servers — the Spanner emulator in CI answered them with RST_STREAM(2) "Protocol
+      // error", killing every suite (2026-07-21 publish failure). Active-call pings still cover
+      // the wedge (the failure mode IS a hung in-flight call); a dead idle channel just pays one
+      // ~40s detection on its first call instead. Set SPANNER_GRPC_KEEPALIVE_TIME_MS=0 to disable
+      // keepalive entirely; callers may also override via spannerOptions.
+      const keepaliveTimeMs = Number(process.env.SPANNER_GRPC_KEEPALIVE_TIME_MS ?? 30_000);
+      const keepalive =
+        keepaliveTimeMs > 0
+          ? {
+              'grpc.keepalive_time_ms': keepaliveTimeMs,
+              'grpc.keepalive_timeout_ms': Number(process.env.SPANNER_GRPC_KEEPALIVE_TIMEOUT_MS || 10_000),
+              'grpc.keepalive_permit_without_calls': 0,
+            }
+          : {};
       if (this.config.spannerOptions) {
         SpannerDriver.SPANNER = new Spanner(
           Object.assign({ projectId: this.config.projectId }, keepalive, this.config.spannerOptions)
