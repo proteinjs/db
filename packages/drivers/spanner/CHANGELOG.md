@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.10.20](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.10.19...@proteinjs/db-driver-spanner@1.10.20) (2026-07-21)
+
+
+### Bug Fixes
+
+* gRPC channel keepalive on the Spanner client ([b72d18b](https://github.com/proteinjs/db/commit/b72d18b7bd0fcbb9954de16f297e95013dc0ffe0))
+* **spanner:** keepalive pings only during active calls — idle pings broke CI emulator ([ed9651d](https://github.com/proteinjs/db/commit/ed9651d2dd65934dbf8dad26355dc6f4b4919e9c))
+
+
+
+
+
 ## [1.10.19](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.10.18...@proteinjs/db-driver-spanner@1.10.19) (2026-07-10)
 
 **Note:** Version bump only for package @proteinjs/db-driver-spanner
