@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.11.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.10.21...@proteinjs/db-driver-spanner@1.11.0) (2026-07-23)
+
+
+### Features
+
+* **spanner:** SpannerEmulatorProvisioner — shared test-harness emulator provisioning ([b9e634a](https://github.com/proteinjs/db/commit/b9e634ab74580a66e589ce277985aca21e13a518))
+
+
+
+
+
 ## [1.10.20](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.10.19...@proteinjs/db-driver-spanner@1.10.20) (2026-07-21)
 
 
