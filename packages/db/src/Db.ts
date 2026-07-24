@@ -171,6 +171,16 @@ export class Db<R extends Record = Record> implements DbService<R> {
     }
 
     let recordCopy = Object.assign({}, record);
+    // Immutable columns can never be rewritten through an update — strip them from the payload
+    // (e.g. a ScopedRecord's `scope`: forced on insert; a client-path update rewriting it would
+    // reassign the row into another user's scope).
+    for (const columnPropertyName in table.columns) {
+      const column = (table.columns as any)[columnPropertyName];
+      const immutable = column?.options?.immutable;
+      if (immutable === true || (typeof immutable === 'function' && immutable(this.runAsSystem))) {
+        delete (recordCopy as any)[columnPropertyName];
+      }
+    }
     await addUpdateFieldValues(table, recordCopy);
     const qb = new QueryBuilderFactory().getQueryBuilder(table, query);
     await this.addColumnQueries(table, qb, 'write');

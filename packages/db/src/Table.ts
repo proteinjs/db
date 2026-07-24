@@ -161,6 +161,12 @@ export type ColumnOptions = {
   forceDefaultValue?: boolean | ((runAsSystem: boolean) => boolean);
   /** Value stored on update */
   updateValue?: (table: Table<any>, updateObj: any) => Promise<any>;
+  /**
+   * When active, `Db.update` strips this column from update payloads — the stored value can never
+   * be rewritten through an update (e.g. a ScopedRecord's `scope`: forced on insert, and without
+   * this a client-path update could reassign a row into another user's scope).
+   */
+  immutable?: boolean | ((runAsSystem: boolean) => boolean);
   /** Add conditions to query; called on every query of this table */
   addToQuery?: (qb: QueryBuilder, runAsSystem: boolean, operation: 'read' | 'write' | 'delete') => Promise<void>;
   onBeforeInsert?: (insertObj: any & Record, runAsSystem: boolean) => Promise<void>;
