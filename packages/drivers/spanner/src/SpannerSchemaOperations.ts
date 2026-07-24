@@ -107,10 +107,18 @@ export class SpannerSchemaOperations implements SchemaOperations {
       });
     }
 
+    const wideningStatements: string[] = [];
     for (const columnTypeChange of tableChanges.columnTypeChanges) {
-      const errorMessage = `[${table.name}.${columnTypeChange.name}] Unable to change column types in Spanner. Attempted to change type to: ${columnTypeChange.newType}`;
-      this.logger.error({ message: errorMessage });
-      throw new Error(errorMessage);
+      const wideningStatement = this.stringWideningStatement(table, columnTypeChange);
+      if (!wideningStatement) {
+        const errorMessage = `[${table.name}.${columnTypeChange.name}] Unable to change column types in Spanner (only STRING widening is supported in place). Attempted to change type from: ${columnTypeChange.oldType} to: ${columnTypeChange.newType}`;
+        this.logger.error({ message: errorMessage });
+        throw new Error(errorMessage);
+      }
+      this.logger.info({
+        message: `[${table.name}.${columnTypeChange.name}] Widening column: ${columnTypeChange.oldType} -> ${columnTypeChange.newType}`,
+      });
+      wideningStatements.push(wideningStatement);
     }
 
     for (const columnNullableChange of tableChanges.columnNullableChanges) {
@@ -129,6 +137,10 @@ export class SpannerSchemaOperations implements SchemaOperations {
     const alterStatements = new StatementFactory().alterTable(alterParams);
     for (const alterStatement of alterStatements) {
       await this.spannerDriver.runUpdateSchema(alterStatement.sql);
+    }
+
+    for (const wideningStatement of wideningStatements) {
+      await this.spannerDriver.runUpdateSchema(wideningStatement);
     }
 
     for (const index of tableChanges.indexesToDrop) {
@@ -153,5 +165,36 @@ export class SpannerSchemaOperations implements SchemaOperations {
         message: `[${table.name}] Created index: ${indexName} (${typeof index.columns === 'string' ? index.columns : index.columns.join(', ')})`,
       });
     }
+  }
+
+  /**
+   * Spanner supports exactly one in-place column type change: widening a `STRING(n)` to a larger
+   * `STRING(m)` or `STRING(MAX)`. Returns the `ALTER COLUMN` statement when `change` is such a
+   * widening, or `null` for any other type change. Nullability is restated from the declared
+   * column (Spanner's `ALTER COLUMN` replaces the full column definition); nullability DRIFT is
+   * rejected separately before this runs, so the declared value matches the live schema here.
+   */
+  private stringWideningStatement(
+    table: Table<any>,
+    change: { name: string; newType: string; oldType: string }
+  ): string | null {
+    const parseStringLength = (type: string): number | 'MAX' | null => {
+      const match = /^STRING\((\d+|MAX)\)$/.exec(type);
+      if (!match) {
+        return null;
+      }
+      return match[1] === 'MAX' ? 'MAX' : Number(match[1]);
+    };
+    const oldLength = parseStringLength(change.oldType);
+    const newLength = parseStringLength(change.newType);
+    const isWidening =
+      oldLength !== null && newLength !== null && oldLength !== 'MAX' && (newLength === 'MAX' || newLength > oldLength);
+    if (!isWidening) {
+      return null;
+    }
+
+    const column = Object.values(table.columns).find((tableColumn) => tableColumn.name === change.name);
+    const notNull = column?.options?.nullable === false ? ' NOT NULL' : '';
+    return `ALTER TABLE \`${table.name}\` ALTER COLUMN \`${change.name}\` ${change.newType}${notNull}`;
   }
 }

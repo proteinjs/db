@@ -158,7 +158,7 @@ export class TableManager {
         const existingColumnType = columnMetadata[column.name].type;
         if (columnType != existingColumnType) {
           // console.log(`columnType != existingColumnType`);
-          tableChanges.columnTypeChanges.push({ name: column.name, newType: columnType });
+          tableChanges.columnTypeChanges.push({ name: column.name, newType: columnType, oldType: existingColumnType });
           alter = true;
         }
 

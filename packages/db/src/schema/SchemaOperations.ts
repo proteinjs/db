@@ -20,6 +20,8 @@ interface ForeignKey {
 interface ColumnTypeChange {
   name: string;
   newType: string;
+  /** The column's current type in the live schema — lets drivers distinguish legal in-place changes (e.g. Spanner STRING widening) from impossible ones. */
+  oldType: string;
 }
 
 interface ColumnNullableChange {
