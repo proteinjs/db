@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.5.33](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.5.32...@proteinjs/db-ui@1.5.33) (2026-07-24)
+
+**Note:** Version bump only for package @proteinjs/db-ui
+
+
+
+
+
 ## [1.5.32](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.5.31...@proteinjs/db-ui@1.5.32) (2026-07-24)
 
 **Note:** Version bump only for package @proteinjs/db-ui

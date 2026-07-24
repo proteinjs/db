@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.24.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.23.0...@proteinjs/db@1.24.0) (2026-07-24)
+
+
+### Features
+
+* **db,spanner:** in-place STRING column widening ([b72f8f7](https://github.com/proteinjs/db/commit/b72f8f765b2ee56380ca67ab911f21fb8a512452))
+
+
+
+
+
 # [1.23.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.22.2...@proteinjs/db@1.23.0) (2026-07-24)
 
 

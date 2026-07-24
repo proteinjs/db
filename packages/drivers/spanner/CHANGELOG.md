@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.12.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.11.1...@proteinjs/db-driver-spanner@1.12.0) (2026-07-24)
+
+
+### Features
+
+* **db,spanner:** in-place STRING column widening ([b72f8f7](https://github.com/proteinjs/db/commit/b72f8f765b2ee56380ca67ab911f21fb8a512452))
+
+
+
+
+
 ## [1.11.1](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.11.0...@proteinjs/db-driver-spanner@1.11.1) (2026-07-24)
 
 **Note:** Version bump only for package @proteinjs/db-driver-spanner
