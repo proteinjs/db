@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.23.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.22.2...@proteinjs/db@1.23.0) (2026-07-24)
+
+
+### Features
+
+* **db:** immutable column option — Db.update strips columns that can never be rewritten ([95ed924](https://github.com/proteinjs/db/commit/95ed924ee17d9da4a5f401812c1082d540d4143f))
+
+
+
+
+
 ## [1.22.1](https://github.com/proteinjs/db/compare/@proteinjs/db@1.22.0...@proteinjs/db@1.22.1) (2026-07-21)
 
 **Note:** Version bump only for package @proteinjs/db
