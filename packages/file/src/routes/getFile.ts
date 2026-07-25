@@ -16,7 +16,8 @@ export const getFile: Route = {
     try {
       const file = await fileStorage.getFile(fileId);
       const fileDataBase64 = await fileStorage.getFileData(fileId);
-      if (!file || !fileDataBase64) {
+      // The file row decides existence; empty data is a legitimate zero-byte file, not a 404.
+      if (!file) {
         response.status(404).send('File not found');
       } else {
         const safeFilename = encodeURIComponent(file.name);
