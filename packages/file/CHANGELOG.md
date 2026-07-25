@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.3.6](https://github.com/proteinjs/db/compare/@proteinjs/db-file@1.3.5...@proteinjs/db-file@1.3.6) (2026-07-25)
+
+
+### Bug Fixes
+
+* **db-file:** a zero-byte file serves 200, not 404 ([7407783](https://github.com/proteinjs/db/commit/740778304ca33a356601a5df51fc00c3f1eacc8e))
+
+
+
+
+
 ## [1.3.5](https://github.com/proteinjs/db/compare/@proteinjs/db-file@1.3.4...@proteinjs/db-file@1.3.5) (2026-07-24)
 
 **Note:** Version bump only for package @proteinjs/db-file
