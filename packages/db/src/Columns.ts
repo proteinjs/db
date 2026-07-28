@@ -363,7 +363,7 @@ export class DynamicReferenceTableNameColumn extends StringColumn<string> {
 
         // No reference is being set, so we can return early
         if (!record[refColPropertyName]) {
-          return options?.defaultValue ? await options.defaultValue(table, record) : record[colPropertyName] ?? null;
+          return options?.defaultValue ? await options.defaultValue(table, record) : (record[colPropertyName] ?? null);
         }
 
         // Get the table name from the reference column
@@ -447,7 +447,11 @@ export class DynamicReferenceColumn<T extends Record> extends StringColumn<Refer
     name: string,
     public dynamicRefTableColName: string,
     public cascadeDelete: boolean = false,
-    options?: ReferenceColumnOptions
+    options?: ReferenceColumnOptions & {
+      /** Id-column width (default 36, uuid). Pass the EXISTING width when adopting a column
+       *  that predates the dynamic reference — Spanner cannot narrow a STRING in place. */
+      maxLength?: number;
+    }
   ) {
     super(
       name,
@@ -459,7 +463,7 @@ export class DynamicReferenceColumn<T extends Record> extends StringColumn<Refer
         },
         options
       ),
-      36
+      options?.maxLength ?? 36
     );
     this.reverseCascadeDelete = !!options?.reverseCascadeDelete;
   }
