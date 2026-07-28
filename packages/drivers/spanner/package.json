@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/db-driver-spanner",
-  "version": "1.12.0",
+  "version": "1.12.1",
   "main": "./dist/generated/index.js",
   "types": "./dist/generated/index.d.ts",
   "exports": {
@@ -42,10 +42,10 @@
   },
   "dependencies": {
     "@google-cloud/spanner": "7.5.0",
-    "@proteinjs/db": "^1.24.0",
+    "@proteinjs/db": "^1.25.0",
     "@proteinjs/db-query": "^1.4.9",
-    "@proteinjs/db-spanner-common": "^1.1.37",
-    "@proteinjs/db-transaction-context": "^0.2.36",
+    "@proteinjs/db-spanner-common": "^1.1.38",
+    "@proteinjs/db-transaction-context": "^0.2.37",
     "@proteinjs/logger": "^1.0.20",
     "@proteinjs/reflection": "^1.1.11",
     "@proteinjs/util": "^1.6.0"

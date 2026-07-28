@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.25.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.24.0...@proteinjs/db@1.25.0) (2026-07-28)
+
+
+### Features
+
+* **db:** DynamicReferenceColumn accepts a maxLength option ([7f9449b](https://github.com/proteinjs/db/commit/7f9449b57a9de9ddbc883d6546cd3670413d4adf))
+
+
+
+
+
 # [1.24.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.23.0...@proteinjs/db@1.24.0) (2026-07-24)
 
 
