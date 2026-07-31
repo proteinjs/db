@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/db-query",
-  "version": "1.4.9",
+  "version": "1.4.10",
   "description": "A sql query builder",
   "publishConfig": {
     "access": "public"
@@ -22,13 +22,13 @@
     "test": "jest --passWithNoTests"
   },
   "dependencies": {
-    "@proteinjs/logger": "^1.0.20",
-    "@proteinjs/reflection": "^1.1.11",
-    "@proteinjs/serializer": "^1.1.9",
-    "@proteinjs/util": "^1.6.0"
+    "@proteinjs/logger": "^1.0.21",
+    "@proteinjs/reflection": "^1.1.12",
+    "@proteinjs/serializer": "^1.1.10",
+    "@proteinjs/util": "^1.6.1"
   },
   "devDependencies": {
-    "@proteinjs/reflection-build": "^1.4.8",
+    "@proteinjs/reflection-build": "^1.4.10",
     "@types/jest": "29.5.5",
     "@types/node": "14.0.27",
     "@typescript-eslint/eslint-plugin": "7.8.0",
