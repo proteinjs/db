@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/db-settings",
-  "version": "1.2.55",
+  "version": "1.2.56",
   "description": "Db settings",
   "publishConfig": {
     "access": "public"
@@ -21,15 +21,15 @@
     "watch": "reflection-watch"
   },
   "dependencies": {
-    "@proteinjs/db": "^1.25.0",
-    "@proteinjs/logger": "^1.0.20",
-    "@proteinjs/reflection": "^1.1.11",
-    "@proteinjs/service": "^1.3.1",
-    "@proteinjs/user": "^1.5.12",
+    "@proteinjs/db": "^1.25.1",
+    "@proteinjs/logger": "^1.0.21",
+    "@proteinjs/reflection": "^1.1.12",
+    "@proteinjs/service": "^1.3.2",
+    "@proteinjs/user": "^1.5.13",
     "moment": "2.29.4"
   },
   "devDependencies": {
-    "@proteinjs/reflection-build": "^1.4.8",
+    "@proteinjs/reflection-build": "^1.4.10",
     "@types/jest": "29.5.5",
     "@types/node": "14.0.27",
     "@typescript-eslint/eslint-plugin": "7.8.0",
