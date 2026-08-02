@@ -47,6 +47,18 @@ class ProtectedColumnTable extends Table<Doc> {
   });
 }
 
+/**
+ * Mirrors the admin tables surfaced in the settings menu (user, invite, session, migration):
+ * NO auth block at all — the default-deny contract makes them admin-only through the service path.
+ */
+class NoAuthTable extends Table<Doc> {
+  public name = 'no_auth_test';
+  public columns = withRecordColumns<Doc>({
+    title: new StringColumn('title'),
+    owner: new StringColumn('owner'),
+  });
+}
+
 /** Read-only intent: only `query` granted (the canDelete-regression shape). */
 class ReadOnlyTable extends Table<Doc> {
   public name = 'read_only_test';
@@ -99,6 +111,34 @@ describe('TableServiceAuth — per-operation service grants', () => {
     const table = new ReadOnlyTable();
     expect(auth().canAccess('query', [table, {}])).toBe(true);
     expect(auth().canAccess('delete', [table, { id: 'x' }])).toBe(false);
+  });
+});
+
+describe('TableServiceAuth — default deny (no auth block)', () => {
+  afterEach(() => {
+    (UserAuth as unknown as UserAuthInternals).userRepo = undefined;
+  });
+
+  it('denies every operation to an authenticated non-admin', () => {
+    setUser([]);
+    const table = new NoAuthTable();
+    expect(auth().canAccess('query', [table, {}])).toBe(false);
+    expect(auth().canAccess('get', [table, { id: 'x' }])).toBe(false);
+    expect(auth().canAccess('getRowCount', [table, {}])).toBe(false);
+    expect(auth().canAccess('insert', [table, { title: 't' }])).toBe(false);
+    expect(auth().canAccess('update', [table, { id: 'x', title: 't' }])).toBe(false);
+    expect(auth().canAccess('delete', [table, { id: 'x' }])).toBe(false);
+  });
+
+  it('allows every operation for an admin', () => {
+    setUser(['admin']);
+    const table = new NoAuthTable();
+    expect(auth().canAccess('query', [table, {}])).toBe(true);
+    expect(auth().canAccess('get', [table, { id: 'x' }])).toBe(true);
+    expect(auth().canAccess('getRowCount', [table, {}])).toBe(true);
+    expect(auth().canAccess('insert', [table, { title: 't' }])).toBe(true);
+    expect(auth().canAccess('update', [table, { id: 'x', title: 't' }])).toBe(true);
+    expect(auth().canAccess('delete', [table, { id: 'x' }])).toBe(true);
   });
 });
 
