@@ -117,3 +117,58 @@ describe('SpannerLivenessMonitor', () => {
     expect(exitSpy).not.toHaveBeenCalled();
   });
 });
+
+describe('SpannerLivenessMonitor pool gauge (P4a)', () => {
+  const fakePool = { size: 25, available: 20, borrowed: 5, totalWaiters: 0 };
+  let monitor: SpannerLivenessMonitor;
+  let warnLogSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    fakePool.size = 25;
+    fakePool.available = 20;
+    fakePool.borrowed = 5;
+    fakePool.totalWaiters = 0;
+    monitor = new SpannerLivenessMonitor({ pool_: fakePool } as unknown as Database);
+    warnLogSpy = jest.spyOn((monitor as unknown as MonitorInternals).logger, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  test('poolStats surfaces the four pool numbers', () => {
+    expect(monitor.poolStats()).toEqual({ size: 25, available: 20, borrowed: 5, totalWaiters: 0 });
+  });
+
+  test('no waiters: no pressure warning', () => {
+    monitor.logPoolPressure(1_000);
+    expect(warnLogSpy).not.toHaveBeenCalled();
+  });
+
+  test('waiters > 0: warns with the four pool numbers', () => {
+    fakePool.available = 0;
+    fakePool.borrowed = 25;
+    fakePool.totalWaiters = 3;
+
+    monitor.logPoolPressure(1_000);
+
+    expect(warnLogSpy).toHaveBeenCalledTimes(1);
+    expect(warnLogSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining('session pool under pressure'),
+        obj: { size: 25, available: 0, borrowed: 25, totalWaiters: 3 },
+      })
+    );
+  });
+
+  test('pressure warnings are throttled to one per interval', () => {
+    fakePool.totalWaiters = 3;
+
+    monitor.logPoolPressure(1_000);
+    monitor.logPoolPressure(2_000); // within the 10s interval — suppressed
+    expect(warnLogSpy).toHaveBeenCalledTimes(1);
+
+    monitor.logPoolPressure(11_000); // interval elapsed — warns again
+    expect(warnLogSpy).toHaveBeenCalledTimes(2);
+  });
+});

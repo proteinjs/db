@@ -75,7 +75,10 @@ export class SpannerDriver implements DbDriver {
 
   private getSpannerDb(): Database {
     if (!SpannerDriver.SPANNER_DB) {
-      SpannerDriver.SPANNER_DB = this.getSpannerInstance().database(this.config.databaseName);
+      SpannerDriver.SPANNER_DB = this.getSpannerInstance().database(
+        this.config.databaseName,
+        this.config.sessionPoolOptions
+      );
       SpannerDriver.LIVENESS_MONITOR = new SpannerLivenessMonitor(SpannerDriver.SPANNER_DB).start();
     }
 
@@ -302,8 +305,9 @@ export class SpannerDriver implements DbDriver {
    * so one leaked transaction blocks every subsequent DDL with FAILED_PRECONDITION ("a
    * read-write transaction is already in progress") — poisoning whole test runs. Rollback of an
    * already-invalid transaction (e.g. ABORTED, about to be retried by the runner with a fresh
-   * transaction) is expected to fail; that failure is logged and swallowed so the ORIGINAL error
-   * — the one that carries retry semantics — always propagates.
+   * transaction, or one whose commit was already called) is expected to fail; that failure is
+   * logged at debug and swallowed so the ORIGINAL error — the one that carries retry semantics —
+   * always propagates.
    */
   private async rollbackQuietly(transaction: Transaction): Promise<void> {
     try {
@@ -321,11 +325,15 @@ export class SpannerDriver implements DbDriver {
    * then keeps waiting: pure diagnosis, zero behavior change.
    */
   private logIfStalled<T>(op: string, sql: string, promise: PromiseLike<T>, timeoutMs = 30_000): Promise<T> {
+    // Pool gauge (P4a): every op passes through here, so this is where waiting-on-the-pool
+    // becomes visible (throttled inside the monitor). The monitor exists by now — all ops
+    // require getSpannerDb() first.
+    SpannerDriver.LIVENESS_MONITOR.logPoolPressure();
     let settled = false;
     const logStall = (afterMs: number) =>
       this.logger.error({
         message: `Spanner op stalled: ${op}`,
-        obj: { afterMs, sql: String(sql).slice(0, 200) },
+        obj: { afterMs, sql: String(sql).slice(0, 200), pool: SpannerDriver.LIVENESS_MONITOR.poolStats() },
       });
     const t1 = setTimeout(() => {
       if (!settled) {

@@ -1,4 +1,4 @@
-import { Database } from '@google-cloud/spanner';
+import { Database, SessionPool } from '@google-cloud/spanner';
 import { Logger } from '@proteinjs/logger';
 
 /** grpc status codes that indicate connectivity trouble rather than an application error */
@@ -14,13 +14,24 @@ const CONNECTIVITY_GRPC_CODES = [4 /* DEADLINE_EXCEEDED */, 14 /* UNAVAILABLE */
  */
 const RESTART_REQUEST_EXIT_CODE = 86;
 
+/** Session pool gauge (P4a): the four numbers that make pool exhaustion observable. */
+export type SpannerSessionPoolStats = {
+  size: number;
+  available: number;
+  borrowed: number;
+  totalWaiters: number;
+};
+
 export class SpannerLivenessMonitor {
   private static readonly PROBE_SQL = 'SELECT 1';
   private static readonly PROBE_TIMEOUT_MS = 10_000;
   /** delay before each attempt; 5 attempts spanning ~2 min (fast failures) to ~4.5 min (30s-deadline failures) */
   private static readonly PROBE_DELAYS_MS = [0, 5_000, 15_000, 30_000, 60_000];
+  /** waiters > 0 is the wedge signature — warn on sight, but at most once per interval per process */
+  private static readonly POOL_PRESSURE_WARN_INTERVAL_MS = 10_000;
   private logger = new Logger({ name: this.constructor.name });
   private checkInFlight = false;
+  private lastPoolPressureWarnMs = Number.NEGATIVE_INFINITY;
 
   constructor(private db: Database) {}
 
@@ -29,7 +40,7 @@ export class SpannerLivenessMonitor {
     this.db.on('error', (error: any) => {
       this.logger.warn({
         message: `Spanner session pool emitted a background error; verifying db connectivity`,
-        obj: { code: error?.code, errorDetails: error?.details ?? String(error) },
+        obj: { code: error?.code, errorDetails: error?.details ?? String(error), pool: this.poolStats() },
       });
       void this.verifyLiveness();
     });
@@ -42,6 +53,34 @@ export class SpannerLivenessMonitor {
       return;
     }
     void this.verifyLiveness();
+  }
+
+  poolStats(): SpannerSessionPoolStats {
+    const pool = (this.db as unknown as { pool_: SessionPool }).pool_;
+    return { size: pool.size, available: pool.available, borrowed: pool.borrowed, totalWaiters: pool.totalWaiters };
+  }
+
+  /**
+   * Warn whenever operations are queued waiting on the session pool (the silent-wedge
+   * signature — with an infinite acquireTimeout a wedged pool otherwise produces no signal at
+   * all). Called by the driver as ops are issued; throttled so a contended burst emits one
+   * line per interval, not one per queued op.
+   */
+  logPoolPressure(nowMs = Date.now()): void {
+    const stats = this.poolStats();
+    if (stats.totalWaiters === 0) {
+      return;
+    }
+
+    if (nowMs - this.lastPoolPressureWarnMs < SpannerLivenessMonitor.POOL_PRESSURE_WARN_INTERVAL_MS) {
+      return;
+    }
+
+    this.lastPoolPressureWarnMs = nowMs;
+    this.logger.warn({
+      message: `Spanner session pool under pressure: operations are waiting for a session`,
+      obj: stats,
+    });
   }
 
   // --- helpers last ---

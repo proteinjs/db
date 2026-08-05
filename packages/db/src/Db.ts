@@ -159,7 +159,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
         serializedRecord as Partial<T>,
         this.statementConfigFactory.getStatementConfig(config)
       );
-    await this.dbDriver.runDml(generateInsert, this.currentTransaction);
+    await this.dbDriver.runDml(generateInsert, this.transactionForDriver());
     await this.tableWatcherRunner.runAfterInsertTableWatchers(table, recordCopy as T);
     return recordCopy as T;
   }
@@ -202,7 +202,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
         qb,
         this.statementConfigFactory.getStatementConfig(config)
       );
-    const recordUpdateCount = await this.dbDriver.runDml(generateUpdate, this.currentTransaction);
+    const recordUpdateCount = await this.dbDriver.runDml(generateUpdate, this.transactionForDriver());
     await this.tableWatcherRunner.runAfterUpdateTableWatchers(table, recordUpdateCount, recordCopy, qb);
     return recordUpdateCount;
   }
@@ -316,7 +316,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
       new StatementFactory<T>().delete(table.name, deleteQb, this.statementConfigFactory.getStatementConfig(config));
     await this.runColumnBeforeDeletes(table, recordsToDelete);
     await this.tableWatcherRunner.runBeforeDeleteTableWatchers(table, recordsToDelete, qb, deleteQb);
-    const recordDeleteCount = await this.dbDriver.runDml(generateDelete, this.currentTransaction);
+    const recordDeleteCount = await this.dbDriver.runDml(generateDelete, this.transactionForDriver());
     await this.runCascadeDeletions(table, recordsToDelete);
     await this.runColumnReverseCascadeDeletions(table, recordsToDelete);
     await this.tableWatcherRunner.runAfterDeleteTableWatchers(table, recordDeleteCount, recordsToDelete, qb, deleteQb);
@@ -536,7 +536,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
 
     const generateQuery = (config: DbDriverQueryStatementConfig) =>
       qb.toSql(this.statementConfigFactory.getStatementConfig(config));
-    const serializedRecords = await this.dbDriver.runQuery(generateQuery, this.currentTransaction);
+    const serializedRecords = await this.dbDriver.runQuery(generateQuery, this.transactionForDriver());
     const recordSerializer = new RecordSerializer(table);
     const records = await Promise.all(
       serializedRecords.map(async (serializedRecord) => recordSerializer.deserialize(serializedRecord))
@@ -579,7 +579,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     await this.addColumnQueries(table, qb);
     const generateQuery = (config: DbDriverQueryStatementConfig) =>
       qb.toSql(this.statementConfigFactory.getStatementConfig(config));
-    const result = await this.dbDriver.runQuery(generateQuery, this.currentTransaction);
+    const result = await this.dbDriver.runQuery(generateQuery, this.transactionForDriver());
     return result[0]['count'];
   }
 
@@ -632,6 +632,14 @@ export class Db<R extends Record = Record> implements DbService<R> {
   async runTransaction<T>(fn: () => Promise<T>): Promise<T> {
     if (this.currentTransaction) {
       throw new Error(`Nested transactions are not supported. A transaction is already running on this Db instance.`);
+    }
+    // A stale instance (constructed before the ambient transaction began) would pass the
+    // instance-state check above and silently open a PARALLEL transaction — a second session
+    // held inside the first, the exact pool-wedge class the P2 guard exists to surface.
+    if (this.transactionContextFactory.getTransactionContext().currentTransaction) {
+      throw new Error(
+        `Nested transactions are not supported. A transaction is already running in this context; this Db instance was constructed before it began. Use the Db instance that started the transaction.`
+      );
     }
 
     // Reassigned fresh per driver attempt: drivers may retry `fn` on transient aborts (Spanner's
@@ -712,6 +720,39 @@ export class Db<R extends Record = Record> implements DbService<R> {
    */
   private newSelfWrapDb(): Db<R> {
     return new Db<R>(this.dbDriver, this.getTable, this.transactionContextFactory, this.runAsSystem);
+  }
+
+  /**
+   * The transaction every driver call must ride, guarded (P2, plans/DB_PERF_PLAN.md in the
+   * consumer repo): when an ambient transaction is active but this instance is not riding it
+   * (instance constructed before the transaction began, cached across requests, or an explicit
+   * no-transaction call), the operation would silently run outside the transaction — reads
+   * that can't see the transaction's own writes, and a second session acquisition that can
+   * exhaust the pool (N concurrent transactions each blocking on one more session = the
+   * historical bricked process). Throw in development so every instance surfaces immediately;
+   * log loudly (with stack) otherwise.
+   */
+  private transactionForDriver(): any {
+    const ambientTransaction = this.transactionContextFactory.getTransactionContext().currentTransaction;
+    if (this.currentTransaction !== ambientTransaction && (ambientTransaction || this.currentTransaction)) {
+      // Two shapes of the same cached-Db misuse class: (1) ambient set but this instance isn't
+      // riding it — constructed before the transaction began or the transaction wasn't
+      // threaded; (2) this instance still holds a transaction the context no longer carries —
+      // constructed inside a transaction and used after it ended, or shared across requests
+      // (handing the driver another request's live transaction corrupts it).
+      const error = new Error(
+        ambientTransaction
+          ? `Db operation issued inside a transaction without riding it: this Db instance was constructed before the transaction began (or the transaction was not threaded). Use the Db instance that started the transaction, or construct a new Db inside it.`
+          : `Db operation issued on an instance holding a transaction its context no longer carries: this Db instance was constructed inside a transaction and used after it ended (or shared across requests). Construct a new Db for work outside the transaction.`
+      );
+      if (getEnvVar('DEVELOPMENT')) {
+        throw error;
+      }
+
+      this.logger.error({ message: error.message, error });
+    }
+
+    return this.currentTransaction;
   }
 
   // Utility: simple chunker
