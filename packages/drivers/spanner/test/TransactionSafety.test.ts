@@ -1,4 +1,4 @@
-import { Db, Record, StringColumn, Table, withRecordColumns } from '@proteinjs/db';
+import { Db, QueryBuilderFactory, Record, StringColumn, Table, withRecordColumns } from '@proteinjs/db';
 import { TransactionContext } from '@proteinjs/db-transaction-context';
 import { SpannerDriver } from '@proteinjs/db-driver-spanner';
 import { getDropTestTable } from './util/getDropTestTable';
@@ -29,20 +29,20 @@ const spannerConfig = {
 const spannerDriver = new SpannerDriver(spannerConfig, getTable);
 
 /**
- * P2 transaction-safety tests (plans/DB_PERF_PLAN.md).
- *
- * `Db` picks up the ambient transaction (AsyncLocalStorage) at CONSTRUCTION time. A Db
- * instance constructed before `runTransaction` began therefore issues its queries outside
- * the transaction: non-atomic reads that cannot see the transaction's own writes, and a
- * second session acquisition from the pool (the historical wedge — see
- * SessionPoolExhaustion.test.ts for the miniature).
+ * The STATELESS transaction contract (plans/DB_PERF_PLAN.md P2, superseding the
+ * construction-time-binding guard): Db instances carry no transaction state — every operation
+ * resolves the ambient transaction (AsyncLocalStorage) at call time. Inside a transaction body
+ * every Db rides the transaction, whenever it was constructed; outside, every Db uses the
+ * pool. The one escape shape — work spawned inside a body that outlives the transaction while
+ * holding its context — fails loudly by name (the ended-context tombstone).
  */
-describe('Transaction safety', () => {
+describe('Transaction safety (stateless contract)', () => {
   const dropTable = getDropTestTable(spannerDriver);
-  // Constructed at module/describe scope, BEFORE any transaction begins — the hole under test.
-  const staleDb = new Db(spannerDriver, getTable, new TransactionContext());
+  // Constructed at describe scope, BEFORE any transaction — under the old construction-time
+  // binding this instance was the "stale Db" hazard; now it must simply ride whatever ambient
+  // transaction is active at call time.
+  const preconstructedDb = new Db(spannerDriver, getTable, new TransactionContext());
   const txnDb = new Db(spannerDriver, getTable, new TransactionContext());
-  const priorDevelopment = process.env.DEVELOPMENT;
 
   beforeAll(async () => {
     await SpannerEmulatorProvisioner.ensureProvisioned(spannerConfig);
@@ -55,135 +55,103 @@ describe('Transaction safety', () => {
     await SpannerEmulatorProvisioner.release();
   }, 60000);
 
-  afterEach(() => {
-    if (priorDevelopment === undefined) {
-      delete process.env.DEVELOPMENT;
-    } else {
-      process.env.DEVELOPMENT = priorDevelopment;
-    }
-  });
-
-  /**
-   * Test 1 (documentation of the correctness hole; log-mode, so behavior is unchanged by the
-   * guard): a query through a pre-transaction Db instance cannot see the transaction's own
-   * uncommitted write.
-   */
-  test('unthreaded query inside a transaction reads stale state (cannot see the txn write)', async () => {
-    delete process.env.DEVELOPMENT;
+  test('a PRE-CONSTRUCTED Db rides the ambient transaction: its reads see the txn write, and the txn commits', async () => {
     const employee: Omit<SafetyEmployee, keyof Record> = {
-      name: 'TxnSafetyStaleRead',
-      department: 'Engineering',
-    };
-    let insertedId: string | undefined;
-    let threadedReadCount: number | undefined;
-    let unthreadedReadCount: number | undefined;
-
-    await expect(
-      txnDb.runTransaction(async () => {
-        const emp = await txnDb.insert(employeeTable, employee);
-        insertedId = emp.id;
-
-        // Rides the transaction — sees its own uncommitted write.
-        threadedReadCount = (await txnDb.query(employeeTable, { id: emp.id })).length;
-
-        // Does NOT ride the transaction — the uncommitted write is invisible. This is the
-        // correctness hole the guard exists to surface.
-        unthreadedReadCount = (await staleDb.query(employeeTable, { id: emp.id })).length;
-
-        // End the transaction here on purpose: the emulator aborts an active read-write
-        // transaction when a second session reads concurrently, so letting it run to commit
-        // would put the client library into its abort-retry loop. A non-abort error
-        // propagates immediately and keeps the demonstration deterministic.
-        throw new Error('end-of-demonstration');
-      })
-    ).rejects.toThrow('end-of-demonstration');
-
-    expect(threadedReadCount).toBe(1);
-    expect(unthreadedReadCount).toBe(0);
-
-    // The transaction rolled back — the unthreaded read's blindness above was purely
-    // transaction-visibility (it read the same, still-empty committed state as now).
-    const afterRollback = await staleDb.query(employeeTable, { id: insertedId });
-    expect(afterRollback.length).toBe(0);
-  }, 30000);
-
-  /**
-   * Test 3 (the guard's contract): with DEVELOPMENT set, a query reaching the driver while an
-   * ambient transaction is active WITHOUT riding it throws immediately, naming the offense.
-   */
-  test('guard: unthreaded query inside a transaction throws in DEVELOPMENT', async () => {
-    process.env.DEVELOPMENT = 'true';
-
-    await expect(
-      txnDb.runTransaction(async () => {
-        await staleDb.query(employeeTable, { name: 'TxnSafetyGuardProbe' });
-      })
-    ).rejects.toThrow(/without riding it/);
-  }, 30000);
-
-  /**
-   * Review finding (Wave-1 adversarial pass): a STALE instance calling runTransaction inside
-   * an ambient transaction escaped both the instance-state nesting check and the driver-call
-   * guard — silently opening a PARALLEL transaction (second session held inside the first,
-   * the pool-wedge class itself). The ambient-aware nesting check closes it UNCONDITIONALLY
-   * (documented contract: nested transactions throw), not just in DEVELOPMENT.
-   */
-  test('nested transaction via a stale instance throws (parallel-transaction wedge closed)', async () => {
-    delete process.env.DEVELOPMENT;
-
-    await expect(
-      txnDb.runTransaction(async () => {
-        await expect(staleDb.runTransaction(async () => 'never-runs')).rejects.toThrow(/constructed before it began/);
-        // Deterministic transaction end (see the stale-read test's emulator abort note).
-        throw new Error('end-of-demonstration');
-      })
-    ).rejects.toThrow('end-of-demonstration');
-  }, 30000);
-
-  /**
-   * Review finding (Wave-1 adversarial pass): the guard only fired when an AMBIENT transaction
-   * was active — an instance still holding a transaction its context no longer carries
-   * (constructed inside a transaction, used after it ended) handed the ENDED transaction to
-   * the driver unguarded. The symmetric check surfaces it.
-   */
-  test('guard: instance created inside a transaction, used after it ended, throws in DEVELOPMENT', async () => {
-    process.env.DEVELOPMENT = 'true';
-
-    let escapedDb: Db | undefined;
-    await txnDb.runTransaction(async () => {
-      escapedDb = new Db(spannerDriver, getTable, new TransactionContext());
-    });
-
-    await expect(escapedDb!.query(employeeTable, { name: 'TxnSafetyEnded' })).rejects.toThrow(/no longer carries/);
-  }, 30000);
-
-  test('guard: threaded operations inside a transaction are untouched in DEVELOPMENT', async () => {
-    process.env.DEVELOPMENT = 'true';
-    const employee: Omit<SafetyEmployee, keyof Record> = {
-      name: 'TxnSafetyThreaded',
+      name: 'TxnSafetyRides',
       department: 'Engineering',
     };
 
     const inserted = await txnDb.runTransaction(async () => {
       const emp = await txnDb.insert(employeeTable, employee);
-      const seen = await txnDb.query(employeeTable, { id: emp.id });
-      expect(seen.length).toBe(1);
-
-      // A Db constructed INSIDE the transaction picks up the ambient transaction at
-      // construction — the common path the guard must never fire on.
-      const innerDb = new Db(spannerDriver, getTable, new TransactionContext());
-      const innerSeen = await innerDb.query(employeeTable, { id: emp.id });
-      expect(innerSeen.length).toBe(1);
-
+      // The pre-constructed instance resolves the ambient transaction at call time — it sees
+      // the uncommitted write (no second session, no stale read: the old hazard shapes).
+      const seenInside = await preconstructedDb.query(employeeTable, { id: emp.id });
+      expect(seenInside.length).toBe(1);
       return emp;
     });
 
-    expect(inserted.id).toBeDefined();
+    const committed = await preconstructedDb.query(employeeTable, { id: inserted.id });
+    expect(committed.length).toBe(1);
+    await txnDb.delete(employeeTable, { id: inserted.id });
   }, 30000);
 
-  test('guard: queries outside any transaction are untouched in DEVELOPMENT', async () => {
-    process.env.DEVELOPMENT = 'true';
-    const seen = await staleDb.query(employeeTable, { name: 'TxnSafetyNoTxn' });
+  test('a Db constructed INSIDE a transaction, used after commit, cleanly uses the pool and sees committed state', async () => {
+    let escapedDb!: Db<SafetyEmployee>;
+    const inserted = await txnDb.runTransaction(async () => {
+      escapedDb = new Db(spannerDriver, getTable, new TransactionContext());
+      return await escapedDb.insert(employeeTable, { name: 'TxnSafetyAfterCommit' } as SafetyEmployee);
+    });
+
+    // No instance binding survives the transaction — this is a plain pool-path read now.
+    const seen = await escapedDb.query(employeeTable, { id: inserted.id });
+    expect(seen.length).toBe(1);
+    await escapedDb.delete(employeeTable, { id: inserted.id });
+  }, 30000);
+
+  test('atomicity through ANY instance: a rollback takes the pre-constructed Db write with it', async () => {
+    await expect(
+      txnDb.runTransaction(async () => {
+        // If this insert did NOT ride the transaction it would self-commit in its own
+        // transaction and survive the rollback below — the exact decay a severed ambient
+        // resolution produces (a commit-path assertion can't see it; this one can).
+        await preconstructedDb.insert(employeeTable, { name: 'TxnSafetyAtomic' } as SafetyEmployee);
+        throw new Error('force-rollback');
+      })
+    ).rejects.toThrow('force-rollback');
+
+    const after = await preconstructedDb.query(employeeTable, { name: 'TxnSafetyAtomic' });
+    expect(after.length).toBe(0);
+  }, 30000);
+
+  test('nested transactions throw, from ANY instance', async () => {
+    await expect(
+      txnDb.runTransaction(async () => {
+        await preconstructedDb.runTransaction(async () => 'never-runs');
+      })
+    ).rejects.toThrow(/already running in this context/);
+  }, 30000);
+
+  test('two concurrent transactions on ONE shared instance commit independently', async () => {
+    const [a, b] = await Promise.all([
+      txnDb.runTransaction(
+        async () => await txnDb.insert(employeeTable, { name: 'TxnSafetyConcurrentA' } as SafetyEmployee)
+      ),
+      txnDb.runTransaction(
+        async () => await txnDb.insert(employeeTable, { name: 'TxnSafetyConcurrentB' } as SafetyEmployee)
+      ),
+    ]);
+
+    const seen = await txnDb.query(
+      employeeTable,
+      new QueryBuilderFactory()
+        .createQueryBuilder(employeeTable)
+        .condition({ field: 'id', operator: 'IN', value: [a.id, b.id] })
+    );
+    expect(seen.length).toBe(2);
+    await txnDb.delete(employeeTable, { id: a.id });
+    await txnDb.delete(employeeTable, { id: b.id });
+  }, 30000);
+
+  test('tombstone: work that escapes a finished transaction fails loudly by name', async () => {
+    let releaseEscape!: () => void;
+    const escapeGate = new Promise<void>((resolve) => (releaseEscape = resolve));
+    let escapedOp!: Promise<unknown>;
+
+    await txnDb.runTransaction(async () => {
+      // Spawned inside the body, NOT awaited by it — it captures the transaction's async
+      // context and outlives the transaction.
+      escapedOp = (async () => {
+        await escapeGate;
+        return await txnDb.query(employeeTable, { name: 'TxnSafetyEscapee' });
+      })();
+    });
+
+    releaseEscape();
+    await expect(escapedOp).rejects.toThrow(/transaction that already ended/);
+  }, 30000);
+
+  test('queries outside any transaction are plain pool reads', async () => {
+    const seen = await preconstructedDb.query(employeeTable, { name: 'TxnSafetyNoTxn' });
     expect(seen.length).toBe(0);
   }, 30000);
 });

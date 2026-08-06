@@ -9,9 +9,9 @@ export class TransactionContext implements DefaultTransactionContextFactory {
     return context;
   }
 
-  runInContext<T>(transaction: any, fn: () => Promise<T>): Promise<T> {
+  runInContext<T>(context: TransactionContextData, fn: () => Promise<T>): Promise<T> {
     return new Promise<T>((resolve, reject) => {
-      TransactionContext.storage.run({ currentTransaction: transaction }, async () => {
+      TransactionContext.storage.run(context, async () => {
         try {
           const result = await fn();
           resolve(result);

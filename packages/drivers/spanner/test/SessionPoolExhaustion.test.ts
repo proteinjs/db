@@ -27,10 +27,9 @@ const spannerConfig = {
   instanceName: 'proteinjs-test',
   databaseName: 'test',
 };
-// max: 1 makes the historical wedge mechanics reproducible in miniature: `runTransaction`
-// holds the single session for the whole transaction, so any unthreaded operation inside it
-// must fail to acquire. This file must stay its own jest file — SpannerDriver.SPANNER_DB is a
-// process-wide static, so the max-1 pool would leak into other suites.
+// max: 1 makes pool mechanics observable in miniature. This file must stay its own jest
+// file — SpannerDriver.SPANNER_DB is a process-wide static, so the max-1 pool would leak
+// into other suites.
 const spannerDriver = new SpannerDriver(
   {
     ...spannerConfig,
@@ -45,16 +44,18 @@ const getSessionPool = (): SessionPool => {
 };
 
 /**
- * P2 wedge miniature (plans/DB_PERF_PLAN.md): under load, N concurrent transactions hold all
- * N sessions while each blocks acquiring one more for an unthreaded inner query — with the
- * default infinite acquireTimeout this never errors (the historical "bricked process").
- * At max=1 a single transaction + one unthreaded query reproduce the mechanics.
+ * Pool mechanics at max=1 (plans/DB_PERF_PLAN.md P2):
+ * 1. The historical wedge — an operation inside a transaction acquiring a SECOND session while
+ *    the transaction holds the only one — is DESIGNED OUT by the stateless transaction
+ *    contract: every operation inside the body rides the held session, so the shape that
+ *    bricked the process cannot be expressed. Proven here at max=1.
+ * 2. The exhaustion class that remains REAL — more concurrent transactions than sessions —
+ *    is documented with two parallel transactions.
  */
-describe('Session pool exhaustion (transaction wedge miniature)', () => {
+describe('Session pool at max=1 (wedge designed out; real exhaustion documented)', () => {
   const dropTable = getDropTestTable(spannerDriver);
-  const staleDb = new Db(spannerDriver, getTable, new TransactionContext());
+  const preconstructedDb = new Db(spannerDriver, getTable, new TransactionContext());
   const txnDb = new Db(spannerDriver, getTable, new TransactionContext());
-  const priorDevelopment = process.env.DEVELOPMENT;
 
   beforeAll(async () => {
     await SpannerEmulatorProvisioner.ensureProvisioned(spannerConfig);
@@ -74,14 +75,6 @@ describe('Session pool exhaustion (transaction wedge miniature)', () => {
     await SpannerEmulatorProvisioner.release();
   }, 60000);
 
-  afterEach(() => {
-    if (priorDevelopment === undefined) {
-      delete process.env.DEVELOPMENT;
-    } else {
-      process.env.DEVELOPMENT = priorDevelopment;
-    }
-  });
-
   test('SpannerConfig.sessionPoolOptions reach the session pool', () => {
     const pool = getSessionPool();
     expect(pool.options.max).toBe(1);
@@ -90,56 +83,45 @@ describe('Session pool exhaustion (transaction wedge miniature)', () => {
     expect(pool.options.fail).toBe(true);
   });
 
-  test('wedge: unthreaded query inside a transaction fails to acquire a second session (fail: true)', async () => {
-    delete process.env.DEVELOPMENT;
+  test('wedge DESIGNED OUT: at max=1, a pre-constructed Db inside a transaction rides the held session and just works', async () => {
     const employee: Omit<WedgeEmployee, keyof Record> = {
-      name: 'PoolWedgeFailFast',
+      name: 'PoolWedgeDesignedOut',
       department: 'Engineering',
     };
 
-    await expect(
-      txnDb.runTransaction(async () => {
-        // Rides the held session — no second acquisition, works fine.
-        await txnDb.insert(employeeTable, employee);
-        // Unthreaded — needs a second session; the pool has none.
-        await staleDb.query(employeeTable, { name: employee.name });
-      })
-    ).rejects.toMatchObject({ name: 'SessionPoolExhaustedError' });
+    // Under construction-time binding this exact shape was the wedge: the inner query needed a
+    // second session the pool didn't have. Statelessness makes it ride the transaction's own
+    // session — no acquisition, no exhaustion, correct read.
+    const inserted = await txnDb.runTransaction(async () => {
+      const emp = await txnDb.insert(employeeTable, employee);
+      const seen = await preconstructedDb.query(employeeTable, { name: employee.name });
+      expect(seen.length).toBe(1);
+      return emp;
+    });
 
-    // The failed transaction rolled back and released its session.
-    const seen = await staleDb.query(employeeTable, { name: employee.name });
-    expect(seen.length).toBe(0);
+    const committed = await preconstructedDb.query(employeeTable, { id: inserted.id });
+    expect(committed.length).toBe(1);
+    await txnDb.delete(employeeTable, { id: inserted.id });
   }, 30000);
 
-  test('wedge: with fail: false the unthreaded query hangs until acquireTimeout', async () => {
-    delete process.env.DEVELOPMENT;
-    const pool = getSessionPool();
-    // fail: false is the pool's default — this is the exact historical hang, bounded here by
-    // the finite acquireTimeout so the test can observe it.
-    pool.options.fail = false;
+  test('real exhaustion class: a second PARALLEL transaction errors fast when the pool is spent (fail: true)', async () => {
+    let releaseHold!: () => void;
+    const holdGate = new Promise<void>((resolve) => (releaseHold = resolve));
 
-    try {
-      const start = Date.now();
-      await expect(
-        txnDb.runTransaction(async () => {
-          await staleDb.query(employeeTable, { name: 'PoolWedgeHang' });
-        })
-      ).rejects.toThrow('Timeout occurred while acquiring session');
-      expect(Date.now() - start).toBeGreaterThanOrEqual(1900);
-    } finally {
-      pool.options.fail = true;
-    }
-  }, 30000);
+    // First transaction takes the only session and holds it open on the gate.
+    const holder = txnDb.runTransaction(async () => {
+      await holdGate;
+      return 'held';
+    });
 
-  test('guard: in DEVELOPMENT the unthreaded query fails immediately, before touching the pool', async () => {
-    process.env.DEVELOPMENT = 'true';
+    // Second transaction cannot get a session; with fail: true it errors immediately instead
+    // of joining the pool's silent infinite FIFO (the production-default hang this file's
+    // options exist to surface).
+    await expect(preconstructedDb.runTransaction(async () => 'never-runs')).rejects.toMatchObject({
+      name: 'SessionPoolExhaustedError',
+    });
 
-    const start = Date.now();
-    await expect(
-      txnDb.runTransaction(async () => {
-        await staleDb.query(employeeTable, { name: 'PoolWedgeGuard' });
-      })
-    ).rejects.toThrow(/without riding it/);
-    expect(Date.now() - start).toBeLessThan(1500);
+    releaseHold();
+    await expect(holder).resolves.toBe('held');
   }, 30000);
 });

@@ -24,6 +24,7 @@ import {
   DefaultTransactionContextFactory,
   PostCommitHook,
   getDefaultTransactionContextFactory,
+  TransactionContextData,
 } from './transaction/TransactionContextFactory';
 import { isInstanceOf } from '@proteinjs/util';
 import { Reference } from './reference/Reference';
@@ -76,7 +77,6 @@ export class Db<R extends Record = Record> implements DbService<R> {
   private statementConfigFactory: StatementConfigFactory;
   private auth = new TableAuth();
   private tableWatcherRunner = new TableWatcherRunner<R>();
-  private currentTransaction?: any;
   private transactionContextFactory: DefaultTransactionContextFactory;
   public serviceMetadata: Service['serviceMetadata'] = {
     auth: {
@@ -96,10 +96,6 @@ export class Db<R extends Record = Record> implements DbService<R> {
     this.transactionContextFactory = transactionContextFactory
       ? transactionContextFactory
       : this.getDefaultTransactionContextFactory();
-    const transactionContext = this.transactionContextFactory.getTransactionContext();
-    if (transactionContext.currentTransaction) {
-      this.currentTransaction = transactionContext.currentTransaction;
-    }
   }
 
   static getDefaultDbDriver(): DbDriver {
@@ -608,13 +604,19 @@ export class Db<R extends Record = Record> implements DbService<R> {
   /**
    * Run a transaction.
    *
-   * Use this db instance for any operation you want to include in the transaction.
-   *
-   * Note: This method uses Db instance state. Usually it is best to create a new instance
-   * of Db to run a transaction.
+   * Db instances are STATELESS with respect to transactions: every operation resolves the
+   * ambient transaction (AsyncLocalStorage) at call time, so any Db instance used inside the
+   * transaction body — whenever it was constructed — rides the transaction. There is no way
+   * to issue an operation outside a transaction from inside its body, and no second session
+   * is ever acquired inside one (the historical pool-wedge class is unrepresentable —
+   * plans/DB_PERF_PLAN.md P2, in the consumer repo).
    *
    * Note: Nested transactions are not supported; will throw.
    *
+   * Note: work spawned inside the body but NOT awaited by it escapes the transaction's
+   * lifetime while still holding its context — such work fails loudly on its next db
+   * operation (see TransactionContextData.ended). Await everything inside the body, or run
+   * it outside the transaction.
    *
    * Example:
    *
@@ -630,16 +632,8 @@ export class Db<R extends Record = Record> implements DbService<R> {
    * ```
    */
   async runTransaction<T>(fn: () => Promise<T>): Promise<T> {
-    if (this.currentTransaction) {
-      throw new Error(`Nested transactions are not supported. A transaction is already running on this Db instance.`);
-    }
-    // A stale instance (constructed before the ambient transaction began) would pass the
-    // instance-state check above and silently open a PARALLEL transaction — a second session
-    // held inside the first, the exact pool-wedge class the P2 guard exists to surface.
     if (this.transactionContextFactory.getTransactionContext().currentTransaction) {
-      throw new Error(
-        `Nested transactions are not supported. A transaction is already running in this context; this Db instance was constructed before it began. Use the Db instance that started the transaction.`
-      );
+      throw new Error(`Nested transactions are not supported. A transaction is already running in this context.`);
     }
 
     // Reassigned fresh per driver attempt: drivers may retry `fn` on transient aborts (Spanner's
@@ -647,19 +641,18 @@ export class Db<R extends Record = Record> implements DbService<R> {
     // the attempt that actually commits. Only the committed attempt's queue is drained below.
     let postCommitHooks: PostCommitHook[] = [];
     const result = await this.dbDriver.runTransaction(async (transaction) => {
-      this.currentTransaction = transaction;
+      // A fresh ambient store per attempt: the transaction, the attempt's post-commit hook
+      // queue (shared by every Db instance created inside — see runAfterCommit), and the
+      // ended-tombstone below.
       postCommitHooks = [];
-
+      const contextData: TransactionContextData = { currentTransaction: transaction, postCommitHooks };
       try {
-        return await this.transactionContextFactory.runInContext(transaction, async () => {
-          // Seed the post-commit hook queue on the ambient context so every Db instance created
-          // inside this transaction shares it (see runAfterCommit).
-          this.transactionContextFactory.getTransactionContext().postCommitHooks = postCommitHooks;
-          const result = await fn();
-          return result;
-        });
+        return await this.transactionContextFactory.runInContext(contextData, fn);
       } finally {
-        this.currentTransaction = undefined;
+        // Tombstone the store: detached work spawned inside the body still holds it by
+        // reference — the flag turns its next db operation into a loud error instead of a
+        // silent op on a finished transaction (see transactionForDriver).
+        contextData.ended = true;
       }
     });
 
@@ -723,36 +716,21 @@ export class Db<R extends Record = Record> implements DbService<R> {
   }
 
   /**
-   * The transaction every driver call must ride, guarded (P2, plans/DB_PERF_PLAN.md in the
-   * consumer repo): when an ambient transaction is active but this instance is not riding it
-   * (instance constructed before the transaction began, cached across requests, or an explicit
-   * no-transaction call), the operation would silently run outside the transaction — reads
-   * that can't see the transaction's own writes, and a second session acquisition that can
-   * exhaust the pool (N concurrent transactions each blocking on one more session = the
-   * historical bricked process). Throw in development so every instance surfaces immediately;
-   * log loudly (with stack) otherwise.
+   * The transaction every driver call rides, resolved from the ambient context AT CALL TIME
+   * (statelessness is the safety property: operations inside a transaction body always ride
+   * it; operations outside always use the pool). The one remaining failure shape — work that
+   * escaped a finished transaction's body while holding its context — throws here by name;
+   * handing the driver an ended transaction would fail anyway, with a far worse error.
    */
   private transactionForDriver(): any {
-    const ambientTransaction = this.transactionContextFactory.getTransactionContext().currentTransaction;
-    if (this.currentTransaction !== ambientTransaction && (ambientTransaction || this.currentTransaction)) {
-      // Two shapes of the same cached-Db misuse class: (1) ambient set but this instance isn't
-      // riding it — constructed before the transaction began or the transaction wasn't
-      // threaded; (2) this instance still holds a transaction the context no longer carries —
-      // constructed inside a transaction and used after it ended, or shared across requests
-      // (handing the driver another request's live transaction corrupts it).
-      const error = new Error(
-        ambientTransaction
-          ? `Db operation issued inside a transaction without riding it: this Db instance was constructed before the transaction began (or the transaction was not threaded). Use the Db instance that started the transaction, or construct a new Db inside it.`
-          : `Db operation issued on an instance holding a transaction its context no longer carries: this Db instance was constructed inside a transaction and used after it ended (or shared across requests). Construct a new Db for work outside the transaction.`
+    const context = this.transactionContextFactory.getTransactionContext();
+    if (context.ended) {
+      throw new Error(
+        `Db operation issued in the context of a transaction that already ended: work spawned inside a runTransaction body (and not awaited by it) survived the transaction. Await the work inside the body, or run it outside the transaction.`
       );
-      if (getEnvVar('DEVELOPMENT')) {
-        throw error;
-      }
-
-      this.logger.error({ message: error.message, error });
     }
 
-    return this.currentTransaction;
+    return context.currentTransaction;
   }
 
   // Utility: simple chunker
