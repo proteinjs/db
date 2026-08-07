@@ -31,6 +31,7 @@ export class SpannerLivenessMonitor {
   private static readonly POOL_PRESSURE_WARN_INTERVAL_MS = 10_000;
   private logger = new Logger({ name: this.constructor.name });
   private checkInFlight = false;
+  private stopped = false;
   private lastPoolPressureWarnMs = Number.NEGATIVE_INFINITY;
 
   constructor(private db: Database) {}
@@ -38,6 +39,9 @@ export class SpannerLivenessMonitor {
   /** Attach the single 'error' listener; called once when the Database singleton is created. */
   start(): this {
     this.db.on('error', (error: any) => {
+      if (this.stopped) {
+        return;
+      }
       this.logger.warn({
         message: `Spanner session pool emitted a background error; verifying db connectivity`,
         obj: { code: error?.code, errorDetails: error?.details ?? String(error), pool: this.poolStats() },
@@ -47,9 +51,18 @@ export class SpannerLivenessMonitor {
     return this;
   }
 
+  /**
+   * Retire this monitor when its client is recycled (channel-death recycle in SpannerDriver):
+   * a stopped monitor must never escalate to process exit for a channel the driver has already
+   * abandoned — the replacement client gets a fresh monitor.
+   */
+  stop(): void {
+    this.stopped = true;
+  }
+
   /** Called from driver catch blocks; probes only for connectivity-shaped errors. */
   reportError(error: any): void {
-    if (!CONNECTIVITY_GRPC_CODES.includes(error?.code)) {
+    if (this.stopped || !CONNECTIVITY_GRPC_CODES.includes(error?.code)) {
       return;
     }
     void this.verifyLiveness();
@@ -93,6 +106,9 @@ export class SpannerLivenessMonitor {
     try {
       for (let attempt = 0; attempt < SpannerLivenessMonitor.PROBE_DELAYS_MS.length; attempt++) {
         await this.sleep(SpannerLivenessMonitor.PROBE_DELAYS_MS[attempt]);
+        if (this.stopped) {
+          return; // client recycled mid-cycle — this channel's fate no longer matters
+        }
         try {
           await this.probe();
           this.logger.info({ message: `Db connectivity verified`, obj: { attempt: attempt + 1 } });
@@ -103,6 +119,9 @@ export class SpannerLivenessMonitor {
             obj: { attempt: attempt + 1, errorDetails: error?.details ?? String(error) },
           });
         }
+      }
+      if (this.stopped) {
+        return;
       }
       this.logger.error({
         message: `Db unreachable after sustained probing; exiting restart-requested (code ${RESTART_REQUEST_EXIT_CODE}) so supervision respawns into a valid state`,
