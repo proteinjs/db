@@ -4,6 +4,16 @@ import { Logger } from '@proteinjs/logger';
 /** grpc status codes that indicate connectivity trouble rather than an application error */
 const CONNECTIVITY_GRPC_CODES = [4 /* DEADLINE_EXCEEDED */, 14 /* UNAVAILABLE */];
 
+/**
+ * Restart-requested exit code — the supervision contract shared with @proteinjs/build's
+ * serve-package (ServePackageSupervisor.RESTART_REQUEST_EXIT_CODE): a supervised process
+ * exiting with this code is respawned with bounded backoff instead of being treated as a plain
+ * failure (which the supervisor mirrors, i.e. stays down). Orchestrators that restart on any
+ * nonzero exit (systemd, Kubernetes) treat it like any other failure code, so it is safe
+ * everywhere. Hard-coded by design: the contract crosses a process boundary, like a signal.
+ */
+const RESTART_REQUEST_EXIT_CODE = 86;
+
 export class SpannerLivenessMonitor {
   private static readonly PROBE_SQL = 'SELECT 1';
   private static readonly PROBE_TIMEOUT_MS = 10_000;
@@ -56,7 +66,7 @@ export class SpannerLivenessMonitor {
         }
       }
       this.logger.error({
-        message: `Db unreachable after sustained probing; exiting so supervision can restart into a valid state`,
+        message: `Db unreachable after sustained probing; exiting restart-requested (code ${RESTART_REQUEST_EXIT_CODE}) so supervision respawns into a valid state`,
       });
       this.exit();
     } finally {
@@ -76,6 +86,6 @@ export class SpannerLivenessMonitor {
   }
 
   private exit(): void {
-    process.exit(1);
+    process.exit(RESTART_REQUEST_EXIT_CODE);
   }
 }

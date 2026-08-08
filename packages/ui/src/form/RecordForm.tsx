@@ -85,14 +85,22 @@ function parseBooleanValue(value: unknown): boolean | null {
 export function RecordForm<T extends Record>({ table, record }: RecordFormProps<T>) {
   const isNewRecord = typeof record === 'undefined';
   const recordFormCustomization = getRecordFormCustomization(table.name);
+  const defaultFieldLayout = fieldLayout();
+  const defaultFormButtons = buttons();
 
   return (
     <Form
       name={S(table.name).humanize().s}
       createFields={createFields()}
-      fieldLayout={fieldLayout()}
+      fieldLayout={
+        recordFormCustomization
+          ? recordFormCustomization.getFieldLayout(record, defaultFieldLayout)
+          : defaultFieldLayout
+      }
       buttons={
-        recordFormCustomization?.getFormButtons ? recordFormCustomization.getFormButtons(record, buttons()) : buttons()
+        recordFormCustomization
+          ? recordFormCustomization.getFormButtons(record, defaultFormButtons)
+          : defaultFormButtons
       }
       onLoad={onLoad}
       onLoadProgressMessage={`Loading ${S(table.name).humanize().s}`}

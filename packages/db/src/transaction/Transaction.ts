@@ -4,6 +4,8 @@ import { getTransactionRunner } from './TransactionRunner';
 import { addDefaultFieldValues, Table } from '../Table';
 import { isInstanceOf } from '@proteinjs/util';
 import { Condition, QueryBuilder } from '@proteinjs/db-query';
+import { ArrayMembershipUpdate } from '../reference/ArrayMembershipOps';
+import { PreservedPath } from '../UpdatePreserving';
 
 export type OperationQueue<R extends Record = Record> = {
   insert: (...args: Parameters<DbService<R>['insert']>) => Promise<R>;
@@ -12,8 +14,13 @@ export type OperationQueue<R extends Record = Record> = {
 };
 
 export type Operation<R extends Record = Record> = {
-  name: 'insert' | 'update' | 'delete';
-  args: Parameters<DbService<R>['insert']> | Parameters<DbService<R>['update']> | Parameters<DbService<R>['delete']>;
+  name: 'insert' | 'update' | 'delete' | 'updateArrayMembership' | 'updatePreserving';
+  args:
+    | Parameters<DbService<R>['insert']>
+    | Parameters<DbService<R>['update']>
+    | Parameters<DbService<R>['delete']>
+    | [Table<any>, ArrayMembershipUpdate]
+    | [Table<any>, Partial<R>, PreservedPath[]];
 };
 
 const hasAllProperties = (a: any, b: any) => Object.entries(b).every(([key, val]) => a[key] === val);
@@ -180,6 +187,49 @@ export class Transaction implements OperationQueue {
     }
 
     this.ops.push({ name: 'delete', args });
+  }
+
+  /**
+   * Queue a commutative array-membership update (see `Db.updateArrayMembership`).
+   *
+   * The op is applied read-modify-write against COMMITTED truth server-side, so it
+   * does not touch the local record cache (the caller's in-memory state is the
+   * client-side truth and was already mutated by the operation that queued this);
+   * `onUpdate` listeners do not fire for membership ops.
+   */
+  updateArrayMembership(table: Table<any>, update: ArrayMembershipUpdate): void {
+    if (update.ops.length === 0) {
+      return;
+    }
+
+    this.ops.push({ name: 'updateArrayMembership', args: [table, update] });
+  }
+
+  /**
+   * Queue an update with committed-truth preservation for the listed column
+   * sub-paths (see `Db.updatePreserving`). Cache semantics match `update`
+   * for the provided fields; the preservation itself happens server-side.
+   */
+  updatePreserving<R extends Record = Record>(table: Table<R>, record: Partial<R>, preserve: PreservedPath[]): void {
+    if (!record.id) {
+      throw new Error(`updatePreserving must be called with a record with an id property`);
+    }
+
+    const recordMap = this.recordMap(table.name);
+    const existingRecord = recordMap[record.id];
+    if (existingRecord) {
+      const prevRecord = { ...existingRecord };
+      Object.keys(record).forEach((key) => {
+        if (key !== 'id') {
+          existingRecord[key] = (record as any)[key];
+        }
+      });
+      if (this.onUpdate) {
+        this.onUpdate(table, prevRecord, existingRecord);
+      }
+    }
+
+    this.ops.push({ name: 'updatePreserving', args: [table, record, preserve] });
   }
 
   /**

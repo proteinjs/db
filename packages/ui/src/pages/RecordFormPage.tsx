@@ -32,22 +32,33 @@ export const newRecordFormLink = (tableName: string) => {
 };
 
 const DynamicRecordForm = ({ urlParams }: PageComponentProps) => {
+  const recordId = urlParams['record'];
   const [record, setRecord] = React.useState();
+  /**
+   * The form renders differently for a new record than for an existing one (RecordFormCustomization
+   * keys its buttons and fields off `record`), so an existing record must not be rendered until it
+   * has loaded — otherwise the form briefly shows the create surface for a record that already
+   * exists. New-record forms have nothing to wait for and start loaded.
+   */
+  const [recordLoaded, setRecordLoaded] = React.useState(!recordId);
+  const [loadError, setLoadError] = React.useState<string>();
 
   React.useEffect(() => {
     const fetchData = async () => {
       const { table } = getTable();
-      if (!table) {
+      if (!table || !recordId) {
         return;
       }
 
-      const recordId = urlParams['record'];
-      if (!recordId) {
-        return;
+      setRecordLoaded(false);
+      setLoadError(undefined);
+      try {
+        const fetchedRecord = await getDbService().get(table, { id: recordId });
+        setRecord(fetchedRecord);
+      } catch {
+        setLoadError(`Unable to load ${table.name} record: ${recordId}`);
       }
-
-      const fetchedRecord = await getDbService().get(table, { id: recordId });
-      setRecord(fetchedRecord);
+      setRecordLoaded(true);
     };
 
     fetchData();
@@ -75,6 +86,18 @@ const DynamicRecordForm = ({ urlParams }: PageComponentProps) => {
     const { table, error } = getTable();
     if (!table) {
       return <div>{error}</div>;
+    }
+
+    if (loadError) {
+      return <div>{loadError}</div>;
+    }
+
+    if (!recordLoaded) {
+      return null;
+    }
+
+    if (recordId && !record) {
+      return <div>{`No ${table.name} record found: ${recordId}`}</div>;
     }
 
     return <RecordForm table={table} record={record} />;

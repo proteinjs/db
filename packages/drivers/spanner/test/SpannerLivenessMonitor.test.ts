@@ -80,6 +80,21 @@ describe('SpannerLivenessMonitor', () => {
     );
   });
 
+  test('the sustained-failure exit is RESTART-REQUESTED (code 86) so supervision respawns instead of staying down', async () => {
+    // The serve-package contract (ServePackageSupervisor.RESTART_REQUEST_EXIT_CODE): 86 asks
+    // the supervisor for a respawn with backoff; a plain exit(1) is mirrored and stays down —
+    // observed as a dev server dead all night after a transient network outage.
+    exitSpy.mockRestore();
+    const processExitSpy = jest.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
+    probeSpy.mockRejectedValue(new Error('14 UNAVAILABLE: fake'));
+
+    const check = internals.verifyLiveness();
+    await jest.advanceTimersByTimeAsync(ALL_PROBE_DELAYS_MS);
+    await check;
+
+    expect(processExitSpy).toHaveBeenCalledWith(86);
+  });
+
   test('burst coalescing: reportError while a check is in flight triggers one probe cycle', async () => {
     probeSpy.mockResolvedValue(undefined);
 

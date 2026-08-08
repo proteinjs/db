@@ -11,6 +11,10 @@ import { TableServiceAuth } from '../src/auth/TableServiceAuth';
  *   authenticated user delete from read-only tables)
  * - `auth.serviceProtectedColumns`: columns that can never be SET via the service path,
  *   rejected with a clean `ServiceError` (message passes through to the client verbatim)
+ * - denials cross the wire as a `ServiceError` naming the table and operation — a denied query
+ *   must be distinguishable from an empty one at the surface that shows it (the admin Sessions
+ *   table read "no rows" while every query behind it was denied, 2026-08). A boolean `false`
+ *   here collapses into the generic run-service denial.
  *
  * `UserAuth` reads from a static repo; tests stub it directly per identity — no server needed.
  */
@@ -82,6 +86,18 @@ const setUser = (roles: string[]) => {
 
 const auth = () => new TableServiceAuth();
 
+/** A denial must be a client-safe ServiceError naming the table and operation. */
+const expectDenied = (fn: () => unknown, message: string) => {
+  let thrown: any;
+  try {
+    fn();
+  } catch (error) {
+    thrown = error;
+  }
+  expect(thrown?.name).toBe('ServiceError');
+  expect(thrown?.message).toBe(message);
+};
+
 describe('TableServiceAuth — per-operation service grants', () => {
   afterEach(() => {
     (UserAuth as unknown as UserAuthInternals).userRepo = undefined;
@@ -93,9 +109,18 @@ describe('TableServiceAuth — per-operation service grants', () => {
     expect(auth().canAccess('query', [table, {}])).toBe(true);
     expect(auth().canAccess('get', [table, { id: 'x' }])).toBe(true);
     expect(auth().canAccess('getRowCount', [table, {}])).toBe(true);
-    expect(auth().canAccess('insert', [table, { title: 't' }])).toBe(false);
-    expect(auth().canAccess('update', [table, { id: 'x', title: 't' }])).toBe(false);
-    expect(auth().canAccess('delete', [table, { id: 'x' }])).toBe(false);
+    expectDenied(
+      () => auth().canAccess('insert', [table, { title: 't' }]),
+      'User is not authorized to insert records into table: server_written_test'
+    );
+    expectDenied(
+      () => auth().canAccess('update', [table, { id: 'x', title: 't' }]),
+      'User is not authorized to update records in table: server_written_test'
+    );
+    expectDenied(
+      () => auth().canAccess('delete', [table, { id: 'x' }]),
+      'User is not authorized to delete records from table: server_written_test'
+    );
   });
 
   it('admin: writes allowed on a server-written table', () => {
@@ -110,7 +135,10 @@ describe('TableServiceAuth — per-operation service grants', () => {
     setUser([]);
     const table = new ReadOnlyTable();
     expect(auth().canAccess('query', [table, {}])).toBe(true);
-    expect(auth().canAccess('delete', [table, { id: 'x' }])).toBe(false);
+    expectDenied(
+      () => auth().canAccess('delete', [table, { id: 'x' }]),
+      'User is not authorized to delete records from table: read_only_test'
+    );
   });
 });
 
@@ -119,15 +147,25 @@ describe('TableServiceAuth — default deny (no auth block)', () => {
     (UserAuth as unknown as UserAuthInternals).userRepo = undefined;
   });
 
-  it('denies every operation to an authenticated non-admin', () => {
+  it('denies every operation to an authenticated non-admin, naming the table (never a silent false)', () => {
     setUser([]);
     const table = new NoAuthTable();
-    expect(auth().canAccess('query', [table, {}])).toBe(false);
-    expect(auth().canAccess('get', [table, { id: 'x' }])).toBe(false);
-    expect(auth().canAccess('getRowCount', [table, {}])).toBe(false);
-    expect(auth().canAccess('insert', [table, { title: 't' }])).toBe(false);
-    expect(auth().canAccess('update', [table, { id: 'x', title: 't' }])).toBe(false);
-    expect(auth().canAccess('delete', [table, { id: 'x' }])).toBe(false);
+    const queryDenial = 'User is not authorized to query table: no_auth_test';
+    expectDenied(() => auth().canAccess('query', [table, {}]), queryDenial);
+    expectDenied(() => auth().canAccess('get', [table, { id: 'x' }]), queryDenial);
+    expectDenied(() => auth().canAccess('getRowCount', [table, {}]), queryDenial);
+    expectDenied(
+      () => auth().canAccess('insert', [table, { title: 't' }]),
+      'User is not authorized to insert records into table: no_auth_test'
+    );
+    expectDenied(
+      () => auth().canAccess('update', [table, { id: 'x', title: 't' }]),
+      'User is not authorized to update records in table: no_auth_test'
+    );
+    expectDenied(
+      () => auth().canAccess('delete', [table, { id: 'x' }]),
+      'User is not authorized to delete records from table: no_auth_test'
+    );
   });
 
   it('allows every operation for an admin', () => {
@@ -139,6 +177,72 @@ describe('TableServiceAuth — default deny (no auth block)', () => {
     expect(auth().canAccess('insert', [table, { title: 't' }])).toBe(true);
     expect(auth().canAccess('update', [table, { id: 'x', title: 't' }])).toBe(true);
     expect(auth().canAccess('delete', [table, { id: 'x' }])).toBe(true);
+  });
+});
+
+describe('TableServiceAuth — updateArrayMembership / updatePreserving (update parity)', () => {
+  afterEach(() => {
+    (UserAuth as unknown as UserAuthInternals).userRepo = undefined;
+  });
+
+  const membership = (columnPropertyName: string) => ({
+    recordId: 'x',
+    columnPropertyName,
+    ops: [{ op: 'add', id: 'm1', afterId: null }],
+  });
+
+  it('both verbs are gated by the update grant: denied for non-admin, allowed for admin', () => {
+    setUser([]);
+    const table = new ServerWrittenTable();
+    const updateDenial = 'User is not authorized to update records in table: server_written_test';
+    expectDenied(() => auth().canAccess('updateArrayMembership', [table, membership('title')]), updateDenial);
+    expectDenied(
+      () =>
+        auth().canAccess('updatePreserving', [
+          table,
+          { id: 'x', title: 't' },
+          [{ columnPropertyName: 'title', paths: ['content'] }],
+        ]),
+      updateDenial
+    );
+
+    setUser(['admin']);
+    expect(auth().canAccess('updateArrayMembership', [table, membership('title')])).toBe(true);
+    expect(
+      auth().canAccess('updatePreserving', [
+        table,
+        { id: 'x', title: 't' },
+        [{ columnPropertyName: 'title', paths: ['content'] }],
+      ])
+    ).toBe(true);
+  });
+
+  it('default deny (no auth block): both verbs denied for non-admin with the update denial', () => {
+    setUser([]);
+    const table = new NoAuthTable();
+    const updateDenial = 'User is not authorized to update records in table: no_auth_test';
+    expectDenied(() => auth().canAccess('updateArrayMembership', [table, membership('title')]), updateDenial);
+    expectDenied(() => auth().canAccess('updatePreserving', [table, { id: 'x', title: 't' }, []]), updateDenial);
+  });
+
+  it('updateArrayMembership cannot target a serviceProtectedColumn (its payload names the column, not record fields)', () => {
+    setUser([]);
+    const table = new ProtectedColumnTable();
+    expectDenied(
+      () => auth().canAccess('updateArrayMembership', [table, membership('owner')]),
+      "Column 'owner' cannot be written via the db service on table: protected_column_test"
+    );
+    expect(auth().canAccess('updateArrayMembership', [table, membership('title')])).toBe(true);
+  });
+
+  it('updatePreserving runs the record-shaped protected-column check on its payload', () => {
+    setUser([]);
+    const table = new ProtectedColumnTable();
+    expectDenied(
+      () => auth().canAccess('updatePreserving', [table, { id: 'x', owner: 'someone' }, []]),
+      "Column 'owner' cannot be written via the db service on table: protected_column_test"
+    );
+    expect(auth().canAccess('updatePreserving', [table, { id: 'x', title: 't', owner: null }, []])).toBe(true);
   });
 });
 

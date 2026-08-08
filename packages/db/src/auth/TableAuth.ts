@@ -21,6 +21,19 @@ export type TableOperationsAuth = {
 };
 
 /**
+ * A table-auth denial. The message names the table and operation and is safe to show the caller
+ * (it only echoes what they asked for). Name-tagged rather than relying on instanceof — the
+ * prototype chain is unreliable across package compile targets (same reason ServiceRouter's
+ * isServiceError checks `name`).
+ */
+export class TableAuthError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TableAuthError';
+  }
+}
+
+/**
  * Util to check which table operations a user can perform
  */
 export class TableAuth {
@@ -46,25 +59,25 @@ export class TableAuth {
 
   canQuery(table: Table<any>, api: 'db' | 'service' = 'db'): void {
     if (!this.canAccess(table, api, 'query')) {
-      throw new Error(`User is not authorized to query table: ${table.name}`);
+      throw new TableAuthError(`User is not authorized to query table: ${table.name}`);
     }
   }
 
   canInsert(table: Table<any>, api: 'db' | 'service' = 'db'): void {
     if (!this.canAccess(table, api, 'insert')) {
-      throw new Error(`User is not authorized to insert records into table: ${table.name}`);
+      throw new TableAuthError(`User is not authorized to insert records into table: ${table.name}`);
     }
   }
 
   canUpdate(table: Table<any>, api: 'db' | 'service' = 'db'): void {
     if (!this.canAccess(table, api, 'update')) {
-      throw new Error(`User is not authorized to update records in table: ${table.name}`);
+      throw new TableAuthError(`User is not authorized to update records in table: ${table.name}`);
     }
   }
 
   canDelete(table: Table<any>, api: 'db' | 'service' = 'db'): void {
     if (!this.canAccess(table, api, 'delete')) {
-      throw new Error(`User is not authorized to delete records from table: ${table.name}`);
+      throw new TableAuthError(`User is not authorized to delete records from table: ${table.name}`);
     }
   }
 }

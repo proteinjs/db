@@ -219,9 +219,14 @@ export class SpannerDriver implements DbDriver {
       'spanner dml transaction',
       '(runTransactionAsync)',
       this.getSpannerDb().runTransactionAsync(async (transaction) => {
-        const rowCount = await this.executeDml(generateStatement, transaction);
-        await transaction.commit();
-        return rowCount;
+        try {
+          const rowCount = await this.executeDml(generateStatement, transaction);
+          await transaction.commit();
+          return rowCount;
+        } catch (error) {
+          await this.rollbackQuietly(transaction);
+          throw error;
+        }
       })
     );
   }
@@ -277,11 +282,35 @@ export class SpannerDriver implements DbDriver {
       'spanner transaction',
       '(runTransactionAsync)',
       this.getSpannerDb().runTransactionAsync(async (transaction) => {
-        const result = await fn(transaction);
-        await transaction.commit();
-        return result;
+        try {
+          const result = await fn(transaction);
+          await transaction.commit();
+          return result;
+        } catch (error) {
+          await this.rollbackQuietly(transaction);
+          throw error;
+        }
       })
     );
+  }
+
+  /**
+   * Release a transaction whose work errored. The client library's runner does NOT roll back on
+   * non-retryable errors — it just rethrows — so a thrown `fn` (e.g. an application rollback, or
+   * a failed statement) left the read-write transaction OPEN until session timeout. Real Spanner
+   * tolerates that (locks expire); the emulator serializes on its single read-write transaction,
+   * so one leaked transaction blocks every subsequent DDL with FAILED_PRECONDITION ("a
+   * read-write transaction is already in progress") — poisoning whole test runs. Rollback of an
+   * already-invalid transaction (e.g. ABORTED, about to be retried by the runner with a fresh
+   * transaction) is expected to fail; that failure is logged and swallowed so the ORIGINAL error
+   * — the one that carries retry semantics — always propagates.
+   */
+  private async rollbackQuietly(transaction: Transaction): Promise<void> {
+    try {
+      await transaction.rollback();
+    } catch (rollbackError: any) {
+      this.logger.debug({ message: `Rollback after transaction error failed`, obj: { rollbackError } });
+    }
   }
 
   /**

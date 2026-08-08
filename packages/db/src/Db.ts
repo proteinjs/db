@@ -22,11 +22,14 @@ import { TableServiceAuth } from './auth/TableServiceAuth';
 import { TableWatcherRunner } from './TableWatcherRunner';
 import {
   DefaultTransactionContextFactory,
+  PostCommitHook,
   getDefaultTransactionContextFactory,
 } from './transaction/TransactionContextFactory';
 import { isInstanceOf } from '@proteinjs/util';
 import { Reference } from './reference/Reference';
 import { ReferenceArray } from './reference/ReferenceArray';
+import { ArrayMembershipUpdate, applyArrayMembershipOps } from './reference/ArrayMembershipOps';
+import { PreservedPath, overlayPreservedPaths } from './UpdatePreserving';
 
 /** get `Db` if on server, and `DbService` if on browser */
 export const getDb = <R extends Record = Record>() =>
@@ -202,6 +205,96 @@ export class Db<R extends Record = Record> implements DbService<R> {
     const recordUpdateCount = await this.dbDriver.runDml(generateUpdate, this.currentTransaction);
     await this.tableWatcherRunner.runAfterUpdateTableWatchers(table, recordUpdateCount, recordCopy, qb);
     return recordUpdateCount;
+  }
+
+  /**
+   * Apply commutative membership ops (add/remove/move) to a `ReferenceArrayColumn`
+   * read-modify-write against COMMITTED truth, so concurrent membership writers
+   * converge instead of last-write-wins clobbering each other (the write-side
+   * lost-update class). Self-wraps in a transaction when called outside one; the
+   * driver's abort/retry re-executes the read, so a retried transaction applies
+   * its ops to fresh truth rather than replaying a stale list snapshot.
+   *
+   * Returns the update count (0 when the ops are a no-op against committed truth
+   * or the record no longer exists — a concurrently deleted record wins).
+   */
+  async updateArrayMembership<T extends R>(table: Table<T>, update: ArrayMembershipUpdate): Promise<number> {
+    if (!this.currentTransaction) {
+      const db = this.newSelfWrapDb();
+      return await db.runTransaction(async () => await db.updateArrayMembership(table, update));
+    }
+
+    const column = (table.columns as any)[update.columnPropertyName];
+    if (!column || column.constructor?.name !== 'ReferenceArrayColumn') {
+      throw new Error(
+        `updateArrayMembership requires a ReferenceArrayColumn; '${update.columnPropertyName}' on table '${table.name}' is not one`
+      );
+    }
+
+    const qb = new QueryBuilderFactory().getQueryBuilder(table);
+    await this.addColumnQueries(table, qb, 'write');
+    qb.select({ fields: ['id', update.columnPropertyName] as any });
+    qb.condition({ field: 'id', operator: '=', value: update.recordId as T[keyof T] });
+    const rows = await this._query(table, qb);
+    if (rows.length === 0) {
+      return 0;
+    }
+
+    const currentRefArray = (rows[0] as any)[update.columnPropertyName] as ReferenceArray<any> | null | undefined;
+    const currentIds = currentRefArray?._ids ?? [];
+    const { ids, changed } = applyArrayMembershipOps(currentIds, update.ops);
+    if (!changed) {
+      return 0;
+    }
+
+    const record: Partial<T> = { id: update.recordId } as Partial<T>;
+    (record as any)[update.columnPropertyName] = new ReferenceArray((column as any).referenceTable, ids);
+    return await this.update(table, record);
+  }
+
+  /**
+   * Update with committed-truth preservation for column sub-paths the writer does
+   * not own (see `UpdatePreserving.ts`). The payload's listed paths are overlaid
+   * with their committed values read inside the same transaction, so this write
+   * commutes with the writers that own those paths (e.g. a structural editor op
+   * writing a JSON object's styling while a debounced text save owns `content`).
+   * Self-wraps in a transaction when called outside one. Plain-JSON columns only.
+   */
+  async updatePreserving<T extends R>(table: Table<T>, record: Partial<T>, preserve: PreservedPath[]): Promise<number> {
+    if (!this.currentTransaction) {
+      const db = this.newSelfWrapDb();
+      return await db.runTransaction(async () => await db.updatePreserving(table, record, preserve));
+    }
+
+    if (!record.id) {
+      throw new Error(`updatePreserving must be called with a record with an id property`);
+    }
+
+    const applicable = preserve.filter((p) => (record as any)[p.columnPropertyName] !== undefined);
+    if (applicable.length === 0) {
+      return await this.update(table, record);
+    }
+
+    const qb = new QueryBuilderFactory().getQueryBuilder(table);
+    await this.addColumnQueries(table, qb, 'write');
+    qb.select({ fields: ['id', ...applicable.map((p) => p.columnPropertyName)] as any });
+    qb.condition({ field: 'id', operator: '=', value: record.id as T[keyof T] });
+    const rows = await this._query(table, qb);
+    if (rows.length === 0) {
+      return 0;
+    }
+
+    const recordCopy: Partial<T> = Object.assign({}, record);
+    for (const p of applicable) {
+      (recordCopy as any)[p.columnPropertyName] = overlayPreservedPaths(
+        (rows[0] as any)[p.columnPropertyName],
+        (recordCopy as any)[p.columnPropertyName],
+        p.paths,
+        p.whenType
+      );
+    }
+
+    return await this.update(table, recordCopy);
   }
 
   async delete<T extends R>(table: Table<T>, query: Query<T>): Promise<number> {
@@ -541,11 +634,19 @@ export class Db<R extends Record = Record> implements DbService<R> {
       throw new Error(`Nested transactions are not supported. A transaction is already running on this Db instance.`);
     }
 
-    return await this.dbDriver.runTransaction(async (transaction) => {
+    // Reassigned fresh per driver attempt: drivers may retry `fn` on transient aborts (Spanner's
+    // runTransactionAsync does), and hooks queued by a discarded attempt must not survive into
+    // the attempt that actually commits. Only the committed attempt's queue is drained below.
+    let postCommitHooks: PostCommitHook[] = [];
+    const result = await this.dbDriver.runTransaction(async (transaction) => {
       this.currentTransaction = transaction;
+      postCommitHooks = [];
 
       try {
         return await this.transactionContextFactory.runInContext(transaction, async () => {
+          // Seed the post-commit hook queue on the ambient context so every Db instance created
+          // inside this transaction shares it (see runAfterCommit).
+          this.transactionContextFactory.getTransactionContext().postCommitHooks = postCommitHooks;
           const result = await fn();
           return result;
         });
@@ -553,6 +654,64 @@ export class Db<R extends Record = Record> implements DbService<R> {
         this.currentTransaction = undefined;
       }
     });
+
+    // COMMIT BOUNDARY: the driver resolves only after the transaction is durably committed (and
+    // rejects on rollback, in which case the queue above is never drained). Hook failures are
+    // logged, not thrown — the write already committed, and surfacing a hook error as a
+    // transaction failure would report a durable write as failed.
+    for (const postCommitHook of postCommitHooks) {
+      try {
+        await postCommitHook();
+      } catch (error: any) {
+        this.logger.error({ message: `Post-commit hook failed`, error });
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Run `hook` once the write unit currently executing is durably committed.
+   *
+   * - Inside a `runTransaction` scope: the hook is queued on the ambient transaction context and
+   *   runs after the transaction COMMITS. Hooks never run on rollback.
+   * - Outside a transaction: every DML statement auto-commits when it resolves, so the hook runs
+   *   (awaited) immediately. Callers are responsible for invoking this only from points where
+   *   the triggering statement has already executed — e.g. `after*` table watchers, never
+   *   `before*` ones.
+   *
+   * For side effects that must observe committed truth — e.g. socket notifications that trigger
+   * client refetches: a pre-commit emission lets a client refetch read pre-commit rows and
+   * "resurrect" state the transaction is deleting.
+   */
+  async runAfterCommit(hook: PostCommitHook): Promise<void> {
+    const transactionContext = this.transactionContextFactory.getTransactionContext();
+    if (transactionContext.currentTransaction) {
+      if (!transactionContext.postCommitHooks) {
+        // runTransaction is the only opener of transaction scopes and always seeds the queue —
+        // an active transaction without one means a second scope owner appeared. Fail loudly
+        // rather than run the hook at (wrong) pre-commit time.
+        throw new Error(
+          `Active transaction context has no post-commit hook queue. Transaction scopes must be opened via Db.runTransaction.`
+        );
+      }
+      transactionContext.postCommitHooks.push(hook);
+      return;
+    }
+
+    await hook();
+  }
+
+  /**
+   * A fresh instance for self-wrapping RMW verbs (`updateArrayMembership`, `updatePreserving`)
+   * in a transaction. `runTransaction` carries the open transaction as INSTANCE state, and these
+   * verbs also serve the `DbService` RPC path, where one long-lived Db instance handles
+   * concurrent requests — self-wrapping on `this` would leak one request's transaction into
+   * another's ops (or spuriously reject it as a nested transaction). Same driver/tables/system
+   * mode; only the transaction state is isolated.
+   */
+  private newSelfWrapDb(): Db<R> {
+    return new Db<R>(this.dbDriver, this.getTable, this.transactionContextFactory, this.runAsSystem);
   }
 
   // Utility: simple chunker
