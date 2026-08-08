@@ -316,7 +316,7 @@ export class SpannerDriver implements DbDriver {
   }
 
   /**
-* Deadline-bounded commit: a commit hanging on a dead channel would otherwise keep the
+   * Deadline-bounded commit: a commit hanging on a dead channel would otherwise keep the
    * transaction's run function pending forever, and with it the session (runTransactionAsync
    * only releases the session once the run function settles).
    */

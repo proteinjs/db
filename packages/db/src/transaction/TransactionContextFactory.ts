@@ -9,7 +9,7 @@ export type PostCommitHook = () => void | Promise<void>;
 export interface TransactionContextData {
   currentTransaction?: any;
   /**
-* Hooks queued to run after the current transaction COMMITS — and never on rollback: a hook
+   * Hooks queued to run after the current transaction COMMITS — and never on rollback: a hook
    * queued for a write that gets rolled back dies with the write. Seeded by `Db.runTransaction`
    * on the ambient context so every `Db` instance created inside the transaction (table
    * watchers, nested helpers) shares one queue; registered via `Db.runAfterCommit`, drained by
