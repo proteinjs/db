@@ -215,7 +215,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
    * or the record no longer exists — a concurrently deleted record wins).
    */
   async updateArrayMembership<T extends R>(table: Table<T>, update: ArrayMembershipUpdate): Promise<number> {
-    if (!this.currentTransaction) {
+    if (!this.transactionContextFactory.getTransactionContext().currentTransaction) {
       const db = this.newSelfWrapDb();
       return await db.runTransaction(async () => await db.updateArrayMembership(table, update));
     }
@@ -257,7 +257,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
    * Self-wraps in a transaction when called outside one. Plain-JSON columns only.
    */
   async updatePreserving<T extends R>(table: Table<T>, record: Partial<T>, preserve: PreservedPath[]): Promise<number> {
-    if (!this.currentTransaction) {
+    if (!this.transactionContextFactory.getTransactionContext().currentTransaction) {
       const db = this.newSelfWrapDb();
       return await db.runTransaction(async () => await db.updatePreserving(table, record, preserve));
     }
