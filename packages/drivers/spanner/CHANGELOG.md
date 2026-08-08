@@ -3,6 +3,19 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.14.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.13.0...@proteinjs/db-driver-spanner@1.14.0) (2026-08-08)
+
+
+### Features
+
+* spanner op deadlines + channel-death recycle (2026-08-06 overnight wedge) ([ea5fa98](https://github.com/proteinjs/db/commit/ea5fa987bf68f9c10a58aa6bd1e14e792c3aff03))
+* stateless transactions — ambient resolution at call time + ended-context tombstone ([b073491](https://github.com/proteinjs/db/commit/b0734917ff9d3643b09c3d1498b694ff626f55ca))
+* transaction-safety guard, rollback-on-error, session pool options + pressure gauge (P2/P4a) ([c9dcaf0](https://github.com/proteinjs/db/commit/c9dcaf05169eec2d4e96e7558dfc39b71d92202f))
+
+
+
+
+
 ## [1.12.1](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.12.0...@proteinjs/db-driver-spanner@1.12.1) (2026-07-28)
 
 **Note:** Version bump only for package @proteinjs/db-driver-spanner

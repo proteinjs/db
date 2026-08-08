@@ -3,6 +3,23 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.27.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.26.0...@proteinjs/db@1.27.0) (2026-08-08)
+
+
+### Bug Fixes
+
+* membership/preserving verbs check the ambient transaction context ([0a61866](https://github.com/proteinjs/db/commit/0a61866cf76b45bab774dac57fb1578828c9dab1))
+
+
+### Features
+
+* stateless transactions — ambient resolution at call time + ended-context tombstone ([b073491](https://github.com/proteinjs/db/commit/b0734917ff9d3643b09c3d1498b694ff626f55ca))
+* transaction-safety guard, rollback-on-error, session pool options + pressure gauge (P2/P4a) ([c9dcaf0](https://github.com/proteinjs/db/commit/c9dcaf05169eec2d4e96e7558dfc39b71d92202f))
+
+
+
+
+
 # [1.25.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.24.0...@proteinjs/db@1.25.0) (2026-07-28)
 
 

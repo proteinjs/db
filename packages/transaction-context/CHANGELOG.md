@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [0.4.0](https://github.com/proteinjs/db/compare/@proteinjs/db-transaction-context@0.3.0...@proteinjs/db-transaction-context@0.4.0) (2026-08-08)
+
+
+### Features
+
+* stateless transactions — ambient resolution at call time + ended-context tombstone ([b073491](https://github.com/proteinjs/db/commit/b0734917ff9d3643b09c3d1498b694ff626f55ca))
+
+
+
+
+
 ## [0.2.37](https://github.com/proteinjs/db/compare/@proteinjs/db-transaction-context@0.2.36...@proteinjs/db-transaction-context@0.2.37) (2026-07-28)
 
 **Note:** Version bump only for package @proteinjs/db-transaction-context
