@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.14.1](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.14.0...@proteinjs/db-driver-spanner@1.14.1) (2026-08-09)
+
+
+### Bug Fixes
+
+* own the Database error channel — unlistened session-pool 'error' events crash the process ([67ecece](https://github.com/proteinjs/db/commit/67ececebdb3550c65b63f389801d3a4c42e11b6b))
+
+
+
+
+
 # [1.14.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.13.0...@proteinjs/db-driver-spanner@1.14.0) (2026-08-08)
 
 
