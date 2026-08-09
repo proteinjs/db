@@ -44,8 +44,17 @@ export class SpannerEmulatorProvisioner {
       SpannerEmulatorProvisioner.swallowAlreadyExists(error);
     }
     try {
-      const [, operation] = await instance.createDatabase(config.databaseName);
+      const [database, operation] = await instance.createDatabase(config.databaseName);
       await operation.promise();
+      // createDatabase constructs a Database handle whose session pool OPENS in its constructor
+      // (database.js: pool_.open()). Ignored, it becomes an orphan: its fill/keepalive machinery
+      // outlives release(), and once the admin client closes, every subsequent pool op emits an
+      // unlistened 'error' on this handle — crashing whichever jest suite happens to be active
+      // (only fresh-emulator runs hit this; ALREADY_EXISTS constructs no handle). Own it through
+      // its death: the listener covers session creates that settle after close, and the close
+      // runs while the admin client can still delete the pool's sessions cleanly.
+      database.on('error', () => undefined);
+      await database.close().catch(() => undefined);
     } catch (error) {
       SpannerEmulatorProvisioner.swallowAlreadyExists(error);
     }

@@ -83,29 +83,15 @@ export class SpannerDriver implements DbDriver {
 
   private getSpannerDb(): Database {
     if (!SpannerDriver.SPANNER_DB) {
-      const db = this.getSpannerInstance().database(this.config.databaseName, this.config.sessionPoolOptions);
-      // The session pool forwards its 'error' events to the Database (session keepalive /
-      // delete failures — advisory: the pool self-heals, and per-query failures reject their
-      // own calls instead of flowing through this channel). Without a listener Node treats
-      // the emit as an unhandled 'error' event and crashes the process; a recycled client's
-      // post-close session deletes make that a certainty, so the owner that creates the
-      // Database also owns its error channel.
-      db.on('error', (error: Error) => {
-        const detail = error instanceof Error ? error.message : String(error);
-        if (SpannerDriver.SPANNER_DB === db) {
-          this.logger.warn({
-            message: 'Spanner session pool error (advisory; the pool self-heals)',
-            obj: { error: detail },
-          });
-        } else {
-          this.logger.debug({
-            message: 'Spanner session pool error from a recycled/abandoned client (expected during teardown)',
-            obj: { error: detail },
-          });
-        }
-      });
-      SpannerDriver.SPANNER_DB = db;
-      SpannerDriver.LIVENESS_MONITOR = new SpannerLivenessMonitor(db).start();
+      SpannerDriver.SPANNER_DB = this.getSpannerInstance().database(
+        this.config.databaseName,
+        this.config.sessionPoolOptions
+      );
+      // The monitor's start() is also the Database's one 'error'-channel owner (the session
+      // pool forwards its errors to the Database emitter; unlistened, Node's unhandled-'error'
+      // crash takes the process down). It stays attached through recycle — a stopped monitor
+      // swallows the abandoned client's teardown errors.
+      SpannerDriver.LIVENESS_MONITOR = new SpannerLivenessMonitor(SpannerDriver.SPANNER_DB).start();
     }
 
     return SpannerDriver.SPANNER_DB;
