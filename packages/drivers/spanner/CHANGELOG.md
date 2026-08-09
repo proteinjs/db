@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.14.2](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.14.1...@proteinjs/db-driver-spanner@1.14.2) (2026-08-09)
+
+
+### Bug Fixes
+
+* close the orphan Database handle createDatabase constructs (unlistened pool crashes suites) ([7dca699](https://github.com/proteinjs/db/commit/7dca6999f34c80958a2244780a8679ed8c2e312a))
+
+
+
+
+
 ## [1.14.1](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.14.0...@proteinjs/db-driver-spanner@1.14.1) (2026-08-09)
 
 
