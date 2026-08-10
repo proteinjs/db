@@ -13,11 +13,11 @@ export const getMigrationRunner = () =>
 export class MigrationRunner implements MigrationRunnerService {
   private logger = new Logger({ name: this.constructor.name });
   public serviceMetadata: Service['serviceMetadata'] = {
-    // Explicit, not implicit: running migrations is admin-only. Omitting the auth block would
-    // fall back to the same default-deny (admin role), but every service is required to declare
-    // its auth intent explicitly.
+    // Running migrations rides the abstract 'dev' PERMISSION (the developer-surface slug the
+    // db-ui dev pages also declare), resolved through the consumer app's PermissionRolesMapping.
+    // Admin still passes as break-glass. Matches the migration table's doors below the service.
     auth: {
-      roles: ['admin'],
+      permission: 'dev',
     },
     doNotAwait: true,
   };

@@ -17,6 +17,16 @@ export interface Migration extends SourceRecord {
 
 export class MigrationTable extends Table<Migration> {
   public name = 'migration';
+  /**
+   * Both doors ride the 'dev' permission (consumer-mapped; admin passes as break-glass),
+   * matching MigrationRunner's serviceMetadata: the Migrations record table reads/edits via
+   * the service api, and the runner writes run state via the db api as the calling user.
+   * Boot-time source-record loading is a system path (getDbAsSystem) and bypasses doors.
+   */
+  public auth: Table<Migration>['auth'] = {
+    db: { all: { permission: 'dev' } },
+    service: { all: { permission: 'dev' } },
+  };
   public columns = withSourceRecordColumns<Migration>({
     description: new StringColumn('description', {}, 4000),
     status: new StringColumn('status', { defaultValue: async () => 'proposed' }),
