@@ -18,7 +18,8 @@
   "scripts": {
     "clean": "rm -rf dist/ node_modules/ generated/",
     "build": "reflection-build && tsc",
-    "watch": "reflection-watch"
+    "watch": "reflection-watch",
+    "test": "jest --passWithNoTests"
   },
   "dependencies": {
     "@emotion/react": "11.11.1",

@@ -5,6 +5,8 @@ export * from './reusable/DynamicReferenceColumnTests';
 export * from './reusable/TransactionTests';
 export * from './reusable/CascadeDeleteTests';
 
+export * from './util/testUser';
+
 export * from './util/tables/cascadeDeleteTestTables';
 export * from './util/tables/columnTypesTestTables';
 export * from './util/tables/crudTestTables';

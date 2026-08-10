@@ -5,8 +5,16 @@ import { Table } from '../Table';
  * @public all users, including guests (do not need to be logged in), do not need any roles
  * @authenticated - users need to be logged in, do not need any roles
  * @roles string[] - authenticated users, having at least one of these roles
+ * @permission - authenticated users holding an abstract permission slug, resolved to roles at
+ * runtime through the consumer app's `PermissionRolesMapping` (see `UserAuth.hasPermission`).
+ * Generic tables declare permissions; only the consumer names roles.
  */
-export type Identity = 'public' | 'authenticated' | string[];
+export type PermissionIdentity = { permission: string };
+
+export type Identity = 'public' | 'authenticated' | string[] | PermissionIdentity;
+
+const isPermissionIdentity = (identity: Identity | undefined): identity is PermissionIdentity =>
+  !!identity && typeof identity === 'object' && !Array.isArray(identity) && typeof identity.permission === 'string';
 
 /**
  * These Identities can perform these operations on this table.
@@ -53,7 +61,10 @@ export class TableAuth {
       (tableAuth.all === 'authenticated' && UserAuth.isLoggedIn()) ||
       (tableAuth[operation] === 'authenticated' && UserAuth.isLoggedIn()) ||
       (Array.isArray(tableAuth.all) && UserAuth.hasRoles(tableAuth.all, 'at least one')) ||
-      (Array.isArray(tableAuth[operation]) && UserAuth.hasRoles(tableAuth[operation] as string[], 'at least one'))
+      (Array.isArray(tableAuth[operation]) && UserAuth.hasRoles(tableAuth[operation] as string[], 'at least one')) ||
+      (isPermissionIdentity(tableAuth.all) && UserAuth.hasPermission(tableAuth.all.permission)) ||
+      (isPermissionIdentity(tableAuth[operation]) &&
+        UserAuth.hasPermission((tableAuth[operation] as PermissionIdentity).permission))
     );
   }
 

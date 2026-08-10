@@ -1,4 +1,5 @@
 import { Table, DbDriver } from '@proteinjs/db';
+import { registerTestUser, clearTestUser } from './testUser';
 import { cascadeDeleteTestTables } from './tables/cascadeDeleteTestTables';
 import { columnTypesTestTables } from './tables/columnTypesTestTables';
 import { crudTestTables } from './tables/crudTestTables';
@@ -25,6 +26,9 @@ export class DbTestEnvironment {
   ) {}
 
   async beforeAll() {
+    // UserAuth is fail-closed; the suites run non-system Db paths, so they carry an explicit
+    // identity instead of leaning on an open gate.
+    registerTestUser();
     if (this.dbDriver.start) {
       await this.dbDriver.start();
     }
@@ -35,6 +39,7 @@ export class DbTestEnvironment {
   }
 
   async afterAll() {
+    clearTestUser();
     for (const table of TABLES.reverse()) {
       await this.dropTestTable(table);
     }

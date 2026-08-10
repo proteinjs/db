@@ -24,6 +24,21 @@ export type RecordFormProps<T extends Record> = {
   record?: T;
 };
 
+/**
+ * Service-protected columns are reserved to server write paths (e.g. user.roles → the Roles
+ * service). The form never renders them, but a loaded record still carries their values —
+ * sending them back would be rejected by TableServiceAuth as a protected-column write. The form
+ * physically cannot set them; its save payload must not carry them.
+ */
+export function stripServiceProtectedColumns<T extends Record>(table: Table<T>, record: T): Partial<T> {
+  const payload: any = { ...record };
+  for (const protectedColumn of table.auth?.serviceProtectedColumns ?? []) {
+    delete payload[protectedColumn];
+  }
+
+  return payload;
+}
+
 type PlainObject = { [key: string]: unknown };
 
 function isObject(value: unknown): value is PlainObject {
@@ -247,7 +262,7 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
             (record as any)[columnPropertyName] = getFieldValue(columnPropertyName, field.field.value);
           }
 
-          await getDbService().update(table, record);
+          await getDbService().update(table, stripServiceProtectedColumns(table, record));
           return `Saved ${S(table.name).humanize().s}`;
         },
         progressMessage: (fields: Fields) => {

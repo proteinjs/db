@@ -63,6 +63,25 @@ class NoAuthTable extends Table<Doc> {
   });
 }
 
+/**
+ * Mirrors the user table's shape: doors keyed to an abstract PERMISSION resolved through the
+ * consumer mapping, with a service-protected column reserved to a dedicated service.
+ */
+class PermissionGatedTable extends Table<Doc> {
+  public name = 'permission_gated_test';
+  public auth: Table<Doc>['auth'] = {
+    service: {
+      query: { permission: 'users' },
+      update: { permission: 'users' },
+    },
+    serviceProtectedColumns: ['owner'],
+  };
+  public columns = withRecordColumns<Doc>({
+    title: new StringColumn('title'),
+    owner: new StringColumn('owner'),
+  });
+}
+
 /** Read-only intent: only `query` granted (the canDelete-regression shape). */
 class ReadOnlyTable extends Table<Doc> {
   public name = 'read_only_test';
@@ -76,11 +95,20 @@ class ReadOnlyTable extends Table<Doc> {
   });
 }
 
-type UserAuthInternals = { userRepo?: { getUser: () => { email: string; roles: string[] } } };
+type UserAuthInternals = {
+  userRepo?: { getUser: () => { email: string; roles: string[] } };
+  permissionRolesMapping?: { getRoles: (permission: string) => string[] | undefined };
+};
 
 const setUser = (roles: string[]) => {
   (UserAuth as unknown as UserAuthInternals).userRepo = {
     getUser: () => ({ email: 'user@test.local', roles }),
+  };
+};
+
+const setMapping = (mapping: { [permission: string]: string[] }) => {
+  (UserAuth as unknown as UserAuthInternals).permissionRolesMapping = {
+    getRoles: (permission: string) => mapping[permission],
   };
 };
 
@@ -138,6 +166,67 @@ describe('TableServiceAuth — per-operation service grants', () => {
     expectDenied(
       () => auth().canAccess('delete', [table, { id: 'x' }]),
       'User is not authorized to delete records from table: read_only_test'
+    );
+  });
+});
+
+describe('TableServiceAuth — permission-keyed doors (the user table shape)', () => {
+  afterEach(() => {
+    (UserAuth as unknown as UserAuthInternals).userRepo = undefined;
+    (UserAuth as unknown as UserAuthInternals).permissionRolesMapping = undefined;
+  });
+
+  it(`grants a holder of the consumer's mapped role; denies without the role`, () => {
+    const table = new PermissionGatedTable();
+    setMapping({ users: ['support'] });
+
+    setUser(['support']);
+    expect(auth().canAccess('query', [table, {}])).toBe(true);
+    expect(auth().canAccess('update', [table, { id: 'x', title: 't' }])).toBe(true);
+
+    setUser(['dev']);
+    expectDenied(
+      () => auth().canAccess('query', [table, {}]),
+      'User is not authorized to query table: permission_gated_test'
+    );
+  });
+
+  it('denies everyone but admin when no mapping is registered (default deny)', () => {
+    const table = new PermissionGatedTable();
+    setUser(['support']);
+    expectDenied(
+      () => auth().canAccess('query', [table, {}]),
+      'User is not authorized to query table: permission_gated_test'
+    );
+
+    setUser(['admin']);
+    expect(auth().canAccess('query', [table, {}])).toBe(true);
+  });
+
+  it('operations without a grant stay closed even for permission holders (and admin)', () => {
+    const table = new PermissionGatedTable();
+    setMapping({ users: ['support'] });
+    setUser(['support']);
+    expectDenied(
+      () => auth().canAccess('insert', [table, { title: 't' }]),
+      'User is not authorized to insert records into table: permission_gated_test'
+    );
+    // An auth block with no grant for the operation is a deliberate lock, not an admin default —
+    // the audit-table shape (role_grant_event) depends on this.
+    setUser(['admin']);
+    expectDenied(
+      () => auth().canAccess('delete', [table, { id: 'x' }]),
+      'User is not authorized to delete records from table: permission_gated_test'
+    );
+  });
+
+  it('the protected column stays unwritable even for a permission holder with the update grant', () => {
+    const table = new PermissionGatedTable();
+    setMapping({ users: ['support'] });
+    setUser(['support']);
+    expectDenied(
+      () => auth().canAccess('update', [table, { id: 'x', owner: 'someone' }]),
+      "Column 'owner' cannot be written via the db service on table: permission_gated_test"
     );
   });
 });

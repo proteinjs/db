@@ -9,6 +9,7 @@ import {
   Table,
   tableByName,
 } from '@proteinjs/db';
+import { registerTestUser, clearTestUser } from '@proteinjs/db/test';
 import { TransactionContext } from '@proteinjs/db-transaction-context';
 import { getDropTestTable } from './util/getDropTestTable';
 import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
@@ -68,6 +69,10 @@ describe('DbService RMW update verbs (updateArrayMembership / updatePreserving)'
   };
 
   beforeAll(async () => {
+    // The suite pins RMW/transaction semantics, not table doors: an explicit admin identity
+    // passes the doc table's default-admin door (UserAuth is fail-closed — no identity, no
+    // access); row visibility is still the scope column's, driven by `scope.current`.
+    registerTestUser();
     await SpannerEmulatorProvisioner.ensureProvisioned({
       projectId: 'proteinjs-test',
       instanceName: 'proteinjs-test',
@@ -78,6 +83,7 @@ describe('DbService RMW update verbs (updateArrayMembership / updatePreserving)'
   }, 60000);
 
   afterAll(async () => {
+    clearTestUser();
     await dropTable(docTable);
     await SpannerEmulatorProvisioner.release();
   }, 30000);

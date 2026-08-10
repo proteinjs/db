@@ -1,6 +1,7 @@
 import moment from 'moment';
 import { SpannerDriver } from '@proteinjs/db-driver-spanner';
 import { Db, DateColumn, QueryBuilderFactory, Record, StringColumn, Table, withRecordColumns } from '@proteinjs/db';
+import { registerTestUser, clearTestUser } from '@proteinjs/db/test';
 import { TransactionContext } from '@proteinjs/db-transaction-context';
 import { getDropTestTable } from './util/getDropTestTable';
 import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
@@ -77,6 +78,9 @@ describe('Session-shaped record table query (the admin Sessions table path)', ()
   const db = new Db(spannerDriver, getTable, new TransactionContext());
 
   beforeAll(async () => {
+    // The admin Sessions table reads as an admin; UserAuth is fail-closed, so the suite carries
+    // that identity explicitly (the session table defaults to the admin door — no auth block).
+    registerTestUser();
     await SpannerEmulatorProvisioner.ensureProvisioned({
       projectId: 'proteinjs-test',
       instanceName: 'proteinjs-test',
@@ -87,6 +91,7 @@ describe('Session-shaped record table query (the admin Sessions table path)', ()
   }, 60000);
 
   afterAll(async () => {
+    clearTestUser();
     await dropTable(table);
     await SpannerEmulatorProvisioner.release();
   }, 30000);
