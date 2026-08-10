@@ -5,6 +5,8 @@ import { SxProps, Theme } from '@mui/material';
 export const hashGeneratorPage: Page = {
   name: 'Hash Generator',
   path: 'hash-generator',
+  /** Dev tool — gated by the abstract 'dev' permission (see tablesPage) instead of default-admin. */
+  auth: { permission: 'dev' },
   pageContainerSxProps: (theme: Theme): SxProps => {
     return {
       height: '100vh',

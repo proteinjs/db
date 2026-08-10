@@ -7,6 +7,13 @@ import { Box, SxProps, Theme } from '@mui/material';
 export const tablesPage: Page = {
   name: 'Tables',
   path: 'tables',
+  /**
+   * Dev tool: browse every table and its row count. Gated by the abstract 'dev' permission
+   * (resolved through the consumer app's PermissionRolesMapping; admin passes as break-glass)
+   * instead of the implicit default-admin, so the consumer's dev-role holders can use it.
+   * Row-level reads stay enforced server-side per table.
+   */
+  auth: { permission: 'dev' },
   pageContainerSxProps: (theme: Theme): SxProps => {
     return {
       height: '100vh',
