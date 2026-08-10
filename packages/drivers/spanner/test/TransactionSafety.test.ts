@@ -1,6 +1,8 @@
-import { Db, QueryBuilderFactory, Record, StringColumn, Table, withRecordColumns } from '@proteinjs/db';
+import { Db, QueryBuilderFactory, Record, StringColumn, Table, tableByName, withRecordColumns } from '@proteinjs/db';
 import { TransactionContext } from '@proteinjs/db-transaction-context';
 import { SpannerDriver } from '@proteinjs/db-driver-spanner';
+import { registerTestUser, clearTestUser } from '@proteinjs/db/test';
+import { SourceRepository } from '@proteinjs/reflection';
 import { getDropTestTable } from './util/getDropTestTable';
 import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
 import '../generated/test/index';
@@ -19,8 +21,9 @@ class SafetyEmployeeTestTable extends Table<SafetyEmployee> {
 }
 
 const employeeTable: Table<SafetyEmployee> = new SafetyEmployeeTestTable();
-// Local table — not in any reflection source graph, so thread getTable explicitly.
-const getTable = () => employeeTable;
+// Local table — not in any reflection source graph, so thread getTable explicitly; other
+// lookups (e.g. the delete path's reverse-cascade scan over graph tables) resolve normally.
+const getTable = (tableName: string) => (tableName === employeeTable.name ? employeeTable : tableByName(tableName));
 const spannerConfig = {
   projectId: 'proteinjs-test',
   instanceName: 'proteinjs-test',
@@ -45,6 +48,14 @@ describe('Transaction safety (stateless contract)', () => {
   const txnDb = new Db(spannerDriver, getTable, new TransactionContext());
 
   beforeAll(async () => {
+    // Fail-closed auth needs an explicit identity (the suite predates the flip — n3xa4 side).
+    registerTestUser();
+    // HERMETIC single-table world: the delete path's reverse-cascade scan walks getTables();
+    // scoping the registry to the local table keeps this suite from querying other suites'
+    // graph tables (which don't exist in an isolated run). Object cache wins over the graph.
+    (SourceRepository.get() as unknown as { objectCache: { [key: string]: unknown[] } }).objectCache[
+      '@proteinjs/db/Table'
+    ] = [employeeTable];
     await SpannerEmulatorProvisioner.ensureProvisioned(spannerConfig);
     await spannerDriver.createDbIfNotExists();
     await spannerDriver.getTableManager().loadTable(employeeTable);
@@ -53,6 +64,10 @@ describe('Transaction safety (stateless contract)', () => {
   afterAll(async () => {
     await dropTable(employeeTable);
     await SpannerEmulatorProvisioner.release();
+    delete (SourceRepository.get() as unknown as { objectCache: { [key: string]: unknown[] } }).objectCache[
+      '@proteinjs/db/Table'
+    ];
+    clearTestUser();
   }, 60000);
 
   test('a PRE-CONSTRUCTED Db rides the ambient transaction: its reads see the txn write, and the txn commits', async () => {
