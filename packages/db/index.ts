@@ -11,6 +11,8 @@ export * from './src/UpdatePreserving';
 export * from './src/reference/ReferenceCache';
 export * from './src/RecordIterator';
 export * from './src/source/SourceRecord';
+export * from './src/source/SourceRecordRepo';
+export * from './src/MigrationRunner';
 export * from './src/QueryBuilderFactory';
 export * from './src/TableWatcher';
 export * from './src/transaction/Transaction';
