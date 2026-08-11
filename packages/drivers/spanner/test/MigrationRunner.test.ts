@@ -9,11 +9,11 @@ import '../generated/test/index';
  * MigrationRunner over the real stack: Spanner emulator, default-driver resolution via
  * reflection — the same `getDb()` path production takes inside the runner.
  *
- * The service dispatches runMigration fire-and-forget (`doNotAwait`), so the pinned outcomes
- * double as process-liveness proof: a rejection of the detached promise would surface as an
- * unhandled promise rejection and kill the server process. A migration that throws mid-run
- * must RESOLVE and record failure status on its record; a successful one records success and
- * its output.
+ * These pin the runner's domain bookkeeping: a migration that throws mid-run is a run OUTCOME —
+ * the detached promise RESOLVES and failure status lands on the record; a successful one records
+ * success and its output. Only infrastructure failures (recording run state itself) reject the
+ * promise, and on the service path the executor terminally observes those (@proteinjs/service
+ * ServiceExecutor; MigrationRunnerContainment.test.ts in @proteinjs/db pins the seam).
  */
 
 const spannerDriver = new SpannerDriver({

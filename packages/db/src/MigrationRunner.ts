@@ -23,13 +23,12 @@ export class MigrationRunner implements MigrationRunnerService {
   };
 
   /**
-   * The service dispatches this fire-and-forget (`doNotAwait`): ServiceExecutor invokes it
-   * WITHOUT await, so its try/catch contains only synchronous throws and nobody ever awaits
-   * the returned promise — a rejection of it is an unhandled promise rejection that kills the
-   * whole server process. The method is therefore split along that seam: everything knowable
-   * before the run starts (a bogus id) throws synchronously — the only path on which an error
-   * can still reach the client (the executor wraps it into a ServiceError -> 400) — and the
-   * detached async body terminally owns its rejections.
+   * The service dispatches this fire-and-forget (`doNotAwait`). The method is split along that
+   * seam: everything knowable before the run starts (a bogus id) throws synchronously — the only
+   * path on which an error can still reach the client (the executor wraps it into a
+   * ServiceError -> 400). The returned promise MAY REJECT (infrastructure failure while recording
+   * run state); the caller owns that rejection — on the service path the executor terminally
+   * observes every doNotAwait rejection (logs with method identity, never process death).
    */
   runMigration(id: string): Promise<void> {
     const migrationTable: Table<Migration> = new MigrationTable();
@@ -38,37 +37,33 @@ export class MigrationRunner implements MigrationRunnerService {
       throw new Error(`Unable to find migration source record for id: ${id}`);
     }
 
-    return this.runDetached(migrationTable, migration);
+    return this.runAndRecord(migrationTable, migration);
   }
 
-  private async runDetached(migrationTable: Table<Migration>, migration: Migration): Promise<void> {
+  private async runAndRecord(migrationTable: Table<Migration>, migration: Migration): Promise<void> {
+    const db = getDb();
+    migration.status = 'running';
+    migration.startTime = moment();
+    await db.update(migrationTable, migration);
+    this.logger.info({ message: `Running migration (${migration.id}) ${migration.description}` });
     try {
-      const db = getDb();
-      migration.status = 'running';
-      migration.startTime = moment();
-      await db.update(migrationTable, migration);
-      this.logger.info({ message: `Running migration (${migration.id}) ${migration.description}` });
-      try {
-        migration.output = await migration.run();
-        migration.status = 'success';
-      } catch (error: any) {
-        migration.failureMessage = error.message;
-        migration.failureStack = error.stack;
-        migration.status = 'failure';
-      } finally {
-        migration.endTime = moment();
-      }
-      migration.duration = this.duration(migration.startTime, migration.endTime);
-      await db.update(migrationTable, migration);
-      this.logger.info({
-        message: `[${migration.status}] (${migration.duration}) Finished running migration (${migration.id}) ${migration.description}`,
-      });
-    } catch (error) {
-      // Migration failures are recorded on the record above; reaching here means recording run
-      // state itself failed (db.update / infrastructure). This body runs detached, so log
-      // terminally — a rejection would escape as an unhandled rejection and kill the process.
-      this.logger.error({ message: `Failed recording run state for migration (${migration.id})`, error });
+      migration.output = await migration.run();
+      migration.status = 'success';
+    } catch (error: any) {
+      // Domain bookkeeping, not containment: a migration that throws is a run OUTCOME, recorded
+      // as failure status on the record. Only infrastructure failures (the db.update calls
+      // themselves) reject the returned promise.
+      migration.failureMessage = error.message;
+      migration.failureStack = error.stack;
+      migration.status = 'failure';
+    } finally {
+      migration.endTime = moment();
     }
+    migration.duration = this.duration(migration.startTime, migration.endTime);
+    await db.update(migrationTable, migration);
+    this.logger.info({
+      message: `[${migration.status}] (${migration.duration}) Finished running migration (${migration.id}) ${migration.description}`,
+    });
   }
 
   private duration(start: Moment, end: Moment): string {
