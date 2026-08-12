@@ -38,7 +38,11 @@ export class KnexSchemaOperations implements SchemaOperations {
             const columnNames = index.columns.map(
               (columnPropertyName) => table.columns[columnPropertyName as string].name
             );
-            tableBuilder.index(columnNames, index.name);
+            if (index.unique) {
+              tableBuilder.unique(columnNames, index.name);
+            } else {
+              tableBuilder.index(columnNames, index.name);
+            }
             this.logger.info({ message: `[${table.name}] Creating index: ${index.name}` });
           }
         }
@@ -105,7 +109,11 @@ export class KnexSchemaOperations implements SchemaOperations {
         }
 
         for (const index of tableChanges.indexesToCreate) {
-          tableBuilder.index(index.columns, index.name);
+          if (index.unique) {
+            tableBuilder.unique(typeof index.columns === 'string' ? [index.columns] : index.columns, index.name);
+          } else {
+            tableBuilder.index(index.columns, index.name);
+          }
           this.logger.info({ message: `[${table.name}] Creating index: ${JSON.stringify(index)}` });
           this.logger.info({ message: `[${table.name}] Creating index:`, obj: { index } });
         }

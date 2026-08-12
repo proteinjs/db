@@ -246,7 +246,7 @@ export class TableManager {
         const serializedColumns = JSON.stringify(columns);
         currentIndexMap[serializedColumns] = true;
         if (!existingIndexMap[serializedColumns]) {
-          indexesToCreate.push({ name: index.name, columns });
+          indexesToCreate.push({ name: index.name, columns, unique: index.unique });
         }
       }
     }

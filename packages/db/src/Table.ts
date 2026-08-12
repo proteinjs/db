@@ -79,7 +79,12 @@ export abstract class Table<T extends Record> implements Loadable, CustomSeriali
   public __serializerId = TableSerializerId;
   abstract name: string;
   abstract columns: Columns<T>;
-  public indexes: { columns: (keyof T)[]; name?: string }[] = [];
+  /**
+   * `unique: true` creates a UNIQUE index (composite uniqueness lives here; single-column
+   * uniqueness can also use `ColumnOptions.unique`). Name unique indexes with a `_unique`
+   * suffix — schema metadata classifies unique indexes by that suffix.
+   */
+  public indexes: { columns: (keyof T)[]; name?: string; unique?: boolean }[] = [];
   /** When records are deleted, delete records having references pointing to deleted records */
   public cascadeDeleteReferences: () => { table: string; referenceColumn: string }[] = () => [];
   /**
