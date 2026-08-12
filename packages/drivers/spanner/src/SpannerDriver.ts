@@ -8,7 +8,7 @@ import {
   tableByName,
 } from '@proteinjs/db';
 import { SpannerConfig } from './SpannerConfig';
-import { SpannerLivenessMonitor } from './SpannerLivenessMonitor';
+import { SpannerLivenessMonitor, type SpannerSessionPoolStats } from './SpannerLivenessMonitor';
 import { Logger } from '@proteinjs/logger';
 import { Statement } from '@proteinjs/db-query';
 import { SpannerSchemaOperations } from './SpannerSchemaOperations';
@@ -38,6 +38,18 @@ export class SpannerDriver implements DbDriver {
   constructor(config: SpannerConfig, getTable?: (name: string) => Table<any>) {
     this.config = config;
     this.getTable = getTable;
+  }
+
+  /**
+   * The session-pool gauge (P4a), read-only — the four numbers that make pool exhaustion
+   * observable, for external observers (the ops monitors platform). Undefined until the process
+   * has connected a Database (no pool exists to gauge yet).
+   */
+  static getSessionPoolStats(): SpannerSessionPoolStats | undefined {
+    if (!SpannerDriver.SPANNER_DB) {
+      return undefined;
+    }
+    return SpannerDriver.LIVENESS_MONITOR.poolStats();
   }
 
   private getSpanner(): Spanner {
