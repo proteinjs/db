@@ -1,4 +1,4 @@
-import { getScopedDb } from '@proteinjs/user';
+import { getScopedDb, getScopedDbAsSystem } from '@proteinjs/user';
 import { QueryBuilderFactory, Reference } from '@proteinjs/db';
 import { File } from './tables/FileTable';
 import { tables } from './tables/tables';
@@ -38,7 +38,13 @@ export class DbFileStorageDriver implements FileStorageDriver {
   }
 
   async getFileData(fileId: string): Promise<string> {
-    const db = getScopedDb();
+    // Byte reads are keyed by id and UNSCOPED — matching the GCS driver's semantics (a bucket
+    // download by id). The driver is a byte store; access control lives with callers and the
+    // scoped File METADATA layer (e.g. the /file route 404s on a foreign id before ever
+    // reaching bytes). A caller-scoped read here silently returned '' for any cross-scope
+    // reader a service-layer door had already authorized — an emulator/DB-driver behavior the
+    // GCS deployment never had.
+    const db = getScopedDbAsSystem();
     const qb = new QueryBuilderFactory()
       .getQueryBuilder(tables.FileData, { file: fileId })
       .sort([{ field: 'order', desc: false }]);
