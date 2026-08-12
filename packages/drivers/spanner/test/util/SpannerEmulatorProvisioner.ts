@@ -14,6 +14,13 @@ import { Spanner } from '@google-cloud/spanner';
  * port doesn't even need publishing), and it shares the data client's exact fate: if the address
  * is wrong, no suite could pass anyway.
  *
+ * The database's `version_retention_period` is pinned to 1m (vs the 1h default): the emulator
+ * keeps MVCC versions in RSS until they age out of retention, so under the provision-once
+ * harness (schema and data live for a whole run and across runs) the 1h default turns every
+ * delete/update into an hour of unreclaimable emulator memory. Measured: with 1m retention the
+ * emulator's RSS plateaus instead of growing to OOM. Emulator-only by construction — the whole
+ * path is gated on SPANNER_EMULATOR_HOST; cloud databases are never touched.
+ *
  * @internal This class is intended to be used only in tests. Do not use it in production code.
  */
 export class SpannerEmulatorProvisioner {
@@ -57,6 +64,31 @@ export class SpannerEmulatorProvisioner {
       await database.close().catch(() => undefined);
     } catch (error) {
       SpannerEmulatorProvisioner.swallowAlreadyExists(error);
+    }
+    await SpannerEmulatorProvisioner.pinVersionRetention(instance, config.databaseName);
+  }
+
+  /**
+   * ALTER the emulator database's version_retention_period down to 1m (see class doc). Runs on
+   * both the fresh-create and already-exists paths — a database that survived from a previous
+   * run must end up pinned too. Idempotent; re-pinning an already-pinned database is a no-op
+   * option write.
+   */
+  private static async pinVersionRetention(
+    instance: ReturnType<Spanner['instance']>,
+    databaseName: string
+  ): Promise<void> {
+    // A Database handle's session pool opens in its constructor (same hazard as the
+    // createDatabase handle above) — own it through its death: error listener + close.
+    const database = instance.database(databaseName);
+    database.on('error', () => undefined);
+    try {
+      const [operation] = await database.updateSchema(
+        `ALTER DATABASE \`${databaseName}\` SET OPTIONS (version_retention_period = '1m')`
+      );
+      await operation.promise();
+    } finally {
+      await database.close().catch(() => undefined);
     }
   }
 
