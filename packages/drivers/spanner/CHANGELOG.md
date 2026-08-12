@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.15.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.14.4...@proteinjs/db-driver-spanner@1.15.0) (2026-08-12)
+
+
+### Features
+
+* **spanner-test:** pin emulator database version_retention_period to 1m in provisioner ([20dc37d](https://github.com/proteinjs/db/commit/20dc37db64bfd73e7e1b531136bda815844f90bb))
+
+
+
+
+
 ## [1.14.2](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.14.1...@proteinjs/db-driver-spanner@1.14.2) (2026-08-09)
 
 
