@@ -21,9 +21,24 @@ import { Spanner } from '@google-cloud/spanner';
  * emulator's RSS plateaus instead of growing to OOM. Emulator-only by construction — the whole
  * path is gated on SPANNER_EMULATOR_HOST; cloud databases are never touched.
  *
+ * INVARIANT — re-ensuring on an already-provisioned emulator issues ZERO DDL. `ensureProvisioned`
+ * runs in every fresh process's first beforeAll (the once-per-run schema epoch lives on
+ * `process`), and fresh processes appear MID-RUN: jest's `workerIdleMemoryLimit` restarts the
+ * worker between suites, killing the old one with whatever background read-write transaction its
+ * suites left in flight. The emulator rejects ANY schema change while a read-write transaction is
+ * active (FAILED_PRECONDITION "a concurrent schema change operation or read-write transaction is
+ * already in progress"), and a transaction stranded by a killed process stays active well past the
+ * next suite's beforeAll — an unconditional pin ALTER here failed 11 of 101 flow-server suites in
+ * exactly that pattern (CI run 31643570286). Reads are immune, so the pin reconciles: read the
+ * current option, ALTER only on drift. The run's only legitimate DDL window stays the first
+ * provisioning of a fresh emulator, where no predecessor process can have stranded anything.
+ *
  * @internal This class is intended to be used only in tests. Do not use it in production code.
  */
 export class SpannerEmulatorProvisioner {
+  /** The retention the harness pins emulator databases to (see class doc). */
+  private static readonly VERSION_RETENTION_PERIOD = '1m';
+
   /** Kept until release(): closing right after the create-operations races their trailing LRO
    *  callbacks into an unhandled "client has already been closed" that fails the suite. */
   private static client: Spanner | undefined;
@@ -69,10 +84,14 @@ export class SpannerEmulatorProvisioner {
   }
 
   /**
-   * ALTER the emulator database's version_retention_period down to 1m (see class doc). Runs on
+   * Reconcile the emulator database's version_retention_period to 1m (see class doc). Runs on
    * both the fresh-create and already-exists paths — a database that survived from a previous
-   * run must end up pinned too. Idempotent; re-pinning an already-pinned database is a no-op
-   * option write.
+   * run must end up pinned too. Read-before-write, NOT a blind re-pin: the ALTER is DDL, and
+   * per the class invariant a re-ensure on an already-pinned database must issue zero DDL (a
+   * stranded read-write transaction from a killed predecessor process fails ANY schema change
+   * with FAILED_PRECONDITION; the read is immune). The current value comes from
+   * INFORMATION_SCHEMA.DATABASE_OPTIONS — the admin API's `getMetadata()` does not surface the
+   * option on the emulator (returns '' pinned or not; verified against emulator image 2026-08).
    */
   private static async pinVersionRetention(
     instance: ReturnType<Spanner['instance']>,
@@ -83,8 +102,16 @@ export class SpannerEmulatorProvisioner {
     const database = instance.database(databaseName);
     database.on('error', () => undefined);
     try {
+      const [rows] = await database.run({
+        sql: `SELECT s.OPTION_VALUE FROM INFORMATION_SCHEMA.DATABASE_OPTIONS s WHERE s.OPTION_NAME = 'version_retention_period'`,
+        json: true,
+      });
+      const currentRetention = (rows[0] as { OPTION_VALUE?: string } | undefined)?.OPTION_VALUE;
+      if (currentRetention === SpannerEmulatorProvisioner.VERSION_RETENTION_PERIOD) {
+        return;
+      }
       const [operation] = await database.updateSchema(
-        `ALTER DATABASE \`${databaseName}\` SET OPTIONS (version_retention_period = '1m')`
+        `ALTER DATABASE \`${databaseName}\` SET OPTIONS (version_retention_period = '${SpannerEmulatorProvisioner.VERSION_RETENTION_PERIOD}')`
       );
       await operation.promise();
     } finally {
