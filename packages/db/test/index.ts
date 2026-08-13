@@ -4,6 +4,7 @@ export * from './reusable/ColumnTypesTests';
 export * from './reusable/DynamicReferenceColumnTests';
 export * from './reusable/TransactionTests';
 export * from './reusable/CascadeDeleteTests';
+export * from './reusable/PreloadReferencesTests';
 
 export * from './util/testUser';
 

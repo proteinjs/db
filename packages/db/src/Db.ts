@@ -29,6 +29,7 @@ import {
 import { isInstanceOf } from '@proteinjs/util';
 import { Reference } from './reference/Reference';
 import { ReferenceArray } from './reference/ReferenceArray';
+import { ReferenceCache } from './reference/ReferenceCache';
 import { ArrayMembershipUpdate, applyArrayMembershipOps } from './reference/ArrayMembershipOps';
 import { PreservedPath, overlayPreservedPaths } from './UpdatePreserving';
 
@@ -541,15 +542,25 @@ export class Db<R extends Record = Record> implements DbService<R> {
     return records;
   }
 
+  /**
+   * Batch-load the result set's references: one IN query per referenced table, grouped
+   * across rows and reference-array members, instead of a `get()` per reference (a 30-row
+   * window over references was 30 serialized point reads — each through its own default-
+   * driver Db). The batch queries ride THIS instance — driver, table resolution, ambient
+   * transaction, and authority — so a preload behaves like part of the query that carried
+   * it. References already loaded, or serveable from `ReferenceCache` (`Reference.get`
+   * consults it per read, deliberately never stamping `_object`), are left untouched.
+   */
   private async preloadReferences(records: any[], queryOptions?: QueryOptions<any>) {
     const { preloadReferences } = queryOptions || {};
     if (!preloadReferences?.enabled) {
       return;
     }
 
+    const pendingReferences: Reference<any>[] = [];
+    const pendingReferenceArrays: ReferenceArray<any>[] = [];
     for (const record of records) {
-      const fields = Object.entries(record);
-      for (const [fieldPropertyName, fieldValue] of fields) {
+      for (const [fieldPropertyName, fieldValue] of Object.entries(record)) {
         if (preloadReferences.excludeColumns?.includes(fieldPropertyName)) {
           continue;
         }
@@ -558,10 +569,61 @@ export class Db<R extends Record = Record> implements DbService<R> {
           continue;
         }
 
-        if (isInstanceOf(fieldValue, Reference) || isInstanceOf(fieldValue, ReferenceArray)) {
-          await (fieldValue as Reference<any> | ReferenceArray<any>).get();
+        if (isInstanceOf(fieldValue, Reference)) {
+          const reference = fieldValue as Reference<any>;
+          if (!reference._object && reference._id && !ReferenceCache.get().get(reference._table, reference._id)) {
+            pendingReferences.push(reference);
+          }
+        } else if (isInstanceOf(fieldValue, ReferenceArray)) {
+          const referenceArray = fieldValue as ReferenceArray<any>;
+          if (!referenceArray._objects) {
+            pendingReferenceArrays.push(referenceArray);
+          }
         }
       }
+    }
+
+    const idsByTable = new Map<string, Set<string>>();
+    const addIds = (tableName: string, ids: string[]) => {
+      if (ids.length === 0) {
+        return;
+      }
+      let tableIds = idsByTable.get(tableName);
+      if (!tableIds) {
+        tableIds = new Set();
+        idsByTable.set(tableName, tableIds);
+      }
+      for (const id of ids) {
+        tableIds.add(id);
+      }
+    };
+    for (const reference of pendingReferences) {
+      addIds(reference._table, [reference._id as string]);
+    }
+    for (const referenceArray of pendingReferenceArrays) {
+      addIds(referenceArray._table, referenceArray._ids);
+    }
+
+    const rowsByTable = new Map<string, Map<string, any>>();
+    await Promise.all(
+      Array.from(idsByTable.entries()).map(async ([tableName, tableIds]) => {
+        const table = this.getTable(tableName);
+        const qb = new QueryBuilderFactory()
+          .getQueryBuilder(table)
+          .condition({ field: 'id', operator: 'IN', value: Array.from(tableIds) });
+        const rows = await this.query(table, qb);
+        rowsByTable.set(tableName, new Map(rows.map((row) => [row.id, row])));
+      })
+    );
+
+    for (const reference of pendingReferences) {
+      reference._object = rowsByTable.get(reference._table)?.get(reference._id as string);
+    }
+    for (const referenceArray of pendingReferenceArrays) {
+      const rowsById = rowsByTable.get(referenceArray._table);
+      referenceArray._objects = referenceArray._ids
+        .map((id) => rowsById?.get(id))
+        .filter((row): row is any => row !== undefined);
     }
   }
 
