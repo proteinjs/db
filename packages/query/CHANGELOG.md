@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.6.1](https://github.com/proteinjs/db/compare/@proteinjs/db-query@1.6.0...@proteinjs/db-query@1.6.1) (2026-08-13)
+
+**Note:** Version bump only for package @proteinjs/db-query
+
+
+
+
+
 ## [1.4.4](https://github.com/proteinjs/db/compare/@proteinjs/db-query@1.4.3...@proteinjs/db-query@1.4.4) (2026-04-08)
 
 
