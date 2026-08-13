@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.8.0](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.7.1...@proteinjs/db-ui@1.8.0) (2026-08-13)
+
+
+### Bug Fixes
+
+* **ci:** db-ui rides @proteinjs/ui 4.6.0 — the Cursor* exports QueryCursorLoader imports ([540de28](https://github.com/proteinjs/db/commit/540de28b992eb6dadf8ca7a5f0f706394485aeba))
+
+
+### Features
+
+* QueryCursorLoader — cursor windows over the QueryBuilder machinery ([f45f3b3](https://github.com/proteinjs/db/commit/f45f3b32edae7c0e232574bd319522c277238116))
+
+
+
+
+
 ## [1.6.1](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.6.0...@proteinjs/db-ui@1.6.1) (2026-08-08)
 
 **Note:** Version bump only for package @proteinjs/db-ui

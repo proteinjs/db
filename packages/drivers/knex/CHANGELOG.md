@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.9.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.8.1...@proteinjs/db-driver-knex@1.9.0) (2026-08-13)
+
+
+### Features
+
+* composite unique indexes — Table.indexes gains unique, threaded through schema ops ([dabefd0](https://github.com/proteinjs/db/commit/dabefd07c4fc797c3d06c8c0770b7674ad33d018))
+
+
+
+
+
 ## [1.7.1](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.7.0...@proteinjs/db-driver-knex@1.7.1) (2026-08-08)
 
 **Note:** Version bump only for package @proteinjs/db-driver-knex

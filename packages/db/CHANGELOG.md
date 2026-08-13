@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.29.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.28.1...@proteinjs/db@1.29.0) (2026-08-13)
+
+
+### Features
+
+* composite unique indexes — Table.indexes gains unique, threaded through schema ops ([dabefd0](https://github.com/proteinjs/db/commit/dabefd07c4fc797c3d06c8c0770b7674ad33d018))
+
+
+
+
+
 # [1.27.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.26.0...@proteinjs/db@1.27.0) (2026-08-08)
 
 

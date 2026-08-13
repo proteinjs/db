@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.16.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.15.0...@proteinjs/db-driver-spanner@1.16.0) (2026-08-13)
+
+
+### Bug Fixes
+
+* **spanner-test:** provisioner re-ensure is zero-DDL — reconcile the retention pin instead of blind ALTER ([312427d](https://github.com/proteinjs/db/commit/312427de54856eb3d7508afa699f141f3edc1c1e))
+
+
+### Features
+
+* composite unique indexes — Table.indexes gains unique, threaded through schema ops ([dabefd0](https://github.com/proteinjs/db/commit/dabefd07c4fc797c3d06c8c0770b7674ad33d018))
+
+
+
+
+
 # [1.15.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.14.4...@proteinjs/db-driver-spanner@1.15.0) (2026-08-12)
 
 
