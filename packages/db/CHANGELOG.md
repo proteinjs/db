@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.29.1](https://github.com/proteinjs/db/compare/@proteinjs/db@1.29.0...@proteinjs/db@1.29.1) (2026-08-13)
+
+
+### Performance Improvements
+
+* preloadReferences batches loads — one IN query per referenced table ([1cf56b0](https://github.com/proteinjs/db/commit/1cf56b043c6c8078243bb829ab2d89b580476767))
+
+
+
+
+
 # [1.29.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.28.1...@proteinjs/db@1.29.0) (2026-08-13)
 
 
