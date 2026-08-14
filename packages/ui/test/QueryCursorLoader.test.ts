@@ -1,35 +1,24 @@
 /**
- * QueryCursorLoader (src/table/QueryCursorLoader.ts) at the pure level: react-query key
- * derivation, cursor threading into the window query, and next-cursor derivation — including
- * the null-tail exhaustion rule (NULL cursor-field rows collect at the tail under the sort;
- * a null tail can't anchor a cursor, so paging stops). Window queries are inspected through
- * the QueryBuilder graph; loadWindow's db round-trip is exercised with a stubbed getDb.
+ * QueryCursorLoader (src/table/QueryCursorLoader.ts) as the thin `CursorLoader` adapter over
+ * the db-owned `CursorWindowPager`: react-query key derivation, string-cursor encode/decode
+ * threading into the pager's lexicographic window queries (primary axis + `id` tiebreak), and
+ * exhaustion (short window, and the null-tail rule: NULL sort-value rows collect at the tail
+ * under the sort; a null can't anchor a continuation, so paging stops). The db round trip is
+ * injected through the pager's `options.db` seam via the house internals-cast pattern — no
+ * module mocking.
  */
 import moment from 'moment';
-
-const stagedRows: { rows: unknown[] } = { rows: [] };
-const queries: unknown[] = [];
-const stubDb = {
-  query: async (_table: unknown, qb: unknown) => {
-    queries.push(qb);
-    return stagedRows.rows;
-  },
-};
-
-jest.mock('@proteinjs/db', () => ({
-  ...jest.requireActual('@proteinjs/db'),
-  getDb: () => stubDb,
-}));
-
-import { QueryBuilder, SortCriteria, Table } from '@proteinjs/db';
-import { CursorValue } from '@proteinjs/ui';
+import { Db, QueryBuilder, SortCriteria, Table } from '@proteinjs/db';
 import { QueryCursorLoader } from '../src/table/QueryCursorLoader';
+// Load the reflection source graph so the house Serializer's custom serializers (moments)
+// are registered — cursor encode/decode fidelity rides them.
+import '../generated/index';
 
 type Row = {
   id: string;
   created: moment.Moment;
   updated: moment.Moment;
-  lastActivityAt?: moment.Moment;
+  lastActivityAt?: moment.Moment | null;
   isPinned?: boolean;
 };
 
@@ -37,13 +26,23 @@ const table = { name: 'test_content' } as Table<Row>;
 const sort: SortCriteria<Row>[] = [{ field: 'lastActivityAt', desc: true }];
 const createQuery = () => new QueryBuilder<Row>(table.name);
 
-/** House pattern: private helpers reachable via a typed cast on the instance. */
-type LoaderInternals = {
-  buildWindowQuery(cursor: CursorValue | null, windowSize: number): QueryBuilder<Row>;
-  deriveNextCursor(rows: Row[], windowSize: number): CursorValue | null;
-};
+const staged: { rows: Row[] } = { rows: [] };
+const executed: QueryBuilder<Row>[] = [];
+const stubDb = {
+  query: async (_table: unknown, qb: QueryBuilder<Row>) => {
+    executed.push(qb);
+    return staged.rows;
+  },
+} as unknown as Db;
 
-const internals = (loader: QueryCursorLoader<Row>) => loader as unknown as LoaderInternals;
+/** House pattern: private internals reachable via a typed cast on the instance. */
+type LoaderInternals = { pager: { options?: { db?: Db } } };
+
+const loaderWithStubDb = (sortCriteria?: SortCriteria<Row>[], query: () => QueryBuilder<Row> = createQuery) => {
+  const loader = new QueryCursorLoader<Row>(table, query, sortCriteria);
+  (loader as unknown as LoaderInternals).pager.options = { db: stubDb };
+  return loader;
+};
 
 const graphNodes = (qb: QueryBuilder<Row>): any[] => qb.graph.nodes().map((id: string) => qb.graph.node(id));
 const conditionNodes = (qb: QueryBuilder<Row>) => graphNodes(qb).filter((node) => node?.type === 'CONDITION');
@@ -54,12 +53,12 @@ const dated = (id: string, at: string | null): Row => ({
   id,
   created: moment(),
   updated: moment(),
-  lastActivityAt: at ? moment(at) : undefined,
+  lastActivityAt: at ? moment(at) : null,
 });
 
 beforeEach(() => {
-  stagedRows.rows = [];
-  queries.length = 0;
+  staged.rows = [];
+  executed.length = 0;
 });
 
 describe('reactQueryKeys', () => {
@@ -81,86 +80,80 @@ describe('reactQueryKeys', () => {
   });
 });
 
-describe('buildWindowQuery — cursor threading', () => {
-  it('the first window carries no cursor condition, only the sort and the window pagination', () => {
-    const loader = new QueryCursorLoader<Row>(table, createQuery, sort);
-    const qb = internals(loader).buildWindowQuery(null, 30);
+describe('loadWindow — cursor threading', () => {
+  it('the first window carries no cursor conditions — the sort (with id tiebreak) and the window pagination', async () => {
+    const loader = loaderWithStubDb(sort);
+    staged.rows = [];
+    await loader.loadWindow(null, 30);
+    expect(executed).toHaveLength(1);
+    const qb = executed[0];
     expect(conditionNodes(qb)).toHaveLength(0);
     expect(paginationNode(qb)).toMatchObject({ start: 0, end: 30 });
-    expect(sortNodes(qb)).toHaveLength(1);
-    expect(sortNodes(qb)[0].criteria).toMatchObject({ field: 'lastActivityAt', desc: true });
+    expect(sortNodes(qb).map((node) => node.criteria)).toEqual([
+      { field: 'lastActivityAt', desc: true },
+      { field: 'id', desc: false },
+    ]);
   });
 
-  it('a cursor becomes `field < cursor` on the primary sort field for a descending sort', () => {
-    const loader = new QueryCursorLoader<Row>(table, createQuery, sort);
-    const cursor = moment('2026-08-10T12:00:00.000Z');
-    const qb = internals(loader).buildWindowQuery(cursor, 30);
+  it('a full window returns a string cursor; feeding it back threads the lexicographic continuation', async () => {
+    const loader = loaderWithStubDb(sort);
+    const rows = [
+      dated('a', '2026-08-10T12:00:00.000Z'),
+      dated('b', '2026-08-09T12:00:00.000Z'),
+      dated('c', '2026-08-08T12:00:00.000Z'),
+    ];
+    staged.rows = rows;
+    const first = await loader.loadWindow(null, 3);
+    expect(first.rows).toBe(rows);
+    expect(typeof first.nextCursor).toBe('string');
+
+    staged.rows = [];
+    await loader.loadWindow(first.nextCursor, 3);
+    const qb = executed[1];
+    // Past-on-axis OR (equal-on-axis AND past-on-id), anchored at the tail row 'c' — with the
+    // moment surviving the string cursor round trip.
     const conditions = conditionNodes(qb);
-    expect(conditions).toHaveLength(1);
-    expect(conditions[0]).toMatchObject({ field: 'lastActivityAt', operator: '<' });
-    expect(conditions[0].value).toBe(cursor);
-    expect(paginationNode(qb)).toMatchObject({ start: 0, end: 30 });
+    expect(conditions).toHaveLength(3);
+    const past = conditions.find((node) => node.operator === '<');
+    expect(past).toMatchObject({ field: 'lastActivityAt' });
+    expect(moment.isMoment(past.value)).toBe(true);
+    expect(past.value.toISOString()).toBe(rows[2].lastActivityAt!.toISOString());
+    expect(conditions.find((node) => node.operator === '=')).toMatchObject({ field: 'lastActivityAt' });
+    expect(conditions.find((node) => node.operator === '>')).toMatchObject({ field: 'id', value: 'c' });
   });
 
-  it('an ascending primary sort flips the cursor operator to `>`', () => {
-    const loader = new QueryCursorLoader<Row>(table, createQuery, [{ field: 'lastActivityAt', desc: false }]);
-    const qb = internals(loader).buildWindowQuery(5, 10);
-    expect(conditionNodes(qb)[0]).toMatchObject({ field: 'lastActivityAt', operator: '>', value: 5 });
-  });
-
-  it('every window builds on a FRESH query — cursor conditions never accumulate across windows', () => {
-    const loader = new QueryCursorLoader<Row>(table, createQuery, sort);
-    internals(loader).buildWindowQuery(moment('2026-08-10T12:00:00.000Z'), 30);
-    const second = internals(loader).buildWindowQuery(moment('2026-08-01T12:00:00.000Z'), 30);
-    expect(conditionNodes(second)).toHaveLength(1);
-  });
-});
-
-describe('deriveNextCursor — exhaustion', () => {
-  const loader = new QueryCursorLoader<Row>(table, createQuery, sort);
-
-  it('a short window is exhausted', () => {
-    expect(internals(loader).deriveNextCursor([dated('a', '2026-08-10T12:00:00.000Z')], 3)).toBeNull();
-    expect(internals(loader).deriveNextCursor([], 3)).toBeNull();
-  });
-
-  it('a full window anchors the next cursor at its tail', () => {
-    const rows = [
+  it('every window builds on a FRESH query — cursor conditions never accumulate across windows', async () => {
+    const loader = loaderWithStubDb(sort);
+    staged.rows = [
       dated('a', '2026-08-10T12:00:00.000Z'),
       dated('b', '2026-08-09T12:00:00.000Z'),
       dated('c', '2026-08-08T12:00:00.000Z'),
     ];
-    const next = internals(loader).deriveNextCursor(rows, 3);
-    expect(next).toBe(rows[2].lastActivityAt);
-  });
-
-  it('a full window with a NULL cursor-field tail is exhausted (null rows collect at the tail; no anchor)', () => {
-    const rows = [dated('a', '2026-08-10T12:00:00.000Z'), dated('b', '2026-08-09T12:00:00.000Z'), dated('c', null)];
-    expect(internals(loader).deriveNextCursor(rows, 3)).toBeNull();
+    const first = await loader.loadWindow(null, 3);
+    staged.rows = [
+      dated('d', '2026-08-07T12:00:00.000Z'),
+      dated('e', '2026-08-06T12:00:00.000Z'),
+      dated('f', '2026-08-05T12:00:00.000Z'),
+    ];
+    const second = await loader.loadWindow(first.nextCursor, 3);
+    staged.rows = [];
+    await loader.loadWindow(second.nextCursor, 3);
+    expect(conditionNodes(executed[2])).toHaveLength(3);
   });
 });
 
-describe('loadWindow', () => {
-  it('returns the queried rows with the derived next cursor', async () => {
-    const loader = new QueryCursorLoader<Row>(table, createQuery, sort);
-    const rows = [
-      dated('a', '2026-08-10T12:00:00.000Z'),
-      dated('b', '2026-08-09T12:00:00.000Z'),
-      dated('c', '2026-08-08T12:00:00.000Z'),
-    ];
-    stagedRows.rows = rows;
+describe('loadWindow — exhaustion', () => {
+  it('a short window is exhausted (null cursor)', async () => {
+    const loader = loaderWithStubDb(sort);
+    staged.rows = [dated('a', '2026-08-10T12:00:00.000Z')];
     const window = await loader.loadWindow(null, 3);
-    expect(window.rows).toBe(rows);
-    expect(window.nextCursor).toBe(rows[2].lastActivityAt);
-    // The executed query is the built window query: pagination sized to the window.
-    expect(queries).toHaveLength(1);
-    expect(paginationNode(queries[0] as QueryBuilder<Row>)).toMatchObject({ start: 0, end: 3 });
+    expect(window.nextCursor).toBeNull();
   });
 
-  it('returns an exhausted window (null cursor) when the query comes back short', async () => {
-    const loader = new QueryCursorLoader<Row>(table, createQuery, sort);
-    stagedRows.rows = [dated('a', '2026-08-10T12:00:00.000Z')];
-    const window = await loader.loadWindow(moment('2026-08-11T12:00:00.000Z'), 3);
+  it('a full window with a NULL sort-value tail is exhausted (null rows collect at the tail; no anchor)', async () => {
+    const loader = loaderWithStubDb(sort);
+    staged.rows = [dated('a', '2026-08-10T12:00:00.000Z'), dated('b', '2026-08-09T12:00:00.000Z'), dated('c', null)];
+    const window = await loader.loadWindow(null, 3);
     expect(window.nextCursor).toBeNull();
   });
 });

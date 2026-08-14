@@ -517,6 +517,16 @@ export class Db<R extends Record = Record> implements DbService<R> {
     }
   }
 
+  /**
+   * Run a query. Column queries (scope guards etc.) are always applied.
+   *
+   * PAGING: this method is also the cursor-window surface — `CursorWindowPager` composes each
+   * window as a fresh QueryBuilder (cursor conditions + sort + `paginate(0, windowSize)`)
+   * through here, so every window rides the caller's driver, ambient transaction, and column
+   * queries. Iterating consumers go through it (`RecordIterator` server-side,
+   * `QueryCursorLoader` in the UI) instead of positional `paginate(start, end)` offsets,
+   * which drift under concurrent writes (rows slide across window frames).
+   */
   async query<T extends R>(table: Table<T>, query: Query<T>, options?: QueryOptions<T>): Promise<T[]> {
     const qb = new QueryBuilderFactory().getQueryBuilder(table, query);
 

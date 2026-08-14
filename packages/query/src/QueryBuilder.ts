@@ -297,6 +297,31 @@ export class QueryBuilder<T = any> {
     return this;
   }
 
+  /** Read the sort criteria applied to this query, in the order `toSql` renders them. */
+  getSortCriteria(): SortCriteria<T>[] {
+    return this.sortNodeIds().map((id) => (this.graph.node(id) as any).criteria as SortCriteria<T>);
+  }
+
+  /**
+   * Remove every sort criterion from this query and return them (in `toSql` render order).
+   * Lets a pager take ordering over from a consumer-built query: cursor windows must own the
+   * ORDER BY (the cursor axes and the sort have to agree), so they lift the consumer's
+   * criteria off the base query and re-apply them per window alongside the cursor conditions.
+   */
+  removeSortCriteria(): SortCriteria<T>[] {
+    const criteria: SortCriteria<T>[] = [];
+    for (const id of this.sortNodeIds()) {
+      criteria.push((this.graph.node(id) as any).criteria as SortCriteria<T>);
+      this.graph.removeNode(id);
+    }
+    return criteria;
+  }
+
+  private sortNodeIds(): string[] {
+    const rootChildren: string[] = this.graph.successors(this.rootId) || [];
+    return rootChildren.filter((id) => (this.graph.node(id) as any)?.type === 'SORT');
+  }
+
   toWhereClause(config: StatementConfig, statementParamManager?: StatementParamManager): Statement {
     const paramManager = statementParamManager ? statementParamManager : new StatementParamManager(config);
 

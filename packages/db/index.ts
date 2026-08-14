@@ -10,6 +10,7 @@ export * from './src/reference/Reference';
 export * from './src/UpdatePreserving';
 export * from './src/reference/ReferenceCache';
 export * from './src/RecordIterator';
+export * from './src/CursorWindowPager';
 export * from './src/source/SourceRecord';
 export * from './src/source/SourceRecordRepo';
 export * from './src/MigrationRunner';

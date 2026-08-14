@@ -4,6 +4,7 @@ import { cascadeDeleteTestTables } from './tables/cascadeDeleteTestTables';
 import { columnTypesTestTables } from './tables/columnTypesTestTables';
 import { crudTestTables } from './tables/crudTestTables';
 import { dynamicReferenceTestTables } from './tables/dynamicReferenceColumnTestTables';
+import { recordIteratorTestTables } from './tables/recordIteratorTestTables';
 import { tableManagerTestTables } from './tables/tableManagerTestTables';
 import { transactionTestTables } from './tables/transactionTestTables';
 
@@ -12,6 +13,7 @@ const TABLES: Table<any>[] = [
   ...Object.values(columnTypesTestTables),
   ...Object.values(crudTestTables),
   ...Object.values(dynamicReferenceTestTables),
+  ...Object.values(recordIteratorTestTables),
   ...Object.values(tableManagerTestTables),
   ...Object.values(transactionTestTables),
 ];
