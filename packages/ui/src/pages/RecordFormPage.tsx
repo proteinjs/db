@@ -2,7 +2,7 @@ import React from 'react';
 import { FormPage, Page, PageComponentProps } from '@proteinjs/ui';
 import { getDbService, tableByName } from '@proteinjs/db';
 import { RecordForm } from '../form/RecordForm';
-import { Theme, SxProps } from '@mui/material';
+import { Theme, SxProps, Typography } from '@mui/material';
 
 export const recordFormPage: Page = {
   name: 'Record Form',
@@ -10,9 +10,10 @@ export const recordFormPage: Page = {
   auth: {
     allUsers: true,
   },
+  // No height override: the app's page container owns viewport height (dvh on mobile —
+  // a 100vh pin here clipped the bottom behind mobile browser chrome).
   pageContainerSxProps: (theme: Theme): SxProps => {
     return {
-      height: '100vh',
       backgroundColor: theme.palette.background.default,
     };
   },
@@ -71,8 +72,9 @@ const DynamicRecordForm = ({ urlParams }: PageComponentProps) => {
     if (tableName) {
       try {
         table = tableByName(tableName);
-      } catch (error) {
-        // eslint-disable-next-line no-ex-assign
+      } catch {
+        // NOTE: this catch previously bound the exception as `error`, shadowing the outer
+        // variable — the message was never returned and the page rendered blank.
         error = `Table not accessible in UI: ${tableName}`;
       }
     } else {
@@ -82,14 +84,18 @@ const DynamicRecordForm = ({ urlParams }: PageComponentProps) => {
     return { table, error };
   }
 
+  function Message({ children }: { children: React.ReactNode }) {
+    return <Typography sx={{ p: 3, color: 'text.secondary' }}>{children}</Typography>;
+  }
+
   function Form() {
     const { table, error } = getTable();
     if (!table) {
-      return <div>{error}</div>;
+      return <Message>{error}</Message>;
     }
 
     if (loadError) {
-      return <div>{loadError}</div>;
+      return <Message>{loadError}</Message>;
     }
 
     if (!recordLoaded) {
@@ -97,7 +103,7 @@ const DynamicRecordForm = ({ urlParams }: PageComponentProps) => {
     }
 
     if (recordId && !record) {
-      return <div>{`No ${table.name} record found: ${recordId}`}</div>;
+      return <Message>{`No ${table.name} record found: ${recordId}`}</Message>;
     }
 
     return <RecordForm table={table} record={record} />;

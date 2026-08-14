@@ -2,7 +2,7 @@ import React from 'react';
 import { Page, PageComponentProps } from '@proteinjs/ui';
 import { tableByName, Table } from '@proteinjs/db';
 import { RecordTable } from '../table/RecordTable';
-import { Box, Paper, SxProps, Theme } from '@mui/material';
+import { Box, Paper, SxProps, Theme, Typography } from '@mui/material';
 
 export const recordTablePage: Page = {
   name: 'Record Table',
@@ -10,19 +10,14 @@ export const recordTablePage: Page = {
   auth: {
     allUsers: true,
   },
+  // No height override: the app's page container owns viewport height (dvh on mobile —
+  // a 100vh pin here clipped the bottom behind mobile browser chrome).
   pageContainerSxProps: (theme: Theme): SxProps => {
     return {
-      height: '100vh',
       backgroundColor: theme.palette.background.default,
     };
   },
-  component: ({ ...props }) => (
-    <Box sx={{ display: 'flex', flexGrow: 1, justifyContent: 'center', padding: 4 }}>
-      <Paper sx={{ maxHeight: '80vh' }}>
-        <DynamicRecordTable {...props} />
-      </Paper>
-    </Box>
-  ),
+  component: ({ ...props }) => <DynamicRecordTable {...props} />,
 };
 
 export const recordTableLink = (table: Table<any>) => {
@@ -48,11 +43,19 @@ const DynamicRecordTable = ({ urlParams }: PageComponentProps) => {
       errorMessage = `Table not provided via the 'name' url param`;
     }
 
+    // The error state renders as a plain message — wrapping it in the table's stretched
+    // card produced a full-height empty Paper with the text clipped at its edge.
     if (!table) {
-      return <div>{errorMessage}</div>;
+      return <Typography sx={{ p: 3, color: 'text.secondary' }}>{errorMessage}</Typography>;
     }
 
-    return <RecordTable table={table} />;
+    return (
+      <Box sx={{ display: 'flex', flexGrow: 1, justifyContent: 'center', padding: 4 }}>
+        <Paper sx={{ maxHeight: '80vh' }}>
+          <RecordTable table={table} />
+        </Paper>
+      </Box>
+    );
   }
 
   return <Table />;

@@ -9,7 +9,6 @@ export const hashGeneratorPage: Page = {
   auth: { permission: 'dev' },
   pageContainerSxProps: (theme: Theme): SxProps => {
     return {
-      height: '100vh',
       backgroundColor: theme.palette.background.default,
     };
   },
