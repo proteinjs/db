@@ -1,5 +1,13 @@
 import { SpannerDriver } from '@proteinjs/db-driver-spanner';
-import { getDb, Migration, MigrationRunner, MigrationTable, SourceRecordRepo, Table } from '@proteinjs/db';
+import {
+  getDb,
+  getDbAsSystem,
+  Migration,
+  MigrationRunner,
+  MigrationTable,
+  SourceRecordRepo,
+  Table,
+} from '@proteinjs/db';
 import { registerTestUser, clearTestUser } from '@proteinjs/db/test';
 import { getDropTestTable } from './util/getDropTestTable';
 import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
@@ -41,6 +49,43 @@ describe('MigrationRunner (spanner)', () => {
     run: async () => 'migration output',
   } as unknown as Migration;
 
+  // ensureMigrationRun fixtures carry run counters: re-running any of them is VISIBLE as a
+  // counter increment, so idempotence and retry are asserted on the migration's own effect,
+  // not on bookkeeping interactions.
+  let ensureBootRunCount = 0;
+  const ensureBootMigration = {
+    id: 'migration-runner-test-ensure-boot',
+    description: 'runs at boot with no user session',
+    run: async () => {
+      ensureBootRunCount++;
+      return 'boot output';
+    },
+  } as unknown as Migration;
+
+  let ensureIdempotentRunCount = 0;
+  const ensureIdempotentMigration = {
+    // Ids stay <= 36 chars — the migration table's id column is uuid-width.
+    id: 'migration-runner-test-ensure-skip',
+    description: 'must not re-run once successful',
+    run: async () => {
+      ensureIdempotentRunCount++;
+      return 'idempotent output';
+    },
+  } as unknown as Migration;
+
+  let ensureRetryAttempts = 0;
+  const ensureRetriedMigration = {
+    id: 'migration-runner-test-ensure-retried',
+    description: 'fails first, fixed on retry',
+    run: async () => {
+      ensureRetryAttempts++;
+      if (ensureRetryAttempts === 1) {
+        throw new Error('ensure migration blew up mid-run');
+      }
+      return 'fixed on retry';
+    },
+  } as unknown as Migration;
+
   beforeAll(async () => {
     // Explicit admin identity (UserAuth is fail-closed): the migration table's doors ride the
     // 'dev' permission with admin break-glass — the permission mapping itself is pinned in
@@ -53,7 +98,13 @@ describe('MigrationRunner (spanner)', () => {
     });
     await dropTable(migrationTable);
     await spannerDriver.getTableManager().loadTable(migrationTable);
-    for (const migration of [failingMigration, succeedingMigration]) {
+    for (const migration of [
+      failingMigration,
+      succeedingMigration,
+      ensureBootMigration,
+      ensureIdempotentMigration,
+      ensureRetriedMigration,
+    ]) {
       sourceRecordRepo.loadSourceRecord(migrationTable.name, migration);
       await getDb().insert(migrationTable, migration);
     }
@@ -84,5 +135,56 @@ describe('MigrationRunner (spanner)', () => {
     expect(row.status).toBe('success');
     expect(row.output).toBe('migration output');
     expect(row.duration).toBeTruthy();
+  });
+
+  describe('ensureMigrationRun (boot path)', () => {
+    // Boot context: NO user session exists — UserAuth is fail-closed, so any getDb() bookkeeping
+    // would deny. These tests run with the suite's test identity CLEARED to pin that
+    // ensureMigrationRun records through the system db. Assertions read as system for the same
+    // reason; the identity is restored for the rest of the suite (afterAll drops the table via
+    // getDb-adjacent paths).
+    beforeEach(() => clearTestUser());
+    afterEach(() => registerTestUser());
+
+    test('runs a pending migration with no user session and records success', async () => {
+      const runner = new MigrationRunner();
+      await runner.ensureMigrationRun(ensureBootMigration.id);
+
+      expect(ensureBootRunCount).toBe(1);
+      const row = await getDbAsSystem().get(migrationTable, { id: ensureBootMigration.id });
+      expect(row.status).toBe('success');
+      expect(row.output).toBe('boot output');
+      expect(row.duration).toBeTruthy();
+    });
+
+    test('a second call skips an already-successful migration', async () => {
+      const runner = new MigrationRunner();
+      await runner.ensureMigrationRun(ensureIdempotentMigration.id);
+      expect(ensureIdempotentRunCount).toBe(1);
+
+      await runner.ensureMigrationRun(ensureIdempotentMigration.id);
+
+      // The migration's effect did not repeat — 'ensure' skipped the successful row.
+      expect(ensureIdempotentRunCount).toBe(1);
+      const row = await getDbAsSystem().get(migrationTable, { id: ensureIdempotentMigration.id });
+      expect(row.status).toBe('success');
+    });
+
+    test('a throwing migration records failure and is retried by the next call', async () => {
+      const runner = new MigrationRunner();
+      await runner.ensureMigrationRun(ensureRetriedMigration.id);
+
+      expect(ensureRetryAttempts).toBe(1);
+      const failedRow = await getDbAsSystem().get(migrationTable, { id: ensureRetriedMigration.id });
+      expect(failedRow.status).toBe('failure');
+      expect(failedRow.failureMessage).toBe('ensure migration blew up mid-run');
+
+      await runner.ensureMigrationRun(ensureRetriedMigration.id);
+
+      expect(ensureRetryAttempts).toBe(2);
+      const retriedRow = await getDbAsSystem().get(migrationTable, { id: ensureRetriedMigration.id });
+      expect(retriedRow.status).toBe('success');
+      expect(retriedRow.output).toBe('fixed on retry');
+    });
   });
 });

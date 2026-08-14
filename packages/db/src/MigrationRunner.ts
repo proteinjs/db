@@ -1,5 +1,5 @@
 import { Moment, moment } from './opt/moment';
-import { getDb } from './Db';
+import { Db, getDb, getDbAsSystem } from './Db';
 import { Table } from './Table';
 import { SourceRecordRepo } from './source/SourceRecordRepo';
 import { MigrationRunnerService, getMigrationRunnerService } from './services/MigrationRunnerService';
@@ -32,16 +32,41 @@ export class MigrationRunner implements MigrationRunnerService {
    */
   runMigration(id: string): Promise<void> {
     const migrationTable: Table<Migration> = new MigrationTable();
-    const migration = new SourceRecordRepo().getSourceRecord<Migration>(migrationTable.name, id);
-    if (!migration) {
-      throw new Error(`Unable to find migration source record for id: ${id}`);
-    }
-
-    return this.runAndRecord(migrationTable, migration);
+    const migration = this.resolveMigration(migrationTable, id);
+    return this.runAndRecord(migrationTable, migration, getDb);
   }
 
-  private async runAndRecord(migrationTable: Table<Migration>, migration: Migration): Promise<void> {
-    const db = getDb();
+  /**
+   * Boot-path API: at server boot no user session exists, so `getDb()` (which `runMigration`
+   * records through) fail-closes on the migration table's doors. This method reads and records
+   * run state through `getDbAsSystem()` instead — it is the seam a future migrations-auto-run
+   * rides (deploy-coupled migrations call it during server startup).
+   *
+   * 'ensure' = idempotent: a row already in 'success' status is logged and skipped. A prior
+   * 'failure' row is retried by design — a fixed migration should run on the next boot.
+   */
+  async ensureMigrationRun(id: string): Promise<void> {
+    const migrationTable: Table<Migration> = new MigrationTable();
+    const db = getDbAsSystem();
+    const migrationRow = await db.get(migrationTable, { id });
+    if (migrationRow?.status === 'success') {
+      this.logger.info({ message: `Migration (${id}) already applied, skipping` });
+      return;
+    }
+
+    const migration = this.resolveMigration(migrationTable, id);
+    await this.runAndRecord(migrationTable, migration, () => db);
+  }
+
+  // The db is taken as a provider, resolved inside this async body: on the service path,
+  // constructing the Db is itself run infrastructure — its failure must REJECT the detached
+  // promise, not throw synchronously from runMigration (only a bogus id may reach the client).
+  private async runAndRecord(
+    migrationTable: Table<Migration>,
+    migration: Migration,
+    getRunDb: () => Db
+  ): Promise<void> {
+    const db = getRunDb();
     migration.status = 'running';
     migration.startTime = moment();
     await db.update(migrationTable, migration);
@@ -64,6 +89,15 @@ export class MigrationRunner implements MigrationRunnerService {
     this.logger.info({
       message: `[${migration.status}] (${migration.duration}) Finished running migration (${migration.id}) ${migration.description}`,
     });
+  }
+
+  private resolveMigration(migrationTable: Table<Migration>, id: string): Migration {
+    const migration = new SourceRecordRepo().getSourceRecord<Migration>(migrationTable.name, id);
+    if (!migration) {
+      throw new Error(`Unable to find migration source record for id: ${id}`);
+    }
+
+    return migration;
   }
 
   private duration(start: Moment, end: Moment): string {
