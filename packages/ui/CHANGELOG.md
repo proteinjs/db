@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.8.5](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.8.4...@proteinjs/db-ui@1.8.5) (2026-08-14)
+
+
+### Bug Fixes
+
+* record table/form page error states + drop 100vh page pins ([6c6aca2](https://github.com/proteinjs/db/commit/6c6aca2cca754e8201011694da893dba2bbd6898))
+
+
+
+
+
 ## [1.8.4](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.8.3...@proteinjs/db-ui@1.8.4) (2026-08-14)
 
 **Note:** Version bump only for package @proteinjs/db-ui
