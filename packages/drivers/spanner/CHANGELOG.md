@@ -3,6 +3,23 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.17.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.16.3...@proteinjs/db-driver-spanner@1.17.0) (2026-08-14)
+
+
+### Bug Fixes
+
+* **test:** abort-aware DDL-rejection control in the provisioner re-ensure suite ([8418cb2](https://github.com/proteinjs/db/commit/8418cb20609d279b35e654948540d690a79b6923))
+* **test:** provisioner control detects emulator DDL-rejection semantics ([3da031a](https://github.com/proteinjs/db/commit/3da031a4a74f172b1dc7df73d273be028c900508))
+
+
+### Features
+
+* ensureMigrationRun — system-context boot API for deploy-coupled migrations ([d771c7b](https://github.com/proteinjs/db/commit/d771c7bc8958ebd38e15b1fd86fde19267ec3d9f))
+
+
+
+
+
 ## [1.16.3](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.16.2...@proteinjs/db-driver-spanner@1.16.3) (2026-08-14)
 
 

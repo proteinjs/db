@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.30.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.29.3...@proteinjs/db@1.30.0) (2026-08-14)
+
+
+### Features
+
+* ensureMigrationRun — system-context boot API for deploy-coupled migrations ([d771c7b](https://github.com/proteinjs/db/commit/d771c7bc8958ebd38e15b1fd86fde19267ec3d9f))
+
+
+
+
+
 ## [1.29.3](https://github.com/proteinjs/db/compare/@proteinjs/db@1.29.2...@proteinjs/db@1.29.3) (2026-08-14)
 
 **Note:** Version bump only for package @proteinjs/db
