@@ -551,21 +551,29 @@ export class SpannerDriver implements DbDriver {
   }
 
   /**
-   * Execute a schema write operation.
+   * Execute a schema write operation — one long-running operation for the WHOLE statement list
+   * (`UpdateDatabaseDdl` applies the statements in order; on a mid-batch failure, earlier
+   * statements stay applied and later ones are cancelled — the same net semantics as issuing
+   * them serially, minus N-1 operation round trips). Sequential per-statement operations are
+   * what made a 37-statement prod boot take 10m31s; callers batch and pass the list.
    */
-  async runUpdateSchema(sql: string): Promise<void> {
+  async runUpdateSchema(statements: string | string[]): Promise<void> {
+    const statementList = Array.isArray(statements) ? statements : [statements];
     const startTime = process.hrtime.bigint();
     try {
-      this.logger.debug({ message: `Executing schema update`, obj: { sql } });
-      const [operation] = await this.getSpannerDb().updateSchema(sql);
+      this.logger.debug({ message: `Executing schema update`, obj: { statements: statementList } });
+      const [operation] = await this.getSpannerDb().updateSchema(statementList);
       await operation.promise();
       const durationMs = Number(process.hrtime.bigint() - startTime) / 1_000_000;
-      this.logger.debug({ message: `Schema update executed`, obj: { sql, durationMs } });
+      this.logger.debug({
+        message: `Schema update executed`,
+        obj: { statementCount: statementList.length, durationMs },
+      });
     } catch (error: any) {
       const durationMs = Number(process.hrtime.bigint() - startTime) / 1_000_000;
       this.logger.error({
         message: `Failed when executing schema update`,
-        obj: { sql, errorDetails: error.details, durationMs },
+        obj: { statements: statementList, errorDetails: error.details, durationMs },
       });
       throw error;
     }

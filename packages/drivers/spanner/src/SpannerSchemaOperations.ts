@@ -18,49 +18,24 @@ export class SpannerSchemaOperations implements SchemaOperations {
 
   constructor(private spannerDriver: SpannerDriver) {}
 
-  async createTable(table: Table<any>) {
-    const indexes: { name?: string; columns: string[]; unique?: boolean }[] = [];
-    for (const { name, columns, unique } of table.indexes) {
-      indexes.push({ name, columns: columns.map((x) => table.columns[x as string]!.name), unique });
+  /**
+   * Create every table in `tables` — each table's `CREATE TABLE` plus all of its `CREATE INDEX`
+   * statements, concatenated across tables in the given order — as ONE schema-update operation.
+   * `UpdateDatabaseDdl` applies the batch in order, so a table whose foreign keys reference an
+   * earlier table in the list resolves against it, exactly as it did when the statements ran
+   * serially.
+   */
+  async createTables(tables: Table<any>[]) {
+    const statements: string[] = [];
+    for (const table of tables) {
+      statements.push(...this.createTableStatements(table));
     }
 
-    const serializedColumns: { name: string; type: string; nullable?: boolean }[] = [];
-    const foreignKeys: { table: string; column: string; referencedByColumn: string }[] = [];
-    for (const columnPropertyName in table.columns) {
-      const column = table.columns[columnPropertyName];
-      const columnType = new SpannerColumnTypeFactory().getType(column);
-      serializedColumns.push({ name: column.name, type: columnType, nullable: column.options?.nullable });
-      this.logger.info({ message: `[${table.name}] Creating column: ${column.name} (${column.constructor.name})` });
-      if (column.options?.unique?.unique) {
-        indexes.push({
-          name: column.options.unique.indexName,
-          columns: [table.columns[column.name]!.name],
-          unique: true,
-        });
-        this.logger.info({ message: `[${table.name}.${column.name}] Adding unique constraint` });
-      }
-
-      if (column.options?.references) {
-        foreignKeys.push({ table: column.options.references.table, column: 'id', referencedByColumn: column.name });
-        this.logger.info({
-          message: `[${table.name}.${column.name}] Adding foreign key -> ${column.options.references.table}.id`,
-        });
-      }
+    if (statements.length === 0) {
+      return;
     }
-    const createTableSql = new StatementFactory().createTable(table.name, serializedColumns, 'id', foreignKeys).sql;
-    await this.spannerDriver.runUpdateSchema(createTableSql);
 
-    for (const index of indexes) {
-      const createIndexSql = new StatementFactory().createIndex(index, table.name).sql;
-      const indexName = StatementUtil.getIndexName(table.name, index);
-      this.logger.info({
-        message: `[${table.name}] Creating index: ${indexName} (${index.columns.join(', ')})`,
-      });
-      await this.spannerDriver.runUpdateSchema(createIndexSql);
-      this.logger.info({
-        message: `[${table.name}] Created index: ${indexName} (${index.columns.join(', ')})`,
-      });
-    }
+    await this.spannerDriver.runUpdateSchema(statements);
   }
 
   async alterTable(table: Table<any>, tableChanges: TableChanges) {
@@ -134,37 +109,76 @@ export class SpannerSchemaOperations implements SchemaOperations {
       throw new Error(errorMessage);
     }
 
-    const alterStatements = new StatementFactory().alterTable(alterParams);
-    for (const alterStatement of alterStatements) {
-      await this.spannerDriver.runUpdateSchema(alterStatement.sql);
-    }
-
-    for (const wideningStatement of wideningStatements) {
-      await this.spannerDriver.runUpdateSchema(wideningStatement);
-    }
+    // One schema-update operation for the whole alter pass, preserving the statement order the
+    // serial version applied: alters (add column / drop+add FK), STRING widenings, index drops,
+    // index creates.
+    const statements: string[] = new StatementFactory()
+      .alterTable(alterParams)
+      .map((alterStatement) => alterStatement.sql);
+    statements.push(...wideningStatements);
 
     for (const index of tableChanges.indexesToDrop) {
-      const dropIndexSql = new StatementFactory().dropIndex(index, table.name).sql;
       this.logger.info({
         message: `[${table.name}] Dropping index: ${index.name} (${typeof index.columns === 'string' ? index.columns : index.columns.join(', ')})`,
       });
-      await this.spannerDriver.runUpdateSchema(dropIndexSql);
-      this.logger.info({
-        message: `[${table.name}] Dropped index: ${index.name} (${typeof index.columns === 'string' ? index.columns : index.columns.join(', ')})`,
-      });
+      statements.push(new StatementFactory().dropIndex(index, table.name).sql);
     }
 
     for (const index of tableChanges.indexesToCreate) {
-      const createIndexSql = new StatementFactory().createIndex(index, table.name).sql;
       const indexName = StatementUtil.getIndexName(table.name, index);
       this.logger.info({
         message: `[${table.name}] Creating index: ${indexName} (${typeof index.columns === 'string' ? index.columns : index.columns.join(', ')})`,
       });
-      await this.spannerDriver.runUpdateSchema(createIndexSql);
-      this.logger.info({
-        message: `[${table.name}] Created index: ${indexName} (${typeof index.columns === 'string' ? index.columns : index.columns.join(', ')})`,
-      });
+      statements.push(new StatementFactory().createIndex(index, table.name).sql);
     }
+
+    if (statements.length === 0) {
+      return;
+    }
+
+    await this.spannerDriver.runUpdateSchema(statements);
+  }
+
+  private createTableStatements(table: Table<any>): string[] {
+    const indexes: { name?: string; columns: string[]; unique?: boolean }[] = [];
+    for (const { name, columns, unique } of table.indexes) {
+      indexes.push({ name, columns: columns.map((x) => table.columns[x as string]!.name), unique });
+    }
+
+    const serializedColumns: { name: string; type: string; nullable?: boolean }[] = [];
+    const foreignKeys: { table: string; column: string; referencedByColumn: string }[] = [];
+    for (const columnPropertyName in table.columns) {
+      const column = table.columns[columnPropertyName];
+      const columnType = new SpannerColumnTypeFactory().getType(column);
+      serializedColumns.push({ name: column.name, type: columnType, nullable: column.options?.nullable });
+      this.logger.info({ message: `[${table.name}] Creating column: ${column.name} (${column.constructor.name})` });
+      if (column.options?.unique?.unique) {
+        indexes.push({
+          name: column.options.unique.indexName,
+          columns: [table.columns[column.name]!.name],
+          unique: true,
+        });
+        this.logger.info({ message: `[${table.name}.${column.name}] Adding unique constraint` });
+      }
+
+      if (column.options?.references) {
+        foreignKeys.push({ table: column.options.references.table, column: 'id', referencedByColumn: column.name });
+        this.logger.info({
+          message: `[${table.name}.${column.name}] Adding foreign key -> ${column.options.references.table}.id`,
+        });
+      }
+    }
+
+    const statements = [new StatementFactory().createTable(table.name, serializedColumns, 'id', foreignKeys).sql];
+    for (const index of indexes) {
+      const indexName = StatementUtil.getIndexName(table.name, index);
+      this.logger.info({
+        message: `[${table.name}] Creating index: ${indexName} (${index.columns.join(', ')})`,
+      });
+      statements.push(new StatementFactory().createIndex(index, table.name).sql);
+    }
+
+    return statements;
   }
 
   /**

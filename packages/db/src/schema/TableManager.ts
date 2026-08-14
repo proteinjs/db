@@ -33,10 +33,34 @@ export class TableManager {
     return await this.schemaMetadata.tableExists(table);
   }
 
+  /**
+   * Reconcile every registered table with the live schema. Absent tables are created as ONE
+   * batch (a single schema-update operation on drivers that support it — the prod-boot win),
+   * preserving their registration order so foreign keys to other absent tables resolve; existing
+   * tables are altered individually after, so an alter that adds a foreign key to a
+   * just-created table sees it live.
+   */
   async loadTables(): Promise<void> {
     const tables = getTables();
+    const absentTables: Table<any>[] = [];
+    const existingTables: Table<any>[] = [];
     for (const table of tables) {
-      await this.loadTable(table);
+      this.validateDynamicReferenceColumns(table);
+      if (await this.tableExists(table)) {
+        existingTables.push(table);
+      } else {
+        absentTables.push(table);
+      }
+    }
+
+    if (absentTables.length > 0) {
+      this.logger.info({ message: `Creating tables: ${absentTables.map((table) => table.name).join(', ')}` });
+      await this.schemaOperations.createTables(absentTables);
+      this.logger.info({ message: `Finished creating ${absentTables.length} tables` });
+    }
+
+    for (const table of existingTables) {
+      await this.alterTableIfChanged(table);
     }
   }
 
@@ -44,16 +68,20 @@ export class TableManager {
     this.validateDynamicReferenceColumns(table);
 
     if (await this.tableExists(table)) {
-      const tableChanges = await this.getTableChanges(table);
-      if (this.shouldAlterTable(tableChanges)) {
-        this.logger.info({ message: `Altering table: ${table.name}` });
-        await this.schemaOperations.alterTable(table, tableChanges);
-        this.logger.info({ message: `Finished altering table: ${table.name}` });
-      }
+      await this.alterTableIfChanged(table);
     } else {
       this.logger.info({ message: `Creating table: ${table.name}` });
-      await this.schemaOperations.createTable(table);
+      await this.schemaOperations.createTables([table]);
       this.logger.info({ message: `Finished creating table: ${table.name}` });
+    }
+  }
+
+  private async alterTableIfChanged(table: Table<any>): Promise<void> {
+    const tableChanges = await this.getTableChanges(table);
+    if (this.shouldAlterTable(tableChanges)) {
+      this.logger.info({ message: `Altering table: ${table.name}` });
+      await this.schemaOperations.alterTable(table, tableChanges);
+      this.logger.info({ message: `Finished altering table: ${table.name}` });
     }
   }
 

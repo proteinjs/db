@@ -1,7 +1,13 @@
 import { Table } from '../Table';
 
 export interface SchemaOperations {
-  createTable(table: Table<any>): Promise<void>;
+  /**
+   * Create every table in `tables`, in the given order. The order is load-bearing: a table whose
+   * foreign keys reference another absent table must appear after it. Drivers that support batched
+   * DDL (Spanner) apply the whole set as ONE schema-update operation — statements inside a batch
+   * apply in order, so the ordering contract is preserved.
+   */
+  createTables(tables: Table<any>[]): Promise<void>;
   alterTable(table: Table<any>, changes: TableChanges): Promise<void>;
 }
 

@@ -12,7 +12,18 @@ export class KnexSchemaOperations implements SchemaOperations {
 
   constructor(private knexDriver: KnexDriver) {}
 
-  async createTable(table: Table<any>) {
+  /**
+   * Create every table in `tables`, in order (a table whose foreign keys reference another
+   * absent table must appear after it). MariaDB has no batched-DDL operation, so this is the
+   * per-table create applied serially — the batching win is Spanner-only.
+   */
+  async createTables(tables: Table<any>[]) {
+    for (const table of tables) {
+      await this.createTable(table);
+    }
+  }
+
+  private async createTable(table: Table<any>) {
     let resolve: any;
     let reject: any;
     const p = new Promise<void>((rs, rj) => {
