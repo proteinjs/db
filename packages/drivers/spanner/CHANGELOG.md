@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.18.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.17.0...@proteinjs/db-driver-spanner@1.18.0) (2026-08-14)
+
+
+### Features
+
+* **spanner:** public SpannerDriver.getSessionPoolStats() — the P4a pool gauge for external observers (the ops monitors platform) ([00d1b9f](https://github.com/proteinjs/db/commit/00d1b9f0b36f5436ed0e25ef2f8bcf430f5551c3))
+
+
+
+
+
 # [1.17.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.16.3...@proteinjs/db-driver-spanner@1.17.0) (2026-08-14)
 
 
