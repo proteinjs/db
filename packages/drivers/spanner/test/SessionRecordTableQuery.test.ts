@@ -120,4 +120,32 @@ describe('Session-shaped record table query (the admin Sessions table path)', ()
     const countQb = new QueryBuilderFactory().createQueryBuilder<SessionShape>(table);
     expect(await db.getRowCount(table, countQb)).toBe(3);
   }, 60000);
+
+  test('a Moment condition value binds as TIMESTAMP (the cursor-window query shape)', async () => {
+    // EXACTLY the home recents cursor-window shape: `updated < <Moment>` sorted desc — the
+    // condition value is a Moment the way every deserialized row field (and every wire-revived
+    // condition) is. Pre-fix this bound the raw Moment into a TIMESTAMP param and Spanner
+    // rejected the query (INVALID_ARGUMENT: Expected TIMESTAMP — the 2026-08-13 home-recents
+    // skeleton hang). Rows live in their own future time band so the bracketing conditions
+    // exclude the other test's rows without coupling to its clock.
+    const band = Date.now() + 600_000;
+    for (let n = 4; n <= 6; n++) {
+      await systemDb.insert(table, storeShapedRow(n, band + (n - 3) * 1000) as any);
+    }
+
+    const qb = new QueryBuilderFactory()
+      .createQueryBuilder<SessionShape>(table)
+      .condition({ field: 'updated', operator: '>', value: moment(band + 500) as any })
+      .condition({ field: 'updated', operator: '<', value: moment(band + 2500) as any })
+      .sort([{ field: 'updated', desc: true }]);
+    const rows = await db.query(table, qb);
+    expect(rows.map((row) => row.sessionId)).toEqual(['test-session-5', 'test-session-4']);
+
+    // The IN/array leg binds each element through the same conversion.
+    const inQb = new QueryBuilderFactory()
+      .createQueryBuilder<SessionShape>(table)
+      .condition({ field: 'updated', operator: 'IN', value: [moment(band + 1000), moment(band + 3000)] as any });
+    const inRows = await db.query(table, inQb);
+    expect(inRows.map((row) => row.sessionId).sort()).toEqual(['test-session-4', 'test-session-6']);
+  }, 60000);
 });
