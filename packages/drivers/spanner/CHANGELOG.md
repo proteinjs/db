@@ -3,6 +3,23 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.19.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.18.0...@proteinjs/db-driver-spanner@1.19.0) (2026-08-14)
+
+
+### Bug Fixes
+
+* DML off the streaming transport — silent client replays re-executed lost-response statements ([#33](https://github.com/proteinjs/db/issues/33)) ([06dc699](https://github.com/proteinjs/db/commit/06dc69980d738f1a2a90233c585df2bb2f3b8e32))
+
+
+### Features
+
+* cursor-window paging owner; RecordIterator migrated off offset paging ([453c4a2](https://github.com/proteinjs/db/commit/453c4a2a5f87bd7b58b0042185100bcf9ae0e183))
+* deploy-gated migration series — manual flag + runPendingMigrations (27f) ([1d3acc4](https://github.com/proteinjs/db/commit/1d3acc43a9de4e12d7a231b292883bd0d523a11c))
+
+
+
+
+
 # [1.18.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.17.0...@proteinjs/db-driver-spanner@1.18.0) (2026-08-14)
 
 
