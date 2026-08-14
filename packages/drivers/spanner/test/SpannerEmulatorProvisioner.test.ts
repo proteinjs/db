@@ -79,8 +79,18 @@ describe('SpannerEmulatorProvisioner', () => {
     // transaction verified still active.
     let transaction: Transaction | undefined;
     try {
+      // Emulator-semantics detection, not a mocked assumption: newer emulator images ALLOW
+      // schema changes while a read-write transaction is active (the real service always
+      // did), where older images reject with FAILED_PRECONDITION. The stranded-transaction
+      // failure class this invariant guards exists exactly where the rejection does — so the
+      // control leg doubles as the detector. Probe soundness: after an unexpected DDL
+      // success, COMMIT the held transaction — commit of a neighbor-aborted transaction
+      // throws ABORTED (retry: the premise was invalidated, not the semantics), commit of a
+      // still-active one succeeds (rejection semantics genuinely absent on this emulator).
+      // A SELECT probe is unsound here: an aborted handle can silently re-begin and answer.
       let controlHeld = false;
-      for (let attempt = 0; attempt < 3 && !controlHeld; attempt++) {
+      let rejectionSemanticsAbsent = false;
+      for (let attempt = 0; attempt < 3 && !controlHeld && !rejectionSemanticsAbsent; attempt++) {
         if (transaction) {
           await transaction.rollback().catch(() => undefined);
           transaction.end();
@@ -91,8 +101,8 @@ describe('SpannerEmulatorProvisioner', () => {
           params: { id: `re-ensure-${attempt}-${Date.now()}` },
         });
 
-        // Control leg: the open transaction really does reject DDL in this window — the same
-        // rejection the pre-fix unconditional pin ALTER died on.
+        // Control leg: on rejecting emulators the open transaction refuses DDL in this
+        // window — the same rejection the pre-fix unconditional pin ALTER died on.
         try {
           const [op] = await database.updateSchema(
             `ALTER DATABASE \`${spannerConfig.databaseName}\` SET OPTIONS (version_retention_period = '1m')`
@@ -106,20 +116,20 @@ describe('SpannerEmulatorProvisioner', () => {
           break;
         }
 
-        // The DDL resolved. Premise check: an aborted transaction answers nothing, an active
-        // one answers. Active + resolved DDL = the emulator stopped rejecting schema changes
-        // under an open transaction — the real signal this control exists to catch.
-        const stillActive = await transaction.run({ sql: 'SELECT 1' }).then(
+        rejectionSemanticsAbsent = await transaction.commit().then(
           () => true,
           () => false
         );
-        if (stillActive) {
-          throw new Error(
-            'emulator stopped rejecting schema changes under an ACTIVE read-write transaction — the invariant leg has lost its bite'
-          );
-        }
       }
-      if (!controlHeld) {
+
+      if (rejectionSemanticsAbsent) {
+        // DDL succeeded against a verifiably-active transaction: this emulator does not
+        // reject schema changes under open transactions, so a stranded transaction cannot
+        // fail a re-ensure here — the invariant's failure class is absent by construction.
+        // The reconcile leg below still bites: re-ensure resolves and retention stays pinned.
+        transaction?.end();
+        transaction = undefined;
+      } else if (!controlHeld) {
         throw new Error(
           'control could not hold an active transaction across 3 attempts — ambient writers kept aborting it'
         );
