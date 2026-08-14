@@ -69,25 +69,61 @@ describe('SpannerEmulatorProvisioner', () => {
 
     // Model the stranded transaction a killed jest worker leaves behind: a read-write
     // transaction with real uncommitted work, held open across the re-ensure.
-    const [transaction] = (await database.getTransaction()) as unknown as [Transaction];
+    //
+    // The control's premise — OUR transaction is the active one when the DDL arrives — can be
+    // invalidated by ambient in-process writers (session-pool maintenance, neighbor suites'
+    // detached work): the emulator allows ONE active read-write transaction, so a neighbor's
+    // write aborts ours mid-window and the DDL sails through. That is a false alarm, not the
+    // invariant breaking (bit twice on CI run 31760208027 once the suite set grew). Each
+    // attempt re-establishes the premise; the control only FAILS when DDL succeeds against a
+    // transaction verified still active.
+    let transaction: Transaction | undefined;
     try {
-      await transaction.runUpdate({
-        sql: `INSERT INTO ${SCRATCH_TABLE} (id) VALUES (@id)`,
-        params: { id: `re-ensure-${Date.now()}` },
-      });
+      let controlHeld = false;
+      for (let attempt = 0; attempt < 3 && !controlHeld; attempt++) {
+        if (transaction) {
+          await transaction.rollback().catch(() => undefined);
+          transaction.end();
+        }
+        [transaction] = (await database.getTransaction()) as unknown as [Transaction];
+        await transaction.runUpdate({
+          sql: `INSERT INTO ${SCRATCH_TABLE} (id) VALUES (@id)`,
+          params: { id: `re-ensure-${attempt}-${Date.now()}` },
+        });
 
-      // Control leg: the open transaction really does reject DDL in this window — the same
-      // rejection the pre-fix unconditional pin ALTER died on. If the emulator ever stops
-      // rejecting schema changes under an open transaction, this control fails and flags that
-      // the invariant leg below has lost its bite.
-      await expect(
-        (async () => {
+        // Control leg: the open transaction really does reject DDL in this window — the same
+        // rejection the pre-fix unconditional pin ALTER died on.
+        try {
           const [op] = await database.updateSchema(
             `ALTER DATABASE \`${spannerConfig.databaseName}\` SET OPTIONS (version_retention_period = '1m')`
           );
           await op.promise();
-        })()
-      ).rejects.toMatchObject({ code: 9 /* gRPC FAILED_PRECONDITION */ });
+        } catch (error) {
+          expect(error).toMatchObject({ code: 9 /* gRPC FAILED_PRECONDITION */ });
+          controlHeld = true;
+        }
+        if (controlHeld) {
+          break;
+        }
+
+        // The DDL resolved. Premise check: an aborted transaction answers nothing, an active
+        // one answers. Active + resolved DDL = the emulator stopped rejecting schema changes
+        // under an open transaction — the real signal this control exists to catch.
+        const stillActive = await transaction.run({ sql: 'SELECT 1' }).then(
+          () => true,
+          () => false
+        );
+        if (stillActive) {
+          throw new Error(
+            'emulator stopped rejecting schema changes under an ACTIVE read-write transaction — the invariant leg has lost its bite'
+          );
+        }
+      }
+      if (!controlHeld) {
+        throw new Error(
+          'control could not hold an active transaction across 3 attempts — ambient writers kept aborting it'
+        );
+      }
 
       // The invariant: re-ensure resolves inside the same window — it issued zero DDL.
       await expect(SpannerEmulatorProvisioner.ensureProvisioned(spannerConfig)).resolves.toBeUndefined();
@@ -98,8 +134,10 @@ describe('SpannerEmulatorProvisioner', () => {
     } finally {
       // Never strand the transaction on the shared test emulator — that would poison later
       // suites' DDL exactly like the class this test guards against.
-      await transaction.rollback().catch(() => undefined);
-      transaction.end();
+      if (transaction) {
+        await transaction.rollback().catch(() => undefined);
+        transaction.end();
+      }
     }
   }, 60_000);
 });
