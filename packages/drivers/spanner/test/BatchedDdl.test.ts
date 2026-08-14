@@ -1,3 +1,4 @@
+import { Spanner } from '@google-cloud/spanner';
 import { SpannerDriver } from '@proteinjs/db-driver-spanner';
 import { getTables, Record, StringColumn, Table, withRecordColumns } from '@proteinjs/db';
 import { getDropTestTable } from './util/getDropTestTable';
@@ -165,5 +166,42 @@ describe('Batched DDL', () => {
     spy.mockClear();
     await tableManager.loadTables();
     expect(spy).not.toHaveBeenCalled();
+  }, 60000);
+
+  test('createDb with ddl births a queryable database; dropDb removes it', async () => {
+    const databaseName = 'batchddl-born';
+    if (await spannerDriver.dbExists(databaseName)) {
+      await spannerDriver.dropDb(databaseName);
+    }
+
+    await spannerDriver.createDb(databaseName, {
+      ddl: [
+        'CREATE TABLE born_row (id STRING(36) NOT NULL, label STRING(MAX)) PRIMARY KEY (id)',
+        'CREATE INDEX born_row_label_index ON born_row(label)',
+      ],
+    });
+    expect(await spannerDriver.dbExists(databaseName)).toBe(true);
+
+    // Queryability check rides a dedicated client: SpannerDriver's process-wide Database handle
+    // is pinned to the suite's database, and this test is about the NEW database.
+    const client = new Spanner({ projectId: spannerConfig.projectId });
+    const database = client.instance(spannerConfig.instanceName).database(databaseName);
+    database.on('error', () => undefined);
+    try {
+      await database.table('born_row').insert({ id: 'r1', label: 'born' });
+      const [rows] = await database.run({ sql: 'SELECT id, label FROM born_row', json: true });
+      expect(rows).toEqual([{ id: 'r1', label: 'born' }]);
+      const [indexRows] = await database.run({
+        sql: `SELECT i.INDEX_NAME FROM INFORMATION_SCHEMA.INDEXES i WHERE i.TABLE_NAME = 'born_row' AND i.INDEX_NAME = 'born_row_label_index'`,
+        json: true,
+      });
+      expect(indexRows).toHaveLength(1);
+    } finally {
+      await database.close().catch(() => undefined);
+      client.close();
+    }
+
+    await spannerDriver.dropDb(databaseName);
+    expect(await spannerDriver.dbExists(databaseName)).toBe(false);
   }, 60000);
 });

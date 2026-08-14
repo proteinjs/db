@@ -59,6 +59,14 @@ export interface DefaultDbDriverFactory extends Loadable {
 export interface DbDriver {
   getDbName(): string;
   createDbIfNotExists(): Promise<void>;
+  /**
+   * Create the named database. When `ddl` is provided the statements are applied as part of
+   * creation (on Spanner: `CreateDatabase.extra_statements` — one operation, atomic with the
+   * create), so the database is born with its full schema. Fails if the database already exists.
+   */
+  createDb(name: string, options?: { ddl?: string[] }): Promise<void>;
+  /** Drop the named database. */
+  dropDb(name: string): Promise<void>;
   start?(): Promise<void>;
   stop?(): Promise<void>;
   getTableManager(): TableManager;

@@ -167,12 +167,54 @@ export class SpannerDriver implements DbDriver {
       return;
     }
 
-    await this.getSpannerInstance().createDatabase(this.getDbName());
+    await this.createDb(this.getDbName());
   }
 
-  private async dbExists(databaseName: string): Promise<boolean> {
-    const [exists] = await this.getSpannerInstance().database(databaseName).exists();
-    return exists;
+  /**
+   * Create the named database in one operation. `ddl` statements ride the create as
+   * `CreateDatabase.extra_statements` — applied in order, atomically with the creation (if any
+   * statement fails, the database is not created) — so a database can be born with its full
+   * schema without a second schema-update operation.
+   */
+  async createDb(name: string, options?: { ddl?: string[] }): Promise<void> {
+    const [database, operation] = await this.getSpannerInstance().createDatabase(name, {
+      extraStatements: options?.ddl ?? [],
+      // Admin-handle hygiene (see adminDbHandle): the client constructs the returned handle
+      // BEFORE the create operation completes — a default eager pool races the operation and
+      // crashes on NOT_FOUND.
+      poolOptions: { min: 0 },
+    });
+    database.on('error', () => undefined);
+    await operation.promise();
+    await database.close().catch(() => undefined);
+  }
+
+  /** Drop the named database (client `Database.delete()` — closes the handle, then drops). */
+  async dropDb(name: string): Promise<void> {
+    await this.adminDbHandle(name).delete();
+  }
+
+  async dbExists(databaseName: string): Promise<boolean> {
+    const database = this.adminDbHandle(databaseName);
+    try {
+      const [exists] = await database.exists();
+      return exists;
+    } finally {
+      await database.close().catch(() => undefined);
+    }
+  }
+
+  /**
+   * A Database handle for admin operations (exists/drop): admin RPCs ride the admin client, not
+   * sessions, so the pool is configured to hold ZERO sessions — the default pool eagerly fills
+   * in the handle's constructor and emits process-crashing unlistened 'error' events when the
+   * database does not exist, which is the NORMAL case for these operations. Its error channel is
+   * owned for the same reason.
+   */
+  private adminDbHandle(name: string): Database {
+    const database = this.getSpannerInstance().database(name, { min: 0 });
+    database.on('error', () => undefined);
+    return database;
   }
 
   /**

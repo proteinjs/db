@@ -54,10 +54,30 @@ export class KnexDriver implements DbDriver {
       return;
     }
 
-    await this.getKnex().raw(`CREATE DATABASE ${this.getDbName()};`);
+    await this.createDb(this.getDbName());
   }
 
-  private async dbExists(databaseName: string): Promise<boolean> {
+  /**
+   * Create the named database. MariaDB has no create-with-schema operation (Spanner's
+   * `CreateDatabase.extra_statements`), so passing `ddl` here is an error rather than a quiet
+   * second apply path — load the schema through `TableManager` after creating.
+   */
+  async createDb(name: string, options?: { ddl?: string[] }): Promise<void> {
+    if (options?.ddl && options.ddl.length > 0) {
+      throw new Error(
+        `The knex/MariaDB driver does not support create-with-schema (ddl); create the database, then apply schema via TableManager.loadTables`
+      );
+    }
+
+    await this.getKnex().raw(`CREATE DATABASE ${name};`);
+  }
+
+  /** Drop the named database. */
+  async dropDb(name: string): Promise<void> {
+    await this.getKnex().raw(`DROP DATABASE ${name};`);
+  }
+
+  async dbExists(databaseName: string): Promise<boolean> {
     const result: any = await this.getKnex().raw('SHOW DATABASES;');
     for (const existingDatabase of result[0]) {
       if (existingDatabase['Database'] == databaseName) {
