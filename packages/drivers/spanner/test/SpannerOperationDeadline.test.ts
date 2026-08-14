@@ -87,7 +87,7 @@ describe('Spanner op deadlines', () => {
     // function must therefore be deadline-bounded, or the session leaks forever.
     const released: string[] = [];
     const transaction = {
-      runUpdate: jest.fn(() => hang()),
+      batchUpdate: jest.fn(() => hang()),
       rollback: jest.fn(() => hang()),
       commit: jest.fn(() => hang()),
     };

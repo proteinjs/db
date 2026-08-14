@@ -280,18 +280,25 @@ export class SpannerDriver implements DbDriver {
 
     try {
       this.logger.debug({ message: `Executing dml`, obj: { sql, params: namedParams } });
-      const [rowCount] = await this.withDeadline(
+      // DML rides the unary ExecuteBatchDml RPC (`batchUpdate`), never streaming `runUpdate`
+      // (ExecuteStreamingSql). The client's streaming transport TRANSPARENTLY RE-SENDS a DML
+      // whose response was lost: gax wraps every server-streaming call in retry-request, which
+      // silently replays on ANY pre-response error. Seqno replay protection only covers the
+      // same-transaction geometry; the geometries it cannot cover are where the 2026-08-13
+      // splice incident lived — an inline-begin replay BEGINS A FRESH TRANSACTION per attempt
+      // (abandoned applied-but-uncommitted siblings churn locks and collide with rows committed
+      // by other paths: spurious `6 ALREADY_EXISTS` under pool pressure), and the stream-
+      // resumption layer re-mints a NEW seqno into the SAME transaction after inline-begin
+      // learned its id (unprotected even on real Spanner). The unary RPC has none of that
+      // machinery — see dmlGaxOptions() for the per-backend retry policy on it.
+      const [rowCounts] = await this.withDeadline(
         'spanner dml',
         sql,
-        runner.runUpdate({
-          sql,
-          params: namedParams?.params,
-          types: namedParams?.types,
-          // gRPC deadline: cancels the RPC on a dead channel so the transaction's run function
-          // settles and the library releases the session (see runDml).
-          gaxOptions: { timeout: this.operationDeadlineMs() },
+        runner.batchUpdate([{ sql, params: namedParams?.params, types: namedParams?.types }], {
+          gaxOptions: this.dmlGaxOptions(),
         })
       );
+      const rowCount = rowCounts[0] ?? 0;
       const durationMs = Number(process.hrtime.bigint() - startTime) / 1_000_000;
       this.logger.debug({
         message: `Dml executed`,
@@ -510,6 +517,29 @@ export class SpannerDriver implements DbDriver {
     } catch {
       // already torn down
     }
+  }
+
+  /**
+   * Per-call gax options for the DML RPC (ExecuteBatchDml). The gRPC deadline (see runDml)
+   * applies everywhere. The transparent-retry policy differs by backend:
+   *
+   * - Real Spanner: gax's default unary policy (UNAVAILABLE only) stands. A replay re-sends the
+   *   identical request — same seqno, deduped in the same-transaction geometry — and in the
+   *   inline-begin geometry only the transaction the client ultimately commits applies durably,
+   *   so the transient-blip resilience is safe there.
+   * - Emulator (SPANNER_EMULATOR_HOST — the same switch the client library keys on): a replayed
+   *   inline-begin DML begins a fresh transaction per attempt, and the abandoned
+   *   applied-but-uncommitted siblings are exactly what fed the splice incident's spurious
+   *   failures under pool pressure. `retry: null` makes the call single-attempt: a lost response
+   *   surfaces as the loss to the caller, deterministically, instead of invisible multi-
+   *   transaction churn. Loopback needs no blip resilience.
+   */
+  private dmlGaxOptions(): { timeout: number; retry?: null } {
+    const gaxOptions: { timeout: number; retry?: null } = { timeout: this.operationDeadlineMs() };
+    if (process.env.SPANNER_EMULATOR_HOST) {
+      gaxOptions.retry = null;
+    }
+    return gaxOptions;
   }
 
   private operationDeadlineMs(): number {
