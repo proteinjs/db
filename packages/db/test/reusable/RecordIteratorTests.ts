@@ -146,6 +146,31 @@ export const recordIteratorTests = (
       expect(t1Names).toEqual(Array(4).fill(t1.toISOString()));
     });
 
+    test('consumed rows are never re-served when id order opposes the sort order (equals-guarded continuation)', async () => {
+      // Insert in REVERSE sort order so id order (insertion order) OPPOSES the seq-ascending
+      // iteration: every already-consumed row carries a LATER id than the anchor row's. This is
+      // the dataset that convicts a degenerate continuation: without the equals guard on the id
+      // disjunct (`seq = anchor AND id > anchor-id`), the disjunct is a bare `id > anchor-id`
+      // catch-all that re-serves the whole consumed prefix (and can re-anchor forever). The
+      // forward-seeded suites above can never catch that — their id order AGREES with the sort,
+      // so a consumed row's id always sorts before the anchor's.
+      for (let i = 6; i >= 1; i--) {
+        await db.insert(table, { name: `v${String(i).padStart(2, '0')}`, seq: i * 10 } as Omit<
+          IterationRow,
+          keyof Record
+        >);
+      }
+      const iterator = new RecordIterator<IterationRow>(table, seqAscQuery(), WINDOW, db);
+      const visited: string[] = [];
+      for await (const row of iterator) {
+        visited.push(row.name);
+        if (visited.length > 12) {
+          break; // a re-anchoring loop never terminates on its own — cap it and let the assert convict
+        }
+      }
+      expect(visited).toEqual(['v01', 'v02', 'v03', 'v04', 'v05', 'v06']);
+    });
+
     test('iteration never mutates the caller query builder', async () => {
       await seed(4);
       const qb = seqAscQuery();
