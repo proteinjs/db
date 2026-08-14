@@ -1,4 +1,5 @@
-import { Spanner } from '@google-cloud/spanner';
+import { Database, Spanner } from '@google-cloud/spanner';
+import { Logger } from '@proteinjs/logger';
 import { SpannerDriver } from '@proteinjs/db-driver-spanner';
 import { getTables, Record, StringColumn, Table, withRecordColumns } from '@proteinjs/db';
 import { getDropTestTable } from './util/getDropTestTable';
@@ -119,11 +120,18 @@ describe('Batched DDL', () => {
     const child = childTable();
     const spy = jest.spyOn(spannerDriver, 'runUpdateSchema');
 
+    // The one-LRO claim is pinned at the CLIENT seam, not just the driver seam: a
+    // runUpdateSchema that quietly looped per-statement operations would still count 1 on the
+    // driver spy but N here.
+    const updateSchemaSpy = jest.spyOn(Database.prototype, 'updateSchema');
+
     await tableManager.schemaOperations.createTables([parent, child]);
 
     // One schema-update operation carrying the whole set: 2 CREATE TABLE + 2 CREATE INDEX,
     // parent's CREATE before the child's (the child's inline FK resolves against it in-batch).
     expect(spy).toHaveBeenCalledTimes(1);
+    expect(updateSchemaSpy).toHaveBeenCalledTimes(1);
+    expect(updateSchemaSpy.mock.calls[0][0]).toHaveLength(4);
     const statements = spy.mock.calls[0][0] as string[];
     expect(Array.isArray(statements)).toBe(true);
     expect(statements).toHaveLength(4);
@@ -144,6 +152,84 @@ describe('Batched DDL', () => {
     expect(childIndexes['db_test_batchddl_child_label_index']).toEqual(['label']);
 
     await dropTable(child);
+    await dropTable(parent);
+  }, 60000);
+
+  test('a wrong-ordered batch (FK child before parent) is REJECTED by the backend — ordering is load-bearing', async () => {
+    const parent = parentTable();
+    const child = childTable();
+    // House-style access to the statement assembler: typed cast on the instance, not a public method.
+    const ops = tableManager.schemaOperations as unknown as { createTableStatements(table: Table<any>): string[] };
+    const childFirst = [...ops.createTableStatements(child), ...ops.createTableStatements(parent)];
+
+    // The child's CREATE TABLE carries an inline FK to a parent that is not yet in the
+    // projected schema at its position in the batch — validation rejects the batch and NOTHING
+    // applies. This is the failure our ordered assembly exists to prevent.
+    await expect(spannerDriver.runUpdateSchema(childFirst)).rejects.toThrow();
+    expect(await tableManager.tableExists(child)).toBe(false);
+    expect(await tableManager.tableExists(parent)).toBe(false);
+  }, 60000);
+
+  test('a schema-invalid statement mid-batch rejects the WHOLE batch upfront — nothing applied (validation phase)', async () => {
+    const parent = parentTable();
+    const ops = tableManager.schemaOperations as unknown as { createTableStatements(table: Table<any>): string[] };
+    const [createParentSql, createNameIndexSql] = ops.createTableStatements(parent);
+    // Statement 2 parses but is schema-invalid (index on a column the table does not have).
+    // Schema-shape errors are caught in the batch's upfront VALIDATION pass — run in order
+    // against the projected schema (the error names the missing column, so statement 1's table
+    // WAS in the validation context) — and reject the batch before anything applies. Strictly
+    // SAFER than the old serial path, which would have left statement 1's table behind.
+    const badIndexSql = 'CREATE INDEX db_test_batchddl_parent_bogus_index ON db_test_batchddl_parent(no_such_column)';
+
+    await expect(spannerDriver.runUpdateSchema([createParentSql, badIndexSql, createNameIndexSql])).rejects.toThrow(
+      /no_such_column/
+    );
+
+    expect(await tableManager.tableExists(parent)).toBe(false);
+  }, 60000);
+
+  test('a data-dependent failure mid-batch leaves EARLIER statements applied, LATER unapplied (apply phase)', async () => {
+    const parent = parentTable();
+    await tableManager.loadTable(parent);
+    // Two rows with the same `name`: schema validation cannot see this — only the APPLY phase
+    // (index backfill) can fail on it.
+    const client = new Spanner({ projectId: spannerConfig.projectId });
+    const database = client.instance(spannerConfig.instanceName).database(spannerConfig.databaseName);
+    database.on('error', () => undefined);
+    try {
+      await database.table(parent.name).insert([
+        { id: 'dup-1', name: 'dup', created: new Date(), updated: new Date() },
+        { id: 'dup-2', name: 'dup', created: new Date(), updated: new Date() },
+      ]);
+    } finally {
+      await database.close().catch(() => undefined);
+      client.close();
+    }
+
+    const statements = [
+      'CREATE INDEX db_test_batchddl_parent_pre_index ON db_test_batchddl_parent(name, id)',
+      'CREATE UNIQUE INDEX db_test_batchddl_parent_dup_unique ON db_test_batchddl_parent(name)',
+      'CREATE INDEX db_test_batchddl_parent_post_index ON db_test_batchddl_parent(id, name)',
+    ];
+    const logErrorSpy = jest.spyOn(Logger.prototype, 'error');
+    await expect(spannerDriver.runUpdateSchema(statements)).rejects.toThrow(/uniqueness violation/);
+
+    // The failure LOG must carry the backend's reason too. Apply-phase LRO errors put it in
+    // `error.message` and leave `error.details` UNDEFINED — logging details alone records an
+    // empty reason for exactly the failure class that leaves partial schema state behind.
+    const failureLog = logErrorSpy.mock.calls.find(
+      ([entry]) => entry.message === 'Failed when executing schema update'
+    );
+    expect(failureLog).toBeDefined();
+    expect(String((failureLog![0].obj as { errorDetails?: unknown }).errorDetails)).toMatch(/uniqueness violation/);
+
+    // Honest partial-failure semantics of the apply phase: NOT atomic. Statement 1 stays
+    // applied; statement 3, ordered after the failure, is cancelled.
+    const indexes = await tableManager.schemaMetadata.getIndexes(parent);
+    expect(indexes['db_test_batchddl_parent_pre_index']).toEqual(['name', 'id']);
+    expect(indexes['db_test_batchddl_parent_dup_unique']).toBeUndefined();
+    expect(indexes['db_test_batchddl_parent_post_index']).toBeUndefined();
+
     await dropTable(parent);
   }, 60000);
 

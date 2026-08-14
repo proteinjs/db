@@ -594,10 +594,20 @@ export class SpannerDriver implements DbDriver {
 
   /**
    * Execute a schema write operation — one long-running operation for the WHOLE statement list
-   * (`UpdateDatabaseDdl` applies the statements in order; on a mid-batch failure, earlier
-   * statements stay applied and later ones are cancelled — the same net semantics as issuing
-   * them serially, minus N-1 operation round trips). Sequential per-statement operations are
-   * what made a 37-statement prod boot take 10m31s; callers batch and pass the list.
+   * (`UpdateDatabaseDdl` applies the statements in order). Sequential per-statement operations
+   * are what made a 37-statement prod boot take 10m31s; callers batch and pass the list.
+   *
+   * Partial-failure semantics (verified against the emulator; matches Spanner's documented
+   * batch-DDL behavior — both phases are covered in BatchedDdl.test.ts):
+   * - VALIDATION failure (schema-shape errors, checked upfront for the whole batch, in order,
+   *   against the projected schema): the batch is rejected before anything applies — NOTHING
+   *   lands. Strictly safer than the old serial path, which stranded the earlier statements.
+   * - APPLY failure (data-dependent errors, e.g. a unique-index backfill over duplicate rows):
+   *   statements BEFORE the failing one stay applied; the failing one and everything after are
+   *   cancelled — the serial path's semantics.
+   * Neither phase reports a positional statement index: the backend error names the offending
+   * OBJECT (table/index/column). The failure log below carries the full statement list plus
+   * that reason, which together locate the statement.
    */
   async runUpdateSchema(statements: string | string[]): Promise<void> {
     const statementList = Array.isArray(statements) ? statements : [statements];
@@ -615,7 +625,9 @@ export class SpannerDriver implements DbDriver {
       const durationMs = Number(process.hrtime.bigint() - startTime) / 1_000_000;
       this.logger.error({
         message: `Failed when executing schema update`,
-        obj: { statements: statementList, errorDetails: error.details, durationMs },
+        // Apply-phase LRO failures carry their reason only in `message` (`details` is
+        // undefined there); validation-phase gRPC errors carry both.
+        obj: { statements: statementList, errorDetails: error.details ?? String(error), durationMs },
       });
       throw error;
     }
