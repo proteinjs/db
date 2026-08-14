@@ -1,10 +1,19 @@
 import { Moment } from '../opt/moment';
-import { DateTimeColumn, ObjectColumn, StringColumn } from '../Columns';
+import { BooleanColumn, DateTimeColumn, ObjectColumn, StringColumn } from '../Columns';
 import { Table } from '../Table';
 import { SourceRecord, withSourceRecordColumns } from '../source/SourceRecord';
 
 export interface Migration extends SourceRecord {
   description: string;
+  /**
+   * The explicit non-automatable class (plans/POST_RELEASE_QUEUE.md 27f): destructive
+   * contractions (column/table drops), long backfills over big tables, data-dependent one-offs.
+   * `manual: true` EXCLUDES the migration from the deploy-gated auto-run
+   * ({@link MigrationRunner.runPendingMigrations}); it keeps the Migrations-page flow
+   * (`runMigration`). Absence of the flag = automated — the invariant lives here, in the
+   * schema, not in deploy-pipeline prose.
+   */
+  manual?: boolean;
   status?: 'proposed' | 'running' | 'success' | 'failure';
   failureMessage?: string;
   failureStack?: string;
@@ -29,6 +38,7 @@ export class MigrationTable extends Table<Migration> {
   };
   public columns = withSourceRecordColumns<Migration>({
     description: new StringColumn('description', {}, 4000),
+    manual: new BooleanColumn('manual'),
     status: new StringColumn('status', { defaultValue: async () => 'proposed' }),
     failureMessage: new StringColumn('failure_message', {}, 4000),
     failureStack: new StringColumn('failure_stack', {}, 'MAX'),
