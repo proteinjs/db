@@ -175,6 +175,15 @@ export class StatementUtil {
   }
 }
 
+/** Moment → Date for binding (moment's own cross-instance detection flag; see parameterize). */
+const momentToDate = (value: any): any =>
+  value !== null &&
+  typeof value === 'object' &&
+  (value as { _isAMomentObject?: boolean })._isAMomentObject === true &&
+  typeof (value as { toDate?: () => Date }).toDate === 'function'
+    ? (value as { toDate: () => Date }).toDate()
+    : value;
+
 export class StatementParamManager {
   private params: any[] = [];
   private paramNames: Record<string, any> = {};
@@ -188,6 +197,17 @@ export class StatementParamManager {
    * Process and parameterize values (ie. condition values), including handling subqueries
    */
   parameterize(value: any, valueType: string): string {
+    if (!isInstanceOf(value, QueryBuilder)) {
+      // THE bind-boundary normalization for condition values: every bind path (named params
+      // for Spanner, positional for Knex, inline formatting) passes through here, so runtime
+      // date-library objects become driver-bindable exactly once. Record WRITES convert
+      // Moments in DateTimeColumn.serialize; condition values never met a column serializer —
+      // a wire-revived Moment (e.g. the home recents cursor `lastActivityAt < <Moment>`)
+      // reached the Spanner codec raw and the query failed with INVALID_ARGUMENT: Expected
+      // TIMESTAMP (2026-08-13). Duck-typed via moment's own cross-instance flag (what
+      // moment.isMoment checks) — this package deliberately has no moment dependency.
+      value = Array.isArray(value) ? value.map(momentToDate) : momentToDate(value);
+    }
     if (isInstanceOf(value, QueryBuilder)) {
       // Generate SQL for the subquery
       const subQuery = value.toSql(this.config);
