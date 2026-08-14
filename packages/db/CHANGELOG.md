@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.32.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.31.0...@proteinjs/db@1.32.0) (2026-08-14)
+
+
+### Features
+
+* batched DDL — a table set's schema rides one schema-update operation ([f9e302b](https://github.com/proteinjs/db/commit/f9e302bf088d071c03682ac5f33f5d365aa3a5a4))
+* database lifecycle primitives — createDb(name, { ddl }) and dropDb(name) on DbDriver ([7cdb538](https://github.com/proteinjs/db/commit/7cdb538bcb7824682f92dcdf5a131f39e097df8f))
+
+
+
+
+
 # [1.31.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.30.0...@proteinjs/db@1.31.0) (2026-08-14)
 
 
