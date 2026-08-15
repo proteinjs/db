@@ -90,6 +90,15 @@ const internals = (tableManager: SpannerTableManager) => tableManager as unknown
 const classifier = (tableManager: SpannerTableManager) =>
   tableManager.schemaOperations as unknown as { isAlreadyExistsError(error: unknown): boolean };
 
+/**
+ * Spy on THIS TableManager instance's own logger.warn. TableManager (@proteinjs/db) and this test
+ * (@proteinjs/db-driver-spanner) resolve separate physical @proteinjs/logger copies, so a
+ * Logger.prototype spy here would never intercept the reconcile's warns — spying the instance's
+ * method does, regardless of module identity.
+ */
+const spyOnReconcileWarn = (tableManager: SpannerTableManager) =>
+  jest.spyOn((tableManager as unknown as { logger: { warn: (log: { message?: unknown }) => void } }).logger, 'warn');
+
 describe('Concurrent schema reconcile', () => {
   const dropTable = getDropTestTable(spannerDriver);
   const tableManager = spannerDriver.getTableManager();
@@ -129,20 +138,34 @@ describe('Concurrent schema reconcile', () => {
       delete columnMetadata['nickname'];
       return columnMetadata;
     });
+    const loserWarnSpy = spyOnReconcileWarn(loserTm);
 
     // OUTCOME: the loser's Db.init-equivalent does NOT reject — the duplicate DDL error is
     // reconciled to success. (Pre-fix, this rejects with "Duplicate column name" — the red run.)
     await expect(loserTm.loadTable(grownTable())).resolves.toBeUndefined();
+
+    // OBSERVABILITY: the tolerance fired LOUDLY (WARN), naming the table so an unexpected
+    // activation is never silent in prod.
+    const toleratedWarn = loserWarnSpy.mock.calls.find(([entry]) =>
+      /\[schema reconcile\] tolerated concurrent ALREADY_EXISTS/.test(String(entry.message))
+    );
+    expect(toleratedWarn).toBeDefined();
+    expect(String(toleratedWarn![0].message)).toContain('db_test_reconcile');
 
     // The column exists exactly once, with the intended type (StringColumn defaults to STRING(255)).
     const columnMetadata = await tableManager.schemaMetadata.getColumnMetadata(grownTable());
     expect(columnMetadata['nickname']).toBeDefined();
     expect(columnMetadata['nickname'].type).toBe('STRING(255)');
 
-    // And the reconciled schema is truly up to date: a clean pass issues ZERO DDL.
+    // HAPPY PATH UNTOUCHED: a clean pass (DDL succeeds, nothing thrown) issues ZERO DDL and never
+    // reaches the reconcile path, so it emits no reconcile WARN.
+    const cleanWarnSpy = spyOnReconcileWarn(tableManager);
     const runUpdateSchemaSpy = jest.spyOn(spannerDriver, 'runUpdateSchema');
     await tableManager.loadTable(grownTable());
     expect(runUpdateSchemaSpy).not.toHaveBeenCalled();
+    expect(
+      cleanWarnSpy.mock.calls.filter(([entry]) => /\[schema reconcile\]/.test(String(entry.message)))
+    ).toHaveLength(0);
   }, 60000);
 
   test('two actors creating the SAME absent table both succeed; the table lands once', async () => {
@@ -179,9 +202,17 @@ describe('Concurrent schema reconcile', () => {
     // ...but the live schema (qty STRING(MAX)) does NOT match the intended definition (qty INT64),
     // so reconcile must RETHROW the original error rather than mask a genuine conflict.
     // (Bite: turn reconcile into a blanket swallow and this rejection disappears.)
+    const warnSpy = spyOnReconcileWarn(tableManager);
     await expect(
       internals(tableManager).reconcileConcurrentSchemaChange([conflictIntegerTable()], duplicateError)
     ).rejects.toBe(duplicateError);
+
+    // OBSERVABILITY: a genuine conflict is ALSO loud (WARN) before it re-throws.
+    const conflictWarn = warnSpy.mock.calls.find(([entry]) =>
+      /\[schema reconcile\].*genuine conflict/.test(String(entry.message))
+    );
+    expect(conflictWarn).toBeDefined();
+    expect(String(conflictWarn![0].message)).toContain('db_test_reconcile_conflict');
   }, 60000);
 
   test('UNRELATED ERROR CLASS: a non-already-exists DDL error propagates unchanged', async () => {

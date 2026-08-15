@@ -123,16 +123,27 @@ export class TableManager {
    * If either gate fails, the ORIGINAL error propagates unchanged. Because every actor runs this
    * same reconcile, it closes all three windows: migration-Job-vs-pod, pod-vs-pod, and
    * multi-replica boot.
+   *
+   * OBSERVABILITY: this path is reached ONLY from the create/alter catch (the no-error happy path
+   * never calls it). Every outcome that reaches the intended-definition gate is logged LOUDLY at
+   * WARN — tolerance fired (treated as applied) OR the re-read failed (genuine conflict / still
+   * absent, re-throwing) — so an unexpected activation is visible in prod logs rather than silent.
    */
   private async reconcileConcurrentSchemaChange(tables: Table<any>[], error: unknown): Promise<void> {
     if (!this.schemaOperations.isAlreadyExistsError?.(error)) {
       throw error;
     }
 
+    const tableNames = tables.map((table) => table.name).join(', ');
+    const reason = this.schemaErrorReason(error);
+
     for (const table of tables) {
       // A create that failed already-exists yet leaves the table absent is not the
       // concurrent-winner case — surface the original error rather than masking it.
       if (!(await this.tableExists(table))) {
+        this.logger.warn({
+          message: `[schema reconcile] caught ALREADY_EXISTS for table(s) '${tableNames}' but '${table.name}' is still absent on re-read — NOT a concurrent apply; re-throwing. reason: ${reason}`,
+        });
         throw error;
       }
 
@@ -140,17 +151,24 @@ export class TableManager {
       if (this.shouldAlterTable(remainingChanges)) {
         // The object exists but the live schema still differs from the intended definition, so a
         // concurrent actor did NOT apply our exact change (a genuine conflict). Propagate.
+        this.logger.warn({
+          message: `[schema reconcile] caught ALREADY_EXISTS for table '${table.name}' but the live schema does NOT match the intended definition on re-read (genuine conflict) — re-throwing. reason: ${reason}`,
+          obj: { remainingChanges },
+        });
         throw error;
       }
     }
 
-    this.logger.info({
-      message: `Concurrent schema change reconciled for table(s): ${tables
-        .map((table) => table.name)
-        .join(
-          ', '
-        )} — live schema verified to match the intended definition; treating the duplicate DDL error as success`,
+    this.logger.warn({
+      message: `[schema reconcile] tolerated concurrent ALREADY_EXISTS for table(s) '${tableNames}' — re-read verified the object present with the intended definition, treating as applied (a concurrent actor won the race). reason: ${reason}`,
     });
+  }
+
+  /** Concise, loggable reason from a schema-update error: the backend names the offending object
+   *  in `details` (validation phase) or `message` (apply phase). */
+  private schemaErrorReason(error: unknown): string {
+    const candidate = error as { details?: unknown; message?: unknown } | undefined;
+    return String(candidate?.details ?? candidate?.message ?? error);
   }
 
   private validateDynamicReferenceColumns(table: Table<any>): void {
