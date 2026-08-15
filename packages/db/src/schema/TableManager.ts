@@ -13,6 +13,14 @@ export interface ColumnTypeFactory {
 }
 
 export class TableManager {
+  /**
+   * Bounded verification re-reads for {@link reconcileConcurrentSchemaChange}: an already-exists
+   * DDL error proves the conflicting schema change COMMITTED, but INFORMATION_SCHEMA on this
+   * connection can briefly lag that commit — 5 × 200ms rides out the propagation without letting
+   * a genuine conflict stall for more than ~1s.
+   */
+  private static readonly RECONCILE_VERIFY_ATTEMPTS = 5;
+  private static readonly RECONCILE_VERIFY_RETRY_DELAY_MS = 200;
   private logger = new Logger({ name: this.constructor.name, logLevel: getEnvVar('DB_LOG_LEVEL') as any });
   public columnTypeFactory: ColumnTypeFactory;
   public schemaOperations: SchemaOperations;
@@ -119,7 +127,9 @@ export class TableManager {
    *     getTableChanges uses) must confirm every table now exists AND has no remaining changes of
    *     the kind we attempted. A concurrent actor applying our EXACT change satisfies this; a
    *     genuine conflict (e.g. the column landed with a different type, so a column-type change is
-   *     still outstanding) does not.
+   *     still outstanding) does not. The re-read is resilient to brief schema propagation — see
+   *     {@link verifyIntendedDefinition} for the bounded retry that prevents a momentarily-stale
+   *     INFORMATION_SCHEMA read from false-negativing into the very crash this closes.
    * If either gate fails, the ORIGINAL error propagates unchanged. Because every actor runs this
    * same reconcile, it closes all three windows: migration-Job-vs-pod, pod-vs-pod, and
    * multi-replica boot.
@@ -138,25 +148,7 @@ export class TableManager {
     const reason = this.schemaErrorReason(error);
 
     for (const table of tables) {
-      // A create that failed already-exists yet leaves the table absent is not the
-      // concurrent-winner case — surface the original error rather than masking it.
-      if (!(await this.tableExists(table))) {
-        this.logger.warn({
-          message: `[schema reconcile] caught ALREADY_EXISTS for table(s) '${tableNames}' but '${table.name}' is still absent on re-read — NOT a concurrent apply; re-throwing. reason: ${reason}`,
-        });
-        throw error;
-      }
-
-      const remainingChanges = await this.getTableChanges(table);
-      if (this.shouldAlterTable(remainingChanges)) {
-        // The object exists but the live schema still differs from the intended definition, so a
-        // concurrent actor did NOT apply our exact change (a genuine conflict). Propagate.
-        this.logger.warn({
-          message: `[schema reconcile] caught ALREADY_EXISTS for table '${table.name}' but the live schema does NOT match the intended definition on re-read (genuine conflict) — re-throwing. reason: ${reason}`,
-          obj: { remainingChanges },
-        });
-        throw error;
-      }
+      await this.verifyIntendedDefinition(table, tableNames, reason, error);
     }
 
     this.logger.warn({
@@ -164,11 +156,68 @@ export class TableManager {
     });
   }
 
+  /**
+   * Re-read the live schema until `table` is present with the intended definition, retrying a
+   * BOUNDED number of times ({@link RECONCILE_VERIFY_ATTEMPTS} × {@link RECONCILE_VERIFY_RETRY_DELAY_MS}).
+   *
+   * The already-exists error means the conflicting DDL has COMMITTED — the object exists — but
+   * INFORMATION_SCHEMA on this connection can briefly lag that commit, and a single point-in-time
+   * read that misses it would false-negative into a re-throw, reintroducing the exact boot crash
+   * this reconcile closes. So the re-read's job is (a) to wait out momentary invisibility and
+   * (b) to verify the DEFINITION matches intent. A momentary stale read resolves via retry into
+   * success; only a definition still absent or mismatched after every attempt is a genuine
+   * conflict — logged at WARN, then the ORIGINAL error re-throws.
+   */
+  private async verifyIntendedDefinition(
+    table: Table<any>,
+    tableNames: string,
+    reason: string,
+    error: unknown
+  ): Promise<void> {
+    let remainingChanges: TableChanges | undefined;
+    for (let attempt = 1; attempt <= TableManager.RECONCILE_VERIFY_ATTEMPTS; attempt++) {
+      if (attempt > 1) {
+        await this.delay(TableManager.RECONCILE_VERIFY_RETRY_DELAY_MS);
+      }
+
+      if (!(await this.tableExists(table))) {
+        remainingChanges = undefined;
+        continue;
+      }
+
+      remainingChanges = await this.getTableChanges(table);
+      if (!this.shouldAlterTable(remainingChanges)) {
+        return; // verified: present with the intended definition
+      }
+    }
+
+    if (!remainingChanges) {
+      // Still absent after every re-read — not the concurrent-winner case; surface the original
+      // error rather than masking it.
+      this.logger.warn({
+        message: `[schema reconcile] caught ALREADY_EXISTS for table(s) '${tableNames}' but '${table.name}' is still absent after ${TableManager.RECONCILE_VERIFY_ATTEMPTS} re-reads — NOT a concurrent apply; re-throwing. reason: ${reason}`,
+      });
+      throw error;
+    }
+
+    // The object exists but the live schema still differs from the intended definition, so a
+    // concurrent actor did NOT apply our exact change (a genuine conflict). Propagate.
+    this.logger.warn({
+      message: `[schema reconcile] caught ALREADY_EXISTS for table '${table.name}' but the live schema does NOT match the intended definition after ${TableManager.RECONCILE_VERIFY_ATTEMPTS} re-reads (genuine conflict) — re-throwing. reason: ${reason}`,
+      obj: { remainingChanges },
+    });
+    throw error;
+  }
+
   /** Concise, loggable reason from a schema-update error: the backend names the offending object
    *  in `details` (validation phase) or `message` (apply phase). */
   private schemaErrorReason(error: unknown): string {
     const candidate = error as { details?: unknown; message?: unknown } | undefined;
     return String(candidate?.details ?? candidate?.message ?? error);
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private validateDynamicReferenceColumns(table: Table<any>): void {

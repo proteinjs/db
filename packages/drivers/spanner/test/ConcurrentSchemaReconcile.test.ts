@@ -184,6 +184,43 @@ describe('Concurrent schema reconcile', () => {
     expect(await tableManager.tableExists(baseTable())).toBe(true);
   }, 60000);
 
+  test('PROPAGATION LAG: a briefly-stale re-read retries and succeeds instead of false-negative re-throwing', async () => {
+    await tableManager.loadTable(baseTable());
+
+    // A REAL duplicate error — replaying an add of the already-present `name` column.
+    let duplicateError: unknown;
+    try {
+      await spannerDriver.runUpdateSchema('ALTER TABLE `db_test_reconcile` ADD COLUMN `name` STRING(255)');
+    } catch (error) {
+      duplicateError = error;
+    }
+    expect(duplicateError).toBeDefined();
+    expect(classifier(tableManager).isAlreadyExistsError(duplicateError)).toBe(true);
+
+    // Simulate brief INFORMATION_SCHEMA propagation lag on this connection: the FIRST re-read
+    // misses the table; the next sees the true schema. ALREADY_EXISTS guarantees the conflicting
+    // DDL committed — the object EXISTS — so the reconcile must ride out the stale read (bounded
+    // retry), not false-negative re-throw: a re-throw here IS the boot crash this fix closes.
+    jest.spyOn(tableManager.schemaMetadata, 'tableExists').mockImplementationOnce(async () => false);
+
+    await expect(
+      internals(tableManager).reconcileConcurrentSchemaChange([baseTable()], duplicateError)
+    ).resolves.toBeUndefined();
+  }, 60000);
+
+  test('BOUNDED RETRY: a definition that never becomes visible exhausts the retries and re-throws', async () => {
+    // `db_test_reconcile` is dropped in beforeEach and never created here — the claimed duplicate
+    // can never verify. The reconcile must give up after its bounded re-reads (not hang, not
+    // swallow) and surface the original error. (Bite: an unbounded retry would time this test out.)
+    const ghostDuplicate = {
+      code: 9,
+      message: '9 FAILED_PRECONDITION: Duplicate name in schema: db_test_reconcile.',
+    };
+    await expect(internals(tableManager).reconcileConcurrentSchemaChange([baseTable()], ghostDuplicate)).rejects.toBe(
+      ghostDuplicate
+    );
+  }, 60000);
+
   test('GENUINE CONFLICT: an already-exists error whose live definition differs from intent STILL throws', async () => {
     // Winner landed `qty` as STRING(MAX).
     await tableManager.loadTable(conflictStringTable());
