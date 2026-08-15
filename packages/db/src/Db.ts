@@ -41,6 +41,19 @@ export const getDbAsSystem = <R extends Record = Record>() => new Db<R>(undefine
 const getEnvVar = (key: string): string | undefined =>
   typeof process !== 'undefined' && process.env ? process.env[key] : undefined;
 
+/**
+ * The lazily-resolved default driver lives on the global object (window in browser, globalThis
+ * elsewhere) rather than on a class static: per-package installs can put multiple live copies of
+ * @proteinjs/db in one process (each sibling package's nested node_modules hosts its own copy),
+ * and a per-copy static means every copy asks the DefaultDbDriverFactory for its own driver —
+ * multiple live db clients per process (two Spanner clients holding gRPC channels open was the
+ * 2026-08-14 thought-ui jest-never-exits incident). Anchoring on the global gives every copy the
+ * one driver — same pattern as reflection's SourceRepository and this package's ReferenceCache.
+ */
+const DEFAULT_DB_DRIVER_GLOBAL_KEY = '__proteinjs_db_defaultDbDriver';
+
+const getGlobal = (): any => (typeof window !== 'undefined' ? window : globalThis);
+
 export type DbDriverQueryStatementConfig = ParameterizationConfig & {
   prefixTablesWithDb?: boolean;
   getDriverColumnType?: (tableName: string, columnName: string) => string;
@@ -79,7 +92,6 @@ export interface DbDriver {
 }
 
 export class Db<R extends Record = Record> implements DbService<R> {
-  private static defaultDbDriver: DbDriver;
   private dbDriver: DbDriver;
   private getTable: (tableName: string) => Table<any>;
   private logger = new Logger({ name: this.constructor.name, logLevel: getEnvVar('DB_LOG_LEVEL') as any });
@@ -108,7 +120,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
   }
 
   static getDefaultDbDriver(): DbDriver {
-    if (!Db.defaultDbDriver) {
+    if (!getGlobal()[DEFAULT_DB_DRIVER_GLOBAL_KEY]) {
       const defaultDbDriverFactory = SourceRepository.get().object<DefaultDbDriverFactory>(
         '@proteinjs/db/DefaultDbDriverFactory'
       );
@@ -118,10 +130,10 @@ export class Db<R extends Record = Record> implements DbService<R> {
         );
       }
 
-      Db.defaultDbDriver = defaultDbDriverFactory.getDbDriver();
+      getGlobal()[DEFAULT_DB_DRIVER_GLOBAL_KEY] = defaultDbDriverFactory.getDbDriver();
     }
 
-    return Db.defaultDbDriver;
+    return getGlobal()[DEFAULT_DB_DRIVER_GLOBAL_KEY];
   }
 
   private getDefaultTransactionContextFactory(): DefaultTransactionContextFactory {
