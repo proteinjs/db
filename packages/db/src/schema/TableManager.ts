@@ -55,7 +55,11 @@ export class TableManager {
 
     if (absentTables.length > 0) {
       this.logger.info({ message: `Creating tables: ${absentTables.map((table) => table.name).join(', ')}` });
-      await this.schemaOperations.createTables(absentTables);
+      try {
+        await this.schemaOperations.createTables(absentTables);
+      } catch (error) {
+        await this.reconcileConcurrentSchemaChange(absentTables, error);
+      }
       this.logger.info({ message: `Finished creating ${absentTables.length} tables` });
     }
 
@@ -71,7 +75,11 @@ export class TableManager {
       await this.alterTableIfChanged(table);
     } else {
       this.logger.info({ message: `Creating table: ${table.name}` });
-      await this.schemaOperations.createTables([table]);
+      try {
+        await this.schemaOperations.createTables([table]);
+      } catch (error) {
+        await this.reconcileConcurrentSchemaChange([table], error);
+      }
       this.logger.info({ message: `Finished creating table: ${table.name}` });
     }
   }
@@ -80,9 +88,69 @@ export class TableManager {
     const tableChanges = await this.getTableChanges(table);
     if (this.shouldAlterTable(tableChanges)) {
       this.logger.info({ message: `Altering table: ${table.name}` });
-      await this.schemaOperations.alterTable(table, tableChanges);
+      try {
+        await this.schemaOperations.alterTable(table, tableChanges);
+      } catch (error) {
+        await this.reconcileConcurrentSchemaChange([table], error);
+      }
       this.logger.info({ message: `Finished altering table: ${table.name}` });
     }
+  }
+
+  /**
+   * Reconcile a create/alter DDL failure against a concurrent schema change, closing the
+   * check-then-act race in loadTable/loadTables.
+   *
+   * On a schema-changing release the migration Job, booting pods, and multiple replicas all run
+   * Db.init -> loadTables at once. Reconcile is check-then-act (read INFORMATION_SCHEMA -> decide
+   * create/alter -> apply DDL): two actors can both observe the same column/table as absent and
+   * both issue the CREATE/ALTER. The backend serializes DDL so the object lands EXACTLY once, but
+   * the loser's operation fails with an already-exists / duplicate-name error. Before this
+   * reconcile that error propagated out of Db.init — a booting pod with no unhandledRejection
+   * handler exited (CrashLoopBackOff) and the migration Job exited 1 (a spurious migration-gate
+   * failure).
+   *
+   * This is NOT a blanket swallow (that would mask real schema failures). Two independent gates
+   * must BOTH pass before a failure is treated as success:
+   *  1. CLASS — the driver's schema layer, which owns the backend's error codes/messages, must
+   *     classify the error as the already-exists class ({@link SchemaOperations.isAlreadyExistsError}).
+   *     A driver that does not implement the classifier always rethrows here.
+   *  2. INTENDED DEFINITION — a re-read of the live schema (the same metadata-backed detection
+   *     getTableChanges uses) must confirm every table now exists AND has no remaining changes of
+   *     the kind we attempted. A concurrent actor applying our EXACT change satisfies this; a
+   *     genuine conflict (e.g. the column landed with a different type, so a column-type change is
+   *     still outstanding) does not.
+   * If either gate fails, the ORIGINAL error propagates unchanged. Because every actor runs this
+   * same reconcile, it closes all three windows: migration-Job-vs-pod, pod-vs-pod, and
+   * multi-replica boot.
+   */
+  private async reconcileConcurrentSchemaChange(tables: Table<any>[], error: unknown): Promise<void> {
+    if (!this.schemaOperations.isAlreadyExistsError?.(error)) {
+      throw error;
+    }
+
+    for (const table of tables) {
+      // A create that failed already-exists yet leaves the table absent is not the
+      // concurrent-winner case — surface the original error rather than masking it.
+      if (!(await this.tableExists(table))) {
+        throw error;
+      }
+
+      const remainingChanges = await this.getTableChanges(table);
+      if (this.shouldAlterTable(remainingChanges)) {
+        // The object exists but the live schema still differs from the intended definition, so a
+        // concurrent actor did NOT apply our exact change (a genuine conflict). Propagate.
+        throw error;
+      }
+    }
+
+    this.logger.info({
+      message: `Concurrent schema change reconciled for table(s): ${tables
+        .map((table) => table.name)
+        .join(
+          ', '
+        )} — live schema verified to match the intended definition; treating the duplicate DDL error as success`,
+    });
   }
 
   private validateDynamicReferenceColumns(table: Table<any>): void {

@@ -9,6 +9,21 @@ export interface SchemaOperations {
    */
   createTables(tables: Table<any>[]): Promise<void>;
   alterTable(table: Table<any>, changes: TableChanges): Promise<void>;
+
+  /**
+   * Classify a create/alter DDL error as the backend's "already exists" class — the loser's
+   * outcome when two actors concurrently create the same table/index or add the same column and
+   * the backend serializes the DDL so the object lands exactly once. Backend-specific (each driver
+   * owns its error codes/messages), so it is optional: a driver that does not implement it opts out
+   * of {@link TableManager}'s concurrent-reconcile tolerance and keeps the strict rethrow.
+   *
+   * MUST match on error CLASS (status code + a specific message class), never a loose substring —
+   * it decides whether a failure is eligible for verify-then-succeed, and a genuine failure that
+   * slipped into this class would be masked. The tolerance is still safe because TableManager
+   * re-reads and confirms the intended definition before treating it as success; this predicate is
+   * the first gate, not the whole guard.
+   */
+  isAlreadyExistsError?(error: unknown): boolean;
 }
 
 interface Index {

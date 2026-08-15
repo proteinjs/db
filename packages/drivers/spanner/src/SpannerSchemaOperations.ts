@@ -19,6 +19,42 @@ export class SpannerSchemaOperations implements SchemaOperations {
   constructor(private spannerDriver: SpannerDriver) {}
 
   /**
+   * Classify a schema-update error as Spanner's "already exists" class — the loser's outcome when
+   * two actors concurrently create the same table/index or add the same column and the backend
+   * serializes the DDL so it lands exactly once. {@link TableManager} calls this to decide whether
+   * a create/alter failure is eligible for verify-then-succeed (it still re-reads the live schema
+   * and confirms the intended definition before treating it as success).
+   *
+   * Matched on gRPC status CODE and a specific MESSAGE class — never a loose substring:
+   * - code ∈ { ALREADY_EXISTS (6), FAILED_PRECONDITION (9) }. Cloud Spanner has surfaced the
+   *   duplicate-object errors under both across backends/versions; the emulator returns 9
+   *   ("Duplicate name in schema: <obj>" for a table/index, "Duplicate column name <table>.<col>"
+   *   for a column — verified against the emulator image, 2026-08). Gating on this two-code family
+   *   rather than code 9 alone keeps OTHER FAILED_PRECONDITION errors — a stranded read-write
+   *   transaction ("a concurrent schema change operation or read-write transaction is already in
+   *   progress"), a unique-index backfill uniqueness violation — out of the class.
+   * - message ∈ the duplicate/already-exists phrasings. This is the discriminator that keeps
+   *   unrelated code-9 errors out, so it is deliberately specific (e.g. "already in progress" does
+   *   NOT contain "already exists" and is not matched).
+   *
+   * The reconcile layer's own errors (unsupported type change, nullable drift, column rename) are
+   * plain Errors with no `code` and never match.
+   */
+  isAlreadyExistsError(error: unknown): boolean {
+    const code = (error as { code?: number } | undefined)?.code;
+    if (code !== 6 && code !== 9) {
+      return false;
+    }
+
+    const message = String((error as { message?: unknown } | undefined)?.message ?? '');
+    return (
+      /Duplicate column name/i.test(message) ||
+      /Duplicate name in schema/i.test(message) ||
+      /already exists/i.test(message)
+    );
+  }
+
+  /**
    * Create every table in `tables` — each table's `CREATE TABLE` plus all of its `CREATE INDEX`
    * statements, concatenated across tables in the given order — as ONE schema-update operation.
    * `UpdateDatabaseDdl` applies the batch in order, so a table whose foreign keys reference an
