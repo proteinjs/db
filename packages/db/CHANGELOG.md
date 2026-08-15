@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.32.3](https://github.com/proteinjs/db/compare/@proteinjs/db@1.32.2...@proteinjs/db@1.32.3) (2026-08-15)
+
+
+### Bug Fixes
+
+* reconcile re-read rides out brief INFORMATION_SCHEMA propagation (bounded retry) ([0f4739b](https://github.com/proteinjs/db/commit/0f4739bb2f233d9dff462cf7ec74777f53ea0de6))
+
+
+
+
+
 ## [1.32.2](https://github.com/proteinjs/db/compare/@proteinjs/db@1.32.1...@proteinjs/db@1.32.2) (2026-08-15)
 
 
