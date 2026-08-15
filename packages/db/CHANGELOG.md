@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.32.1](https://github.com/proteinjs/db/compare/@proteinjs/db@1.32.0...@proteinjs/db@1.32.1) (2026-08-15)
+
+
+### Bug Fixes
+
+* schema reconcile tolerates concurrent ALREADY_EXISTS — verify-then-succeed, closes the multi-actor boot race ([ef6afa5](https://github.com/proteinjs/db/commit/ef6afa55690f6481435bc4356cf6cc301869e08f))
+
+
+
+
+
 # [1.32.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.31.0...@proteinjs/db@1.32.0) (2026-08-14)
 
 
