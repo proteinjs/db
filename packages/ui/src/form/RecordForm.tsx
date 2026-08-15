@@ -2,12 +2,13 @@ import React from 'react';
 import S from 'string';
 import moment from 'moment';
 import { StringUtil, isInstanceOf } from '@proteinjs/util';
-import { Form, Fields, textField, FormButtons } from '@proteinjs/ui';
+import { Form, Fields, textField, checkboxField, dateField, FormButtons } from '@proteinjs/ui';
 import {
   Table,
   Record,
   Column,
   getDbService,
+  DateColumn,
   DateTimeColumn,
   BooleanColumn,
   Reference,
@@ -75,6 +76,15 @@ function parseReferenceIds(value: unknown): string[] {
     .split(',')
     .map((id) => id.trim())
     .filter(Boolean);
+}
+
+/** Parse a native date/datetime-local input value ('YYYY-MM-DD' / 'YYYY-MM-DDTHH:mm'). */
+function parseDateInputValue(value: unknown): moment.Moment | null {
+  if (typeof value !== 'string' || !value.trim()) {
+    return null;
+  }
+
+  return moment(value);
 }
 
 function parseBooleanValue(value: unknown): boolean | null {
@@ -157,15 +167,79 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
   function createFields(): () => Fields {
     return () => {
       const fields: Fields = {};
-      for (const columnPropertyName in getColumns()) {
-        fields[columnPropertyName] = textField({
-          name: columnPropertyName,
-          label: StringUtil.humanizeCamel(columnPropertyName),
-        });
+      const columns = getColumns();
+      for (const columnPropertyName in columns) {
+        fields[columnPropertyName] = createField(columnPropertyName, columns[columnPropertyName]);
       }
 
       return fields;
     };
+  }
+
+  /**
+   * Server-managed columns (`id`/`created`/`updated`) and stored timestamps (`DateTimeColumn`)
+   * are readonly on existing records; readonly was previously applied in `onLoad`, which made
+   * field-control selection impossible at creation time — it lives here now so each column type
+   * can pick its control up front.
+   */
+  function isReadonlyField(columnPropertyName: string, column: Column<T, any>) {
+    return (
+      !isNewRecord &&
+      (columnPropertyName == 'id' ||
+        columnPropertyName == 'created' ||
+        columnPropertyName == 'updated' ||
+        isInstanceOf(column, DateTimeColumn))
+    );
+  }
+
+  /** Pick the field control that tells the truth about the column's type. */
+  function createField(columnPropertyName: string, column: Column<T, any>) {
+    const name = columnPropertyName;
+    const label = StringUtil.humanizeCamel(columnPropertyName);
+
+    // Readonly values render as text (a native date input isn't text-selectable): copyable
+    // ids/timestamps beat a type-specific control the user can't interact with anyway.
+    if (isReadonlyField(columnPropertyName, column)) {
+      return textField({ name, label, accessibility: { readonly: true } });
+    }
+
+    if (isInstanceOf(column, BooleanColumn)) {
+      return checkboxField({ name, label });
+    }
+
+    if (isInstanceOf(column, DateColumn)) {
+      return dateField({ name, label });
+    }
+
+    // Only reachable on new-record forms; on existing records DateTimeColumns are readonly.
+    if (isInstanceOf(column, DateTimeColumn)) {
+      return dateField({ name, label, includeTime: true });
+    }
+
+    if (isInstanceOf(column, ReferenceColumn)) {
+      const { referenceTable } = column as unknown as ReferenceColumn<any>;
+      return textField({
+        name,
+        label,
+        description: `${referenceTable} record id`,
+        onChange: async (value, fields, setFieldStatus) => {
+          if (typeof value === 'string' && value.includes(',')) {
+            setFieldStatus(`Enter a single ${referenceTable} record id`, true);
+          }
+        },
+      });
+    }
+
+    if (isInstanceOf(column, ReferenceArrayColumn)) {
+      const { referenceTable } = column as unknown as ReferenceArrayColumn<any>;
+      return textField({
+        name,
+        label,
+        description: `Comma-separated ${referenceTable} record ids`,
+      });
+    }
+
+    return textField({ name, label });
   }
 
   function fieldLayout(): any {
@@ -213,6 +287,14 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
       return parseBooleanValue(fieldValue);
     }
 
+    if (isInstanceOf(column, DateColumn)) {
+      return parseDateInputValue(fieldValue)?.toDate() ?? null;
+    }
+
+    if (isInstanceOf(column, DateTimeColumn)) {
+      return parseDateInputValue(fieldValue);
+    }
+
     return fieldValue;
   }
 
@@ -228,6 +310,11 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
           color: 'primary',
           variant: 'text',
         },
+        confirm: (fields: Fields) => ({
+          title: `Delete ${S(table.name).humanize().s}?`,
+          message: 'This permanently deletes the record.',
+          confirmButtonText: 'Delete',
+        }),
         redirect: async (fields: Fields, buttons: FormButtons<Fields>) => {
           return { path: recordTableLink(table) };
         },
@@ -258,6 +345,13 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
           }
 
           for (const columnPropertyName in fields) {
+            // Readonly fields are display-only; their values are formatted strings. The loaded
+            // record already holds the real values (id keys the update; created/updated stay
+            // moments — writing the display string back serialized `created` to null on save).
+            if (isReadonlyField(columnPropertyName, getColumn(columnPropertyName))) {
+              continue;
+            }
+
             const field = fields[columnPropertyName];
             (record as any)[columnPropertyName] = getFieldValue(columnPropertyName, field.field.value);
           }
@@ -308,29 +402,22 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
       const field = fields[columnPropertyName].field;
       let fieldValue = (record as any)[columnPropertyName];
 
-      if (moment.isMoment(fieldValue)) {
-        fieldValue = fieldValue.format('ddd, MMM Do YY, h:mm:ss a');
-      } else if (isReferenceValue(fieldValue)) {
+      if (isReferenceValue(fieldValue)) {
         fieldValue = fieldValue._id || '';
       } else if (isReferenceArrayValue(fieldValue)) {
         fieldValue = fieldValue._ids.join(', ');
       } else if (isInstanceOf(column, BooleanColumn)) {
-        fieldValue = fieldValue == true ? 'True' : 'False';
+        // The checkbox control takes a real boolean, not a 'True'/'False' display string
+        fieldValue = fieldValue == true;
+      } else if (isInstanceOf(column, DateColumn) && fieldValue) {
+        // The native date input takes its own value format
+        fieldValue = moment(fieldValue).format('YYYY-MM-DD');
+      } else if (moment.isMoment(fieldValue)) {
+        // Readonly timestamps (created/updated/DateTimeColumn) display human-formatted, copyable
+        fieldValue = fieldValue.format('ddd, MMM Do YY, h:mm:ss a');
       }
 
       field.value = fieldValue;
-      if (
-        columnPropertyName == 'created' ||
-        columnPropertyName == 'updated' ||
-        columnPropertyName == 'id' ||
-        isInstanceOf(column, DateTimeColumn)
-      ) {
-        if (!field.accessibility) {
-          field.accessibility = {};
-        }
-
-        field.accessibility.readonly = true;
-      }
     }
   }
 }
