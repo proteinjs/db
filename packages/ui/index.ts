@@ -5,3 +5,5 @@ export * from './src/form/RecordForm';
 export * from './src/form/RecordFormCustomization';
 export * from './src/pages/RecordTablePage';
 export * from './src/pages/RecordFormPage';
+export * from './src/pages/TablesPage';
+export * from './src/tableDisplayName';

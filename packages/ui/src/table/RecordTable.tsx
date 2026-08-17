@@ -14,6 +14,7 @@ import {
 import { QueryTableLoader } from './QueryTableLoader';
 import { newRecordFormLink, recordFormLink } from '../pages/RecordFormPage';
 import { recordTableLink } from '../pages/RecordTablePage';
+import { tableDisplayName } from '../tableDisplayName';
 import { isInstanceOf } from '@proteinjs/util';
 import {
   IntegerColumn,
@@ -46,6 +47,13 @@ function deleteButton<T extends Record>(table: Table<T>): TableButton<T> {
       showWhenRowsSelected: true,
       showWhenNoRowsSelected: false,
     },
+    confirm: (selectedRows) => ({
+      title: `Delete ${selectedRows.length} ${selectedRows.length == 1 ? 'row' : 'rows'}?`,
+      message: `This permanently deletes ${
+        selectedRows.length == 1 ? 'the selected row' : 'the selected rows'
+      } from ${tableDisplayName(table)}.`,
+      confirmButtonText: 'Delete',
+    }),
     onClick: async (selectedRows, navigate) => {
       const qb = new QueryBuilderFactory()
         .getQueryBuilder(table)
@@ -191,7 +199,7 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
 
   return (
     <TableComponent
-      title={props.title ? props.title : `${S(props.table.name).humanize().toString()} Table`}
+      title={props.title ? props.title : tableDisplayName(props.table)}
       columns={props.columns ? props.columns : defaultColumns()}
       columnConfig={mergeColumnConfigs()}
       tableLoader={props.tableLoader ? props.tableLoader : defaultTableLoader()}
