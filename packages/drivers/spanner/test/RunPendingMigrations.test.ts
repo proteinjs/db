@@ -20,7 +20,9 @@ import '../generated/test/index';
  *   are reported so the Job can fail the deploy; a later series retries the failed row and
  *   finishes the tail.
  * - HISTORY HONESTY: ledger rows whose source loader is gone (the table keeps history) are
- *   skipped and reported as unresolved, never crash the series.
+ *   skipped and reported as unresolved, never crash the series — and STAMPED `retired: true`.
+ * - RETIREMENT: a retired row is never auto-run, even when its source class ships again in a
+ *   later build; only un-retiring it (the Migrations-page toggle) re-arms the series.
  *
  * All series runs execute SESSIONLESS (no test user registered) — the deploy Job has no user
  * session, and UserAuth is fail-closed: these tests passing IS the pin that the series records
@@ -180,7 +182,7 @@ describe('MigrationRunner.runPendingMigrations (spanner)', () => {
     expect((await getDbAsSystem().get(migrationTable, { id: 'fail-c-after' })).status).toBe('success');
   }, 60000);
 
-  test('ledger rows without a source record are history — skipped, reported, untouched', async () => {
+  test('ledger rows without a source record are stamped retired — skipped, reported, never run', async () => {
     const live = plantMigration('live-beside-history');
     await insertLedgerRow(live, 1);
     // A row whose loader was deleted after it ran in some past release
@@ -194,8 +196,62 @@ describe('MigrationRunner.runPendingMigrations (spanner)', () => {
     const summary = await new MigrationRunner().runPendingMigrations();
 
     expect(summary.unresolved).toEqual(['ghost-history']);
+    expect(summary.retired).toEqual([]);
     expect(summary.applied).toEqual(['live-beside-history']);
     expect(summary.failed).toBeUndefined();
-    expect((await getDbAsSystem().get(migrationTable, { id: 'ghost-history' })).status).toBe('proposed');
+    const ghostRow = await getDbAsSystem().get(migrationTable, { id: 'ghost-history' });
+    expect(ghostRow.status).toBe('proposed');
+    // The stamp: an unresolved row is retired on sight, so a returning source class can never
+    // silently re-arm it (the pin for that refusal is the next test).
+    expect(ghostRow.retired).toBe(true);
+  }, 60000);
+
+  test('a stamped row is refused even when its source class ships again — the flag outlives the gap', async () => {
+    // Gate run over a build where the row's loader no longer ships: the run stamps it retired.
+    await getDbAsSystem().insert(migrationTable, {
+      id: 'returning-loader',
+      description: 'loader missing from this build',
+      created: moment(base),
+    } as any);
+    const stampingRun = await new MigrationRunner().runPendingMigrations();
+    expect(stampingRun.unresolved).toEqual(['returning-loader']);
+
+    // The source class RETURNS in a later build. Its id resolving again is not consent to
+    // auto-run: the row stays excluded until a human un-retires it on the Migrations page.
+    plantMigration('returning-loader');
+    const laterRun = await new MigrationRunner().runPendingMigrations();
+
+    expect(runLog).toEqual([]);
+    expect(laterRun.retired).toEqual(['returning-loader']);
+    expect(laterRun.unresolved).toEqual([]);
+    expect(laterRun.applied).toEqual([]);
+    const row = await getDbAsSystem().get(migrationTable, { id: 'returning-loader' });
+    expect(row.retired).toBe(true);
+    expect(row.status).toBe('proposed');
+  }, 60000);
+
+  test('un-retiring a retired row re-arms the series — it runs to success', async () => {
+    const migration = plantMigration('unretired-comeback');
+    await getDbAsSystem().insert(migrationTable, {
+      ...migration,
+      retired: true,
+      created: moment(base),
+    } as any);
+
+    const refusedRun = await new MigrationRunner().runPendingMigrations();
+    expect(runLog).toEqual([]);
+    expect(refusedRun.retired).toEqual(['unretired-comeback']);
+
+    // The Migrations-page Un-retire button issues exactly this write.
+    await getDbAsSystem().update(migrationTable, { id: 'unretired-comeback', retired: false } as any);
+    const rearmedRun = await new MigrationRunner().runPendingMigrations();
+
+    expect(runLog).toEqual(['unretired-comeback']);
+    expect(rearmedRun.applied).toEqual(['unretired-comeback']);
+    expect(rearmedRun.retired).toEqual([]);
+    const row = await getDbAsSystem().get(migrationTable, { id: 'unretired-comeback' });
+    expect(row.status).toBe('success');
+    expect(row.output).toBe('unretired-comeback output');
+    expect(row.retired).toBe(false);
   }, 60000);
 });
