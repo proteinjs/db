@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.10.0](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.9.4...@proteinjs/db-ui@1.10.0) (2026-08-17)
+
+
+### Features
+
+* **db:** retired-migration flag — the deploy series stamps source-less ledger rows and never auto-runs retired rows ([f468125](https://github.com/proteinjs/db/commit/f4681257439e2e7e031f9d7f4d90b7463cc46456))
+* functional hardening for admin record surfaces — delete confirmation, type-truthful field controls, plural titles, tablesPage export ([4c3c5ad](https://github.com/proteinjs/db/commit/4c3c5adc29a4ceb4f1b5dd148a7fd4dd41f53172))
+
+
+
+
+
 ## [1.9.4](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.9.3...@proteinjs/db-ui@1.9.4) (2026-08-15)
 
 **Note:** Version bump only for package @proteinjs/db-ui

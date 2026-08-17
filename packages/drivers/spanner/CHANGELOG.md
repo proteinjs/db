@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.21.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.20.3...@proteinjs/db-driver-spanner@1.21.0) (2026-08-17)
+
+
+### Bug Fixes
+
+* **db-driver-spanner:** root test.js/test.d.ts shims for the ./test subpath — paths-mapped consumers resolve built dist, not sources ([d51556f](https://github.com/proteinjs/db/commit/d51556f07affcdbd80d80d19ed41d1257cc9a0cc))
+
+
+### Features
+
+* **db:** retired-migration flag — the deploy series stamps source-less ledger rows and never auto-runs retired rows ([f468125](https://github.com/proteinjs/db/commit/f4681257439e2e7e031f9d7f4d90b7463cc46456))
+
+
+
+
+
 ## [1.20.3](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.20.2...@proteinjs/db-driver-spanner@1.20.3) (2026-08-15)
 
 
