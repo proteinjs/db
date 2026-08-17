@@ -67,6 +67,19 @@ export interface Task extends Record {
   assigneeRef?: Reference<Worker> | null;
 }
 
+// --- Reverse: DynamicReferenceColumn across multiple target tables (Mission -> Pilot | Robot)
+export interface Pilot extends Record {
+  name: string;
+}
+export interface Robot extends Record {
+  name: string;
+}
+export interface Mission extends Record {
+  title: string;
+  assigneeTableName?: string | null;
+  assigneeRef?: Reference<Pilot | Robot> | null;
+}
+
 /**
  * ---------- Table Names ----------
  */
@@ -93,6 +106,11 @@ const GROUP_ARR_REV_TABLE = 'db_test_cd_groups_arr_rev';
 // Reverse (DynamicReferenceColumn)
 const WORKER_TABLE = 'db_test_cd_workers';
 const TASK_TABLE = 'db_test_cd_tasks';
+
+// Reverse (DynamicReferenceColumn, multiple targets)
+const PILOT_TABLE = 'db_test_cd_pilots';
+const ROBOT_TABLE = 'db_test_cd_robots';
+const MISSION_TABLE = 'db_test_cd_missions';
 
 /**
  * ---------- Table Classes ----------
@@ -216,6 +234,33 @@ export class TaskTable extends Table<Task> {
   });
 }
 
+// Reverse: DynamicReferenceColumn across multiple target tables
+export class PilotTable extends Table<Pilot> {
+  name = PILOT_TABLE;
+  columns = withRecordColumns<Pilot>({
+    name: new StringColumn('name'),
+  });
+}
+export class RobotTable extends Table<Robot> {
+  name = ROBOT_TABLE;
+  columns = withRecordColumns<Robot>({
+    name: new StringColumn('name'),
+  });
+}
+export class MissionTable extends Table<Mission> {
+  name = MISSION_TABLE;
+  columns = withRecordColumns<Mission>({
+    title: new StringColumn('title'),
+    assigneeTableName: new DynamicReferenceTableNameColumn('assignee_table_name', 'assignee_ref'),
+    assigneeRef: new DynamicReferenceColumn<Pilot | Robot>(
+      'assignee_ref',
+      'assignee_table_name',
+      false,
+      { reverseCascadeDelete: true } // reverse: deleting a Pilot OR a Robot deletes its Missions
+    ),
+  });
+}
+
 export const cascadeDeleteTestTables = {
   MemberRef: new MemberRefTable() as Table<MemberRef>,
   GroupRef: new GroupRefTable() as Table<GroupRef>,
@@ -229,4 +274,7 @@ export const cascadeDeleteTestTables = {
   GroupArrRev: new GroupArrRevTable() as Table<GroupArrRev>,
   Worker: new WorkerTable() as Table<Worker>,
   Task: new TaskTable() as Table<Task>,
+  Pilot: new PilotTable() as Table<Pilot>,
+  Robot: new RobotTable() as Table<Robot>,
+  Mission: new MissionTable() as Table<Mission>,
 };

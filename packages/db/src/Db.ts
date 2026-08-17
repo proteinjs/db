@@ -8,8 +8,8 @@ import {
   tableByName,
   addDefaultFieldValues,
   addUpdateFieldValues,
-  getTables,
 } from './Table';
+import { ReverseCascadeEdgeIndex } from './ReverseCascadeEdgeIndex';
 import { Record, RecordSerializer, SerializedRecord } from './Record';
 import { Logger } from '@proteinjs/logger';
 import { SourceRecordLoader } from './source/SourceRecordLoader';
@@ -380,6 +380,8 @@ export class Db<R extends Record = Record> implements DbService<R> {
 
   /**
    * Reverse cascades driven by column-level flags on reference columns only.
+   * Edges come from the `ReverseCascadeEdgeIndex` (derived once per process from the static
+   * table registry) instead of a per-delete scan over every registered table's columns.
    * Supports:
    *  - ReferenceColumn
    *  - DynamicReferenceColumn
@@ -392,68 +394,41 @@ export class Db<R extends Record = Record> implements DbService<R> {
     }
 
     const deletedIdSet = new Set<string>(deletedIds);
-    const allTables = getTables();
+    for (const edge of ReverseCascadeEdgeIndex.get().getEdges(table.name)) {
+      const { referencingTable, columnPropertyName } = edge;
 
-    for (const referencingTable of allTables) {
-      for (const colPropName in referencingTable.columns) {
-        const col = referencingTable.columns[colPropName] as any;
+      if (edge.refKind === 'dynamicReference') {
+        const qb = new QueryBuilderFactory().getQueryBuilder(referencingTable);
+        await this.addColumnQueries(referencingTable, qb, 'read');
 
-        // Only act if the column explicitly opted in
-        if (!col || col.reverseCascadeDelete !== true) {
-          continue;
-        }
+        qb.condition({ field: edge.dynamicRefTableColumnPropertyName as any, operator: '=', value: table.name as any });
+        qb.condition({ field: columnPropertyName as any, operator: 'IN', value: deletedIds as any });
 
-        // DynamicReferenceColumn: has dynamicRefTableColName
-        if (typeof col.dynamicRefTableColName === 'string' && col.dynamicRefTableColName.length > 0) {
-          const dynTableProp = getColumnPropertyName(referencingTable, col.dynamicRefTableColName);
-          if (!dynTableProp) {
-            continue;
-          }
+        this.logger.info({
+          message: `Executing reverse cascade (dynamic) for table: ${table.name}`,
+          obj: { referencingTable: referencingTable.name, columnPropertyName, deletedIds },
+        });
 
-          const qb = new QueryBuilderFactory().getQueryBuilder(referencingTable);
-          await this.addColumnQueries(referencingTable, qb, 'read');
+        const deleteCount = await this.delete(referencingTable, qb);
+        this.logger.info({
+          message: `Reverse cascade (dynamic) deleted ${deleteCount} record${deleteCount == 1 ? '' : 's'}`,
+        });
+      } else if (edge.refKind === 'reference') {
+        const qb = new QueryBuilderFactory().getQueryBuilder(referencingTable);
+        await this.addColumnQueries(referencingTable, qb, 'read');
+        qb.condition({ field: columnPropertyName as any, operator: 'IN', value: deletedIds as any });
 
-          qb.condition({ field: dynTableProp as any, operator: '=', value: table.name as any });
-          qb.condition({ field: colPropName as any, operator: 'IN', value: deletedIds as any });
+        this.logger.info({
+          message: `Executing reverse cascade (ReferenceColumn) for table: ${table.name}`,
+          obj: { referencingTable: referencingTable.name, columnPropertyName, deletedIds },
+        });
 
-          this.logger.info({
-            message: `Executing reverse cascade (dynamic) for table: ${table.name}`,
-            obj: { referencingTable: referencingTable.name, columnPropertyName: colPropName, deletedIds },
-          });
-
-          const deleteCount = await this.delete(referencingTable, qb);
-          this.logger.info({
-            message: `Reverse cascade (dynamic) deleted ${deleteCount} record${deleteCount == 1 ? '' : 's'}`,
-          });
-          continue;
-        }
-
-        // ReferenceColumn/ReferenceArrayColumn must match the target table
-        if (col.referenceTable !== table.name) {
-          continue;
-        }
-
-        const ctorName = col.constructor?.name;
-
-        if (ctorName === 'ReferenceColumn') {
-          const qb = new QueryBuilderFactory().getQueryBuilder(referencingTable);
-          await this.addColumnQueries(referencingTable, qb, 'read');
-          qb.condition({ field: colPropName as any, operator: 'IN', value: deletedIds as any });
-
-          this.logger.info({
-            message: `Executing reverse cascade (ReferenceColumn) for table: ${table.name}`,
-            obj: { referencingTable: referencingTable.name, columnPropertyName: colPropName, deletedIds },
-          });
-
-          const deleteCount = await this.delete(referencingTable, qb);
-          this.logger.info({
-            message: `Reverse cascade (ReferenceColumn) deleted ${deleteCount} record${deleteCount == 1 ? '' : 's'}`,
-          });
-        } else if (ctorName === 'ReferenceArrayColumn') {
-          await this.reverseDeleteReferenceArrayHolders(referencingTable, colPropName, deletedIds, deletedIdSet);
-        } else {
-          continue;
-        }
+        const deleteCount = await this.delete(referencingTable, qb);
+        this.logger.info({
+          message: `Reverse cascade (ReferenceColumn) deleted ${deleteCount} record${deleteCount == 1 ? '' : 's'}`,
+        });
+      } else {
+        await this.reverseDeleteReferenceArrayHolders(referencingTable, columnPropertyName, deletedIds, deletedIdSet);
       }
     }
   }

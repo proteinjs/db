@@ -24,7 +24,9 @@ import {
   MemberArrRev,
   MemberDyn,
   MemberRef,
+  Pilot,
   Post,
+  Robot,
   Worker,
 } from '../util/tables/cascadeDeleteTestTables';
 
@@ -190,6 +192,50 @@ export const cascadeDeleteTests = (
 
         const remainingTasks = await db.query(taskTable, {});
         expect(remainingTasks.length).toBe(0);
+      });
+
+      test('DynamicReferenceColumn: edge applies to every target table, scoped per row', async () => {
+        const pilotTable = cascadeDeleteTestTables.Pilot;
+        const robotTable = cascadeDeleteTestTables.Robot;
+        const missionTable = cascadeDeleteTestTables.Mission;
+
+        const pilot = await db.insert(pilotTable, { name: 'Pia Pilot' });
+        const robot = await db.insert(robotTable, { name: 'Rusty Robot' });
+        const pilotMission = await db.insert(missionTable, {
+          title: 'Fly Cargo',
+          assigneeTableName: pilotTable.name,
+          assigneeRef: new Reference<Pilot>(pilotTable.name, pilot.id),
+        });
+        await db.insert(missionTable, {
+          title: 'Weld Hull',
+          assigneeTableName: robotTable.name,
+          assigneeRef: new Reference<Robot>(robotTable.name, robot.id),
+        });
+
+        // Deleting the robot deletes only the robot-assigned mission; the pilot's survives
+        const robotDelQb = new QueryBuilder<Robot>(robotTable.name).condition({
+          field: 'id',
+          operator: '=',
+          value: robot.id,
+        });
+        const robotsDeleted = await db.delete(robotTable, robotDelQb);
+        expect(robotsDeleted).toBe(1);
+
+        const missionsAfterRobot = await db.query(missionTable, {});
+        expect(missionsAfterRobot.length).toBe(1);
+        expect(missionsAfterRobot[0].id).toBe(pilotMission.id);
+
+        // The same column reverse-cascades off the other target table too
+        const pilotDelQb = new QueryBuilder<Pilot>(pilotTable.name).condition({
+          field: 'id',
+          operator: '=',
+          value: pilot.id,
+        });
+        const pilotsDeleted = await db.delete(pilotTable, pilotDelQb);
+        expect(pilotsDeleted).toBe(1);
+
+        const missionsAfterPilot = await db.query(missionTable, {});
+        expect(missionsAfterPilot.length).toBe(0);
       });
     });
   };
