@@ -23,8 +23,17 @@ export interface MigrationSeriesSummary {
   skippedManual: string[];
   /** Already in 'success' status — skipped (ensureMigrationRun's idempotence). */
   alreadyApplied: string[];
-  /** Ledger rows with no source record (a loader deleted after its run; the table keeps history). */
+  /**
+   * Ledger rows with no source record (a loader deleted after its run; the table keeps history) —
+   * each one is STAMPED `retired: true` by this run, so a source class that ships again later can
+   * never silently re-arm it.
+   */
   unresolved: string[];
+  /**
+   * Rows that arrived already `retired: true` — never auto-run, even when the source class ships
+   * again, until someone un-retires them on the Migrations page.
+   */
+  retired: string[];
   /** The failure that stopped the series, if any. */
   failed?: { id: string; description: string; failureMessage?: string };
   /** Ordered after the failure — never started (later migrations may build on earlier ones). */
@@ -99,8 +108,10 @@ export class MigrationRunner implements MigrationRunnerService {
    *   class keeps the Migrations-page flow ({@link Migration.manual}).
    * - rows already in 'success' are skipped; any other status is pending — including 'running'
    *   (a crashed earlier Job): {@link ensureMigrationRun} re-runs it.
-   * - rows with no source record are history (a loader deleted after its run) — skipped,
-   *   reported as `unresolved`.
+   * - rows with no source record are history (a loader deleted after its run) — STAMPED
+   *   `retired: true`, skipped, reported as `unresolved`.
+   * - rows with `retired: true` are NEVER auto-run — even if the source class returns in a later
+   *   build — until un-retired on the Migrations page; skipped, reported as `retired`.
    * - the FIRST failure STOPS the series (later migrations may build on earlier ones). The
    *   caller exits non-zero, the Job fails, the rollout does not advance.
    *
@@ -126,13 +137,22 @@ export class MigrationRunner implements MigrationRunnerService {
       skippedManual: [],
       alreadyApplied: [],
       unresolved: [],
+      retired: [],
       notAttempted: [],
     };
     const sourceRecordRepo = new SourceRecordRepo();
     const pending: Migration[] = [];
     for (const row of ledger) {
+      if (row.retired) {
+        summary.retired.push(row.id);
+        continue;
+      }
       const source = sourceRecordRepo.getSourceRecord<Migration>(migrationTable.name, row.id);
       if (!source) {
+        // Stamp, don't just skip: the ledger must remember the source class was gone. If the
+        // class ships again in a later build, the row stays excluded until a human un-retires it
+        // on the Migrations page — a returned loader id is not consent to auto-run.
+        await db.update(migrationTable, { id: row.id, retired: true } as Partial<Migration>);
         summary.unresolved.push(row.id);
         continue;
       }
@@ -149,7 +169,12 @@ export class MigrationRunner implements MigrationRunnerService {
 
     this.logger.info({
       message: `Running ${pending.length} pending migration${pending.length === 1 ? '' : 's'} in series, oldest-first`,
-      obj: { pending: pending.map((row) => row.id), skippedManual: summary.skippedManual },
+      obj: {
+        pending: pending.map((row) => row.id),
+        skippedManual: summary.skippedManual,
+        skippedRetired: summary.retired,
+        stampedRetired: summary.unresolved,
+      },
     });
     for (let i = 0; i < pending.length; i++) {
       const outcome = await this.ensureMigrationRun(pending[i].id);
