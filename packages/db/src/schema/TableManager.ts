@@ -1,9 +1,33 @@
 import { Logger } from '@proteinjs/logger';
-import { Column, Table, getTables } from '../Table';
+import { QueryBuilder } from '@proteinjs/db-query';
+import { Column, Table, getColumnPropertyName, getTables } from '../Table';
 import { SchemaOperations, TableChanges } from './SchemaOperations';
 import { SchemaMetadata } from './SchemaMetadata';
 import { DbDriver } from '../Db';
 import { DynamicReferenceColumn, DynamicReferenceTableNameColumn } from '../Columns';
+import { StatementConfigFactory } from '../StatementConfigFactory';
+
+/**
+ * Thrown by the pre-sync duplicate check when a unique index is about to be added to an existing
+ * table whose data already violates it. Without the preflight the backend's index backfill fails
+ * with an opaque driver error mid-boot; this names the table, the columns, and sample offending
+ * values so the operator can resolve the duplicates and boot again.
+ */
+export class DuplicateValuesForUniqueIndexError extends Error {
+  constructor(tableName: string, columnNames: string[], duplicateValues: unknown[]) {
+    super(
+      `(${tableName}) Cannot create a unique index on (${columnNames.join(', ')}): existing rows hold duplicate ` +
+        `values. Resolve the duplicates, then boot again. Duplicate values (up to ` +
+        `${DuplicateValuesForUniqueIndexError.MAX_REPORTED_VALUES} shown): ${JSON.stringify(duplicateValues)}`
+    );
+    this.name = 'DuplicateValuesForUniqueIndexError';
+    // ES5 down-leveled `extends Error` loses the subclass prototype — restore it so
+    // `instanceof DuplicateValuesForUniqueIndexError` holds for catchers.
+    Object.setPrototypeOf(this, DuplicateValuesForUniqueIndexError.prototype);
+  }
+
+  static readonly MAX_REPORTED_VALUES = 20;
+}
 
 const getEnvVar = (key: string): string | undefined =>
   typeof process !== 'undefined' && process.env ? process.env[key] : undefined;
@@ -22,6 +46,7 @@ export class TableManager {
   private static readonly RECONCILE_VERIFY_ATTEMPTS = 5;
   private static readonly RECONCILE_VERIFY_RETRY_DELAY_MS = 200;
   private logger = new Logger({ name: this.constructor.name, logLevel: getEnvVar('DB_LOG_LEVEL') as any });
+  private dbDriver: DbDriver;
   public columnTypeFactory: ColumnTypeFactory;
   public schemaOperations: SchemaOperations;
   public schemaMetadata: SchemaMetadata;
@@ -32,6 +57,7 @@ export class TableManager {
     schemaOperations: SchemaOperations,
     schemaMetadata?: SchemaMetadata
   ) {
+    this.dbDriver = dbDriver;
     this.columnTypeFactory = columnTypeFactory;
     this.schemaOperations = schemaOperations;
     this.schemaMetadata = schemaMetadata ? schemaMetadata : new SchemaMetadata(dbDriver);
@@ -95,6 +121,7 @@ export class TableManager {
   private async alterTableIfChanged(table: Table<any>): Promise<void> {
     const tableChanges = await this.getTableChanges(table);
     if (this.shouldAlterTable(tableChanges)) {
+      await this.preflightUniqueIndexAdditions(table, tableChanges);
       this.logger.info({ message: `Altering table: ${table.name}` });
       try {
         await this.schemaOperations.alterTable(table, tableChanges);
@@ -430,5 +457,75 @@ export class TableManager {
     }
 
     return { indexesToCreate, indexesToDrop };
+  }
+
+  /**
+   * Pre-sync duplicate check: before an alter adds a unique index (via `ColumnOptions.unique` or
+   * a unique entry in `Table.indexes`) to an EXISTING table, verify the data can satisfy it.
+   * Existing duplicates would otherwise surface as an opaque backend backfill failure mid-boot;
+   * this throws {@link DuplicateValuesForUniqueIndexError} naming the table, columns, and sample
+   * offending values instead. Runs only on the alter path (a freshly created table has no rows),
+   * and only when a unique index is actually being added — steady-state boots never pay for it.
+   */
+  private async preflightUniqueIndexAdditions(table: Table<any>, tableChanges: TableChanges): Promise<void> {
+    const uniqueAdditions: string[][] = tableChanges.columnsWithUniqueConstraintsToCreate.map((columnName) => [
+      columnName,
+    ]);
+    for (const index of tableChanges.indexesToCreate) {
+      if (index.unique) {
+        uniqueAdditions.push(Array.isArray(index.columns) ? index.columns : [index.columns]);
+      }
+    }
+
+    for (const columnNames of uniqueAdditions) {
+      await this.assertNoDuplicateValues(table, columnNames);
+    }
+  }
+
+  /**
+   * Read the key column(s) of every row (NULLs excluded — a unique index admits them) and group
+   * in memory. A full-column read is acceptable here: it runs once, at boot, only when a NEW
+   * unique index is being added over existing data.
+   */
+  private async assertNoDuplicateValues(table: Table<any>, columnNames: string[]): Promise<void> {
+    const propertyNames = columnNames.map((columnName) => {
+      const propertyName = getColumnPropertyName(table, columnName);
+      if (!propertyName) {
+        throw new Error(`(${table.name}) Unable to resolve a column property for column: ${columnName}`);
+      }
+
+      return propertyName;
+    });
+
+    const qb = new QueryBuilder(table.name).select({ fields: propertyNames });
+    for (const propertyName of propertyNames) {
+      qb.condition({ field: propertyName, operator: 'IS NOT NULL' });
+    }
+
+    const statementConfigFactory = new StatementConfigFactory(this.dbDriver.getDbName());
+    const rows = await this.dbDriver.runQuery((config) => qb.toSql(statementConfigFactory.getStatementConfig(config)));
+
+    const counts = new Map<string, { count: number; values: unknown[] }>();
+    for (const row of rows) {
+      const values = columnNames.map((columnName) => (row as any)[columnName]);
+      const key = JSON.stringify(values);
+      const entry = counts.get(key) ?? { count: 0, values };
+      entry.count += 1;
+      counts.set(key, entry);
+    }
+
+    const duplicates: unknown[] = [];
+    for (const entry of Array.from(counts.values())) {
+      if (entry.count > 1) {
+        duplicates.push(entry.values.length === 1 ? entry.values[0] : entry.values);
+        if (duplicates.length >= DuplicateValuesForUniqueIndexError.MAX_REPORTED_VALUES) {
+          break;
+        }
+      }
+    }
+
+    if (duplicates.length > 0) {
+      throw new DuplicateValuesForUniqueIndexError(table.name, columnNames, duplicates);
+    }
   }
 }

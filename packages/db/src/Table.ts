@@ -87,13 +87,8 @@ export abstract class Table<T extends Record> implements Loadable, CustomSeriali
   public indexes: { columns: (keyof T)[]; name?: string; unique?: boolean }[] = [];
   /** When records are deleted, delete records having references pointing to deleted records */
   public cascadeDeleteReferences: () => { table: string; referenceColumn: string }[] = () => [];
-  /**
-   * Options for configuring SourceRecords
-   * @param doNotDeleteSourceRecordsFromDb if true, the SourceRecordLoader will not delete source records from the db if they no longer exist on the file system
-   */
-  public sourceRecordOptions: SourceRecordOptions = {
-    doNotDeleteSourceRecordsFromDb: false,
-  };
+  /** Options for configuring SourceRecords (see {@link SourceRecordOptions}) */
+  public sourceRecordOptions: SourceRecordOptions<T> = {};
   public auth?: {
     db?: TableOperationsAuth;
     service?: TableOperationsAuth;
@@ -180,8 +175,36 @@ export type ColumnOptions = {
   };
 };
 
-export type SourceRecordOptions = {
-  doNotDeleteSourceRecordsFromDb?: boolean;
+export type SourceRecordOptions<T = any> = {
+  /**
+   * What the source-record sync does with rows it previously loaded from source
+   * (`is_loaded_from_source = true`) whose declaration no longer exists:
+   * - `'delete'` (default): delete the rows.
+   * - `'keep'`: leave the rows untouched (e.g. the migration ledger — run history outlives the
+   *   migration class).
+   * - `{ update }`: apply the patch to the removed rows — e.g. a machine-account table flagging
+   *   removed accounts `{ update: { status: 'deactivated' } }` instead of deleting them. The
+   *   patch is applied only to rows whose fields actually differ (idempotent boots), through
+   *   `Db.update`, so table watchers observe the write. Re-declaring the record reverts the
+   *   patch via normal drift reversion — removal is reversible in source.
+   *
+   * Rows never loaded from source are structurally untouchable by every policy: the removed
+   * reconcile only ever matches `is_loaded_from_source = true`.
+   */
+  onSourceRemoved?: 'delete' | 'keep' | { update: Partial<T> };
+  /**
+   * When set, the sync keys records on this column instead of `id` — matching, adoption, and
+   * the removed reconcile all use it. An existing row matched by natural key is ADOPTED in
+   * place: it keeps its id (the declared id is used only for fresh inserts — existing ids may
+   * be referenced from other tables), gets stamped `is_loaded_from_source = true`, and has its
+   * declared fields reverted to source. Drift comparison excludes `id`, so adoption converges.
+   *
+   * Preconditions, validated at boot by the loader (loud failures):
+   * - the column is declared unique (`ColumnOptions.unique` or a single-column unique index in
+   *   {@link Table.indexes});
+   * - every declaration provides the natural key, and no two declarations share a value.
+   */
+  naturalKey?: keyof T & string;
   ui?: {
     hideColumns?: boolean;
   };

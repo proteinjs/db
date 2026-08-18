@@ -56,8 +56,9 @@ export class MigrationTable extends Table<Migration> {
     duration: new StringColumn('duration'),
     output: new ObjectColumn('output'),
   });
-  public sourceRecordOptions = {
-    doNotDeleteSourceRecordsFromDb: true,
+  public sourceRecordOptions: Table<Migration>['sourceRecordOptions'] = {
+    // The ledger outlives the migration class: run history stays when the source is deleted.
+    onSourceRemoved: 'keep',
     ui: {
       hideColumns: true,
     },

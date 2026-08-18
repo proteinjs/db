@@ -5,6 +5,7 @@ import { columnTypesTestTables } from './tables/columnTypesTestTables';
 import { crudTestTables } from './tables/crudTestTables';
 import { dynamicReferenceTestTables } from './tables/dynamicReferenceColumnTestTables';
 import { recordIteratorTestTables } from './tables/recordIteratorTestTables';
+import { sourceRecordSyncTestTables } from './tables/sourceRecordSyncTestTables';
 import { tableManagerTestTables } from './tables/tableManagerTestTables';
 import { transactionTestTables } from './tables/transactionTestTables';
 
@@ -14,6 +15,7 @@ const TABLES: Table<any>[] = [
   ...Object.values(crudTestTables),
   ...Object.values(dynamicReferenceTestTables),
   ...Object.values(recordIteratorTestTables),
+  ...Object.values(sourceRecordSyncTestTables),
   ...Object.values(tableManagerTestTables),
   ...Object.values(transactionTestTables),
 ];

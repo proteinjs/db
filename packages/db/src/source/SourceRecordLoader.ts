@@ -2,12 +2,12 @@ import { Logger } from '@proteinjs/logger';
 import { QueryBuilder } from '@proteinjs/db-query';
 import { getSourceRecordLoaders, SourceRecord, getSourceRecordTables } from './SourceRecord';
 import { Table } from '../Table';
-import { getDbAsSystem } from '../Db';
+import { Db, getDbAsSystem } from '../Db';
 import { SourceRecordRepo } from './SourceRecordRepo';
 import { RecordSerializer } from '../Record';
 
 type SourceRecordsMap = {
-  [tableName: string]: { table: Table<any>; records: Omit<SourceRecord, 'created' | 'updated'>[]; recordIds: string[] };
+  [tableName: string]: { table: Table<any>; records: Omit<SourceRecord, 'created' | 'updated'>[] };
 };
 
 export class SourceRecordLoader {
@@ -17,26 +17,37 @@ export class SourceRecordLoader {
     const sourceRecordsMap = await this.getSourceRecordsMap();
     const db = getDbAsSystem();
     for (const tableName in sourceRecordsMap) {
+      const { table, records } = sourceRecordsMap[tableName];
+      // 'id' unless the table declares a natural key (validated: unique-indexed, present and
+      // unambiguous across declarations).
+      const keyProperty = this.validateSyncKey(table, records);
+      const declaredKeys = records.map((record) => (record as any)[keyProperty]);
+      const { deleteCount, removedUpdateCount } = await this.reconcileRemoved(db, table, keyProperty, declaredKeys);
+
       let insertCount = 0;
       let updateCount = 0;
       let unchangedCount = 0;
-      let deleteCount = 0;
-      const table = sourceRecordsMap[tableName].table;
-      const sourceRecordIds = sourceRecordsMap[tableName].recordIds;
-      if (!table.sourceRecordOptions.doNotDeleteSourceRecordsFromDb) {
-        const qb = QueryBuilder.fromObject<SourceRecord>({ isLoadedFromSource: true }, table.name);
-        if (sourceRecordIds.length > 0) {
-          qb.condition({ field: 'id', operator: 'NOT IN', value: sourceRecordIds });
-        }
-
-        deleteCount = await db.delete(table, qb);
-      }
-
-      const sourceRecords = sourceRecordsMap[tableName].records;
-      for (let sourceRecord of sourceRecords) {
+      let adoptedCount = 0;
+      for (let sourceRecord of records) {
         sourceRecord.isLoadedFromSource = true;
-        const existingRecord = await db.get(table, { id: sourceRecord.id });
+        const existingRecord = await db.get(table, { [keyProperty]: (sourceRecord as any)[keyProperty] });
         if (existingRecord) {
+          if (existingRecord.id !== sourceRecord.id) {
+            // Adopt in place: the existing row keeps its id — other tables may reference it.
+            // The declared id is only ever used for fresh inserts.
+            sourceRecord = { ...sourceRecord, id: existingRecord.id };
+          }
+
+          if (existingRecord.isLoadedFromSource !== true) {
+            // A pre-existing (runtime-created) row is being taken over by a declaration —
+            // deliberate, but loud: a declaration asserts ownership of the row's identity.
+            adoptedCount += 1;
+            this.logger.info({
+              message: `(${table.name}) Adopting existing record into source ownership`,
+              obj: { [keyProperty]: (sourceRecord as any)[keyProperty], id: existingRecord.id },
+            });
+          }
+
           if (await this.hasChanges(table, sourceRecord, existingRecord)) {
             await db.update(table, sourceRecord);
             updateCount += 1;
@@ -49,24 +60,125 @@ export class SourceRecordLoader {
           insertCount += 1;
         }
 
+        // Registered under the DB id (= the adopted id when an existing row matched by natural key).
         new SourceRecordRepo().loadSourceRecord(table.name, sourceRecord as any);
       }
 
       this.logger.info({
-        message: `(${table.name}) Loaded ${sourceRecords.length} ${sourceRecords.length == 1 ? 'record' : 'records'} from source`,
+        message: `(${table.name}) Loaded ${records.length} ${records.length == 1 ? 'record' : 'records'} from source`,
         obj: {
           inserts: insertCount,
           updates: updateCount,
           unchanged: unchangedCount,
+          adopted: adoptedCount,
           deletes: deleteCount,
+          removedUpdates: removedUpdateCount,
         },
       });
     }
   }
 
   /**
+   * The removed-reconcile leg: rows previously loaded from source whose declaration no longer
+   * exists (`is_loaded_from_source = true AND <key> NOT IN declared`), handled per the table's
+   * `onSourceRemoved` policy — delete (default), keep, or update with a patch. The update leg
+   * applies the patch only to rows whose fields actually differ (idempotent boots), through
+   * `Db.update` so table watchers observe each write.
+   */
+  private async reconcileRemoved(
+    db: Db,
+    table: Table<any>,
+    keyProperty: string,
+    declaredKeys: unknown[]
+  ): Promise<{ deleteCount: number; removedUpdateCount: number }> {
+    const policy = table.sourceRecordOptions.onSourceRemoved ?? 'delete';
+    if (policy === 'keep') {
+      return { deleteCount: 0, removedUpdateCount: 0 };
+    }
+
+    const qb = QueryBuilder.fromObject<SourceRecord>({ isLoadedFromSource: true }, table.name);
+    if (declaredKeys.length > 0) {
+      qb.condition({ field: keyProperty as any, operator: 'NOT IN', value: declaredKeys as any });
+    }
+
+    if (policy === 'delete') {
+      return { deleteCount: await db.delete(table, qb), removedUpdateCount: 0 };
+    }
+
+    let removedUpdateCount = 0;
+    const removedRecords = await db.query(table, qb);
+    for (const removedRecord of removedRecords) {
+      if (await this.hasChanges(table, policy.update, removedRecord)) {
+        await db.update(table, { id: removedRecord.id, ...policy.update });
+        removedUpdateCount += 1;
+        this.logger.info({
+          message: `(${table.name}) Applied onSourceRemoved update to record removed from source`,
+          obj: { id: removedRecord.id, [keyProperty]: (removedRecord as any)[keyProperty] },
+        });
+      }
+    }
+
+    return { deleteCount: 0, removedUpdateCount };
+  }
+
+  /**
+   * Resolve and validate the property the sync keys on: `id` unless the table declares
+   * `sourceRecordOptions.naturalKey`. A natural key must be schema-unique (a `ColumnOptions.unique`
+   * column or a single-column unique index in `Table.indexes`), present on every declaration, and
+   * unambiguous across declarations — each violation fails boot loudly by name.
+   */
+  private validateSyncKey(table: Table<any>, records: Omit<SourceRecord, 'created' | 'updated'>[]): string {
+    const naturalKey = table.sourceRecordOptions.naturalKey;
+    if (!naturalKey) {
+      return 'id';
+    }
+
+    const column = (table.columns as any)[naturalKey];
+    if (!column) {
+      throw new Error(
+        `(${table.name}) sourceRecordOptions.naturalKey '${naturalKey}' is not a column property on the table`
+      );
+    }
+
+    const uniqueByColumn = column.options?.unique?.unique === true;
+    const uniqueByIndex = (table.indexes ?? []).some(
+      (index) => index.unique === true && index.columns.length === 1 && String(index.columns[0]) === naturalKey
+    );
+    if (!uniqueByColumn && !uniqueByIndex) {
+      throw new Error(
+        `(${table.name}) sourceRecordOptions.naturalKey '${naturalKey}' requires the column to be unique — ` +
+          `declare ColumnOptions.unique on it (or a single-column unique index in Table.indexes) so ` +
+          `natural-key adoption cannot match ambiguously`
+      );
+    }
+
+    const seen = new Map<unknown, true>();
+    for (const record of records) {
+      const value = (record as any)[naturalKey];
+      if (value === undefined || value === null) {
+        throw new Error(
+          `(${table.name}) A source record declaration is missing its natural key '${naturalKey}' (declared id: '${record.id}')`
+        );
+      }
+
+      if (seen.has(value)) {
+        throw new Error(
+          `(${table.name}) Two source record declarations share the natural key '${naturalKey}' = '${value}' — ` +
+            `declarations must be unique by natural key`
+        );
+      }
+
+      seen.set(value, true);
+    }
+
+    return naturalKey;
+  }
+
+  /**
    * Compare source record fields against the existing DB record to detect actual changes.
-   * Only fields present on the source record are compared (ignoring `created`, `updated`).
+   * Only fields present on the source record are compared, ignoring `id`, `created`, `updated`
+   * (`id` because natural-key adoption keeps the existing row's id — the declared id must not
+   * register as perpetual drift; `Db.update` never writes id anyway).
    * Uses serialization to normalize values (e.g. Reference objects, Moment, JSON) before
    * comparison, then delegates to {@link findMismatchPath}.
    *
@@ -79,7 +191,7 @@ export class SourceRecordLoader {
     const serializedSource = await serializer.serialize(sourceRecord);
     const serializedExisting = await serializer.serialize(existingRecord);
     for (const columnName in serializedSource) {
-      if (columnName === 'created' || columnName === 'updated') {
+      if (columnName === 'id' || columnName === 'created' || columnName === 'updated') {
         continue;
       }
 
@@ -98,7 +210,7 @@ export class SourceRecordLoader {
     const sourceRecordTables = getSourceRecordTables();
     for (const sourceRecordTable of sourceRecordTables) {
       if (!sourceRecordsMap[sourceRecordTable.name]) {
-        sourceRecordsMap[sourceRecordTable.name] = { table: sourceRecordTable, records: [], recordIds: [] };
+        sourceRecordsMap[sourceRecordTable.name] = { table: sourceRecordTable, records: [] };
       }
     }
 
@@ -108,12 +220,10 @@ export class SourceRecordLoader {
         sourceRecordsMap[sourceRecordLoader.table.name] = {
           table: sourceRecordLoader.table,
           records: [],
-          recordIds: [],
         };
       }
 
       sourceRecordsMap[sourceRecordLoader.table.name].records.push(sourceRecordLoader.record);
-      sourceRecordsMap[sourceRecordLoader.table.name].recordIds.push(sourceRecordLoader.record.id);
     }
 
     return sourceRecordsMap;
