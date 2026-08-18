@@ -13,6 +13,15 @@ export interface File extends ScopedRecord {
    * the bytes stay out of the DB row (consistent with the storage model); deleted with this file.
    */
   preview?: Reference<File>;
+  /**
+   * Media metadata — generic file facts (an image/video's pixel dimensions, a video/audio
+   * duration) every consumer needs to render without loading bytes, e.g. reserving a media box's
+   * aspect ratio before any bytes arrive. Set at ingest for media files; absent for everything
+   * else.
+   */
+  width?: number;
+  height?: number;
+  durationMs?: number;
 }
 
 export class FileTable extends Table<File> {
@@ -31,6 +40,9 @@ export class FileTable extends Table<File> {
     size: new IntegerColumn('size'),
     // Self-reference (the preview is itself a File). cascadeDelete: removing a file removes its preview.
     preview: new ReferenceColumn<File>('preview', FILE_TABLE_NAME, true),
+    width: new IntegerColumn('width'),
+    height: new IntegerColumn('height'),
+    durationMs: new IntegerColumn('duration_ms'),
   });
   // No cascadeDeleteReferences for FileData: byte cleanup (FileData rows included) is owned by
   // FileStorageDriver.deleteFile, invoked for every file-row delete by FileStorageTableWatcher.

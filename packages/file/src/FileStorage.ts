@@ -93,6 +93,30 @@ export class FileStorage implements FileStorageService {
   }
 
   /**
+   * Mint a short-lived, read-only URL for the file's bytes (server-only; not part of the
+   * browser-facing `FileStorageService`). A signed URL is a bearer capability, so minting
+   * verifies the caller can read the file row (scoped read) before signing.
+   * @param fileId - The `id` of the file.
+   * @param options.ttlMs - How long the URL stays valid; the driver applies its default when omitted.
+   * @returns The signed URL, or `undefined` when the driver has no external URL space
+   *          (`DbFileStorageDriver`) — the caller then serves bytes through the proxy route.
+   * @throws When the file row does not exist or is not readable by the caller.
+   */
+  async getSignedUrl(fileId: string, options?: { ttlMs?: number }): Promise<string | undefined> {
+    const file = await this.getFile(fileId);
+    if (!file) {
+      throw new Error(`File not found: ${fileId}`);
+    }
+
+    const driver = FileStorage.getDriver();
+    if (!driver.getSignedUrl) {
+      return undefined;
+    }
+
+    return await driver.getSignedUrl(fileId, options);
+  }
+
+  /**
    * Updates the data chunks associated with a given file.
    * @param fileId - The `id` of the file.
    * @param data - The new data string to replace the existing data.
