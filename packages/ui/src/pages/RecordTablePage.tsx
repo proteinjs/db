@@ -1,5 +1,5 @@
 import React from 'react';
-import { Page, PageComponentProps } from '@proteinjs/ui';
+import { Page, PageComponentProps, useFormFactor } from '@proteinjs/ui';
 import { tableByName, Table } from '@proteinjs/db';
 import { RecordTable } from '../table/RecordTable';
 import { Box, Paper, SxProps, Theme, Typography } from '@mui/material';
@@ -29,6 +29,10 @@ export const recordTableLinkByName = (tableName: string) => {
 };
 
 const DynamicRecordTable = ({ urlParams }: PageComponentProps) => {
+  // Phone (MOBILE_SUPPORT §4.5): the floating fit-content card becomes a full-width card with
+  // page gutters — the table inside presents its phone card face (rows as stacked cards).
+  const { isPhone } = useFormFactor();
+
   function Table() {
     const tableName = urlParams['name'];
     let table;
@@ -50,8 +54,8 @@ const DynamicRecordTable = ({ urlParams }: PageComponentProps) => {
     }
 
     return (
-      <Box sx={{ display: 'flex', flexGrow: 1, justifyContent: 'center', padding: 4 }}>
-        <Paper sx={{ maxHeight: '80vh' }}>
+      <Box sx={{ display: 'flex', flexGrow: 1, justifyContent: 'center', padding: isPhone ? 2 : 4, minWidth: 0 }}>
+        <Paper sx={{ maxHeight: '80vh', ...(isPhone ? { width: '100%', minWidth: 0 } : {}) }}>
           <RecordTable table={table} />
         </Paper>
       </Box>
