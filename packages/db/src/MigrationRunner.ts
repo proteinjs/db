@@ -206,7 +206,7 @@ export class MigrationRunner implements MigrationRunnerService {
     const db = getRunDb();
     migration.status = 'running';
     migration.startTime = moment();
-    await db.update(migrationTable, migration);
+    await db.update(migrationTable, this.definedFields(migration));
     this.logger.info({ message: `Running migration (${migration.id}) ${migration.description}` });
     try {
       migration.output = await migration.run();
@@ -222,10 +222,29 @@ export class MigrationRunner implements MigrationRunnerService {
       migration.endTime = moment();
     }
     migration.duration = this.duration(migration.startTime, migration.endTime);
-    await db.update(migrationTable, migration);
+    await db.update(migrationTable, this.definedFields(migration));
     this.logger.info({
       message: `[${migration.status}] (${migration.duration}) Finished running migration (${migration.id}) ${migration.description}`,
     });
+  }
+
+  /**
+   * The run-state payload with `undefined`-valued fields OMITTED. Several of the record's fields
+   * are legitimately absent depending on the run (`output` for a void `run()`, `failureMessage`/
+   * `failureStack` for a non-Error throw), but the migration object carries them as explicit
+   * `undefined` assignments — and `RecordSerializer` rejects any payload field holding `undefined`
+   * (never a partial write), which would strand the row at 'running' status with the run's real
+   * outcome lost. Absent means omitted, never undefined — for EVERY optional field of the payload,
+   * not per-field.
+   */
+  private definedFields(migration: Migration): Partial<Migration> {
+    const payload: Partial<Migration> = {};
+    for (const [field, value] of Object.entries(migration)) {
+      if (value !== undefined) {
+        (payload as any)[field] = value;
+      }
+    }
+    return payload;
   }
 
   private resolveMigration(migrationTable: Table<Migration>, id: string): Migration {

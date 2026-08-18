@@ -49,6 +49,28 @@ describe('MigrationRunner (spanner)', () => {
     run: async () => 'migration output',
   } as unknown as Migration;
 
+  // #124 wedge class: optional run-state fields are legitimately ABSENT (a void run() leaves no
+  // output; a non-Error throw has no message/stack), and the completion write must omit them —
+  // an undefined-valued field fails the WHOLE write (RecordSerializer rejects it), stranding the
+  // row at 'running' with the run's real outcome lost.
+  let voidRunCount = 0; // effect counter: proves the run itself completed
+  const voidOutputMigration = {
+    id: 'migration-runner-test-void-output',
+    description: 'resolves void — no output',
+    run: async () => {
+      voidRunCount++;
+    },
+  } as unknown as Migration;
+
+  const nonErrorThrowMigration = {
+    id: 'migration-runner-test-string-throw',
+    description: 'throws a non-Error value',
+    run: async () => {
+      // eslint-disable-next-line no-throw-literal
+      throw 'string throw with no message or stack';
+    },
+  } as unknown as Migration;
+
   // ensureMigrationRun fixtures carry run counters: re-running any of them is VISIBLE as a
   // counter increment, so idempotence and retry are asserted on the migration's own effect,
   // not on bookkeeping interactions.
@@ -101,6 +123,8 @@ describe('MigrationRunner (spanner)', () => {
     for (const migration of [
       failingMigration,
       succeedingMigration,
+      voidOutputMigration,
+      nonErrorThrowMigration,
       ensureBootMigration,
       ensureIdempotentMigration,
       ensureRetriedMigration,
@@ -134,6 +158,27 @@ describe('MigrationRunner (spanner)', () => {
     const row = await getDb().get(migrationTable, { id: succeedingMigration.id });
     expect(row.status).toBe('success');
     expect(row.output).toBe('migration output');
+    expect(row.duration).toBeTruthy();
+  });
+
+  test('a void migration (no output) records success — absent fields are omitted from the completion write', async () => {
+    const runner = new MigrationRunner();
+    await expect(runner.runMigration(voidOutputMigration.id)).resolves.toBeUndefined();
+
+    expect(voidRunCount).toBe(1);
+    const row = await getDb().get(migrationTable, { id: voidOutputMigration.id });
+    expect(row.status).toBe('success');
+    expect(row.output == null).toBe(true);
+    expect(row.duration).toBeTruthy();
+  });
+
+  test('a non-Error throw records failure — absent failureMessage/failureStack never poison the write', async () => {
+    const runner = new MigrationRunner();
+    await expect(runner.runMigration(nonErrorThrowMigration.id)).resolves.toBeUndefined();
+
+    const row = await getDb().get(migrationTable, { id: nonErrorThrowMigration.id });
+    expect(row.status).toBe('failure');
+    expect(row.failureMessage == null).toBe(true);
     expect(row.duration).toBeTruthy();
   });
 
