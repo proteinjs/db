@@ -1,6 +1,5 @@
 import { Table, StringColumn, IntegerColumn, ReferenceColumn, Reference } from '@proteinjs/db';
 import { ScopedRecord, withScopedRecordColumns } from '@proteinjs/user';
-import { FileDataTable } from './FileDataTable';
 
 const FILE_TABLE_NAME = 'file';
 
@@ -33,10 +32,6 @@ export class FileTable extends Table<File> {
     // Self-reference (the preview is itself a File). cascadeDelete: removing a file removes its preview.
     preview: new ReferenceColumn<File>('preview', FILE_TABLE_NAME, true),
   });
-  public cascadeDeleteReferences = () => [
-    {
-      table: new FileDataTable().name,
-      referenceColumn: new FileDataTable().columns.file.name,
-    },
-  ];
+  // No cascadeDeleteReferences for FileData: byte cleanup (FileData rows included) is owned by
+  // FileStorageDriver.deleteFile, invoked for every file-row delete by FileStorageTableWatcher.
 }

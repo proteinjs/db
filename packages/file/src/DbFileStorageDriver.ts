@@ -29,14 +29,6 @@ export class DbFileStorageDriver implements FileStorageDriver {
     }
   }
 
-  private splitIntoChunks(data: string): string[] {
-    const chunks = [];
-    for (let i = 0; i < data.length; i += this.chunkSize) {
-      chunks.push(data.substring(i, i + this.chunkSize));
-    }
-    return chunks;
-  }
-
   async getFileData(fileId: string): Promise<string> {
     // Byte reads are keyed by id and UNSCOPED — matching the GCS driver's semantics (a bucket
     // download by id). The driver is a byte store; access control lives with callers and the
@@ -69,5 +61,23 @@ export class DbFileStorageDriver implements FileStorageDriver {
         data: chunk,
       });
     }
+  }
+
+  async deleteFile(fileId: string): Promise<void> {
+    // Byte deletes are keyed by id and UNSCOPED — the same semantics as getFileData above (the
+    // driver is a byte store; access control lives with callers and the scoped File metadata
+    // layer), and system sweeps delete rows outside the current session's scope. Deleting zero
+    // chunks succeeds, which gives this the idempotency the driver contract requires.
+    const db = getScopedDbAsSystem();
+    const deleteQuery = new QueryBuilderFactory().getQueryBuilder(tables.FileData, { file: fileId });
+    await db.delete(tables.FileData, deleteQuery);
+  }
+
+  private splitIntoChunks(data: string): string[] {
+    const chunks = [];
+    for (let i = 0; i < data.length; i += this.chunkSize) {
+      chunks.push(data.substring(i, i + this.chunkSize));
+    }
+    return chunks;
   }
 }

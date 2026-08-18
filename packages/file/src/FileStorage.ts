@@ -27,9 +27,7 @@ export interface DefaultFileStorageDriverFactory extends Loadable {
  * File data is stored by the `FileStorageDriver`.
  */
 export class FileStorage implements FileStorageService {
-  private static defaultDriver: FileStorageDriver;
-  private driver: FileStorageDriver;
-  private logger: Logger = new Logger({ name: this.constructor.name });
+  private static driver: FileStorageDriver;
 
   public serviceMetadata = {
     auth: {
@@ -37,24 +35,28 @@ export class FileStorage implements FileStorageService {
     },
   };
 
-  constructor(driver?: FileStorageDriver) {
-    this.driver = driver ? driver : this.getDefaultDriver();
-  }
-
-  private getDefaultDriver(): FileStorageDriver {
-    if (!FileStorage.defaultDriver) {
+  /**
+   * The `FileStorageDriver` for this process — provided by the `DefaultFileStorageDriverFactory`
+   * implementation, defaulting to the `DbFileStorageDriver`. One resolution for every byte
+   * operation (`FileStorage` and `FileStorageTableWatcher`), so bytes always live and die in the
+   * same store.
+   */
+  static getDriver(): FileStorageDriver {
+    if (!FileStorage.driver) {
       const defaultDriverFactory = SourceRepository.get().object<DefaultFileStorageDriverFactory>(
         '@proteinjs/db-file/DefaultFileStorageDriverFactory'
       );
       if (defaultDriverFactory) {
-        FileStorage.defaultDriver = defaultDriverFactory.getDriver();
+        FileStorage.driver = defaultDriverFactory.getDriver();
       } else {
-        this.logger.info({ message: `Defaulting to DbFileStorageDriver since no FileStorageDriver was provided` });
-        FileStorage.defaultDriver = new DbFileStorageDriver();
+        new Logger({ name: 'FileStorage' }).info({
+          message: `Defaulting to DbFileStorageDriver since no FileStorageDriver was provided`,
+        });
+        FileStorage.driver = new DbFileStorageDriver();
       }
     }
 
-    return FileStorage.defaultDriver;
+    return FileStorage.driver;
   }
 
   /**
@@ -66,7 +68,7 @@ export class FileStorage implements FileStorageService {
   async createFile(fileMetaData: Omit<File, keyof ScopedRecord>, fileData: string): Promise<File> {
     const db = getScopedDb();
     const file = await db.insert(tables.File, fileMetaData);
-    await this.driver.createFile(file, fileData);
+    await FileStorage.getDriver().createFile(file, fileData);
     return file;
   }
 
@@ -87,7 +89,7 @@ export class FileStorage implements FileStorageService {
    * @returns The file data as a single string.
    */
   async getFileData(fileId: string): Promise<string> {
-    return await this.driver.getFileData(fileId);
+    return await FileStorage.getDriver().getFileData(fileId);
   }
 
   /**
@@ -96,7 +98,7 @@ export class FileStorage implements FileStorageService {
    * @param data - The new data string to replace the existing data.
    */
   async updateFileData(fileId: string, data: string): Promise<void> {
-    await this.driver.updateFileData(fileId, data);
+    await FileStorage.getDriver().updateFileData(fileId, data);
   }
 
   /**
@@ -107,22 +109,21 @@ export class FileStorage implements FileStorageService {
     const db = getScopedDb();
     await db.update(tables.File, file);
 
-    if (this.driver.updateFile) {
-      await this.driver.updateFile(file as File);
+    const driver = FileStorage.getDriver();
+    if (driver.updateFile) {
+      await driver.updateFile(file as File);
     }
   }
 
   /**
    * Deletes a file and its data.
-   * The file data is deleted by a cascade delete rule defined on the `FileTable`
+   * The file data is deleted by the `FileStorageTableWatcher` when the row delete runs — the
+   * watcher fires for every file-row delete path (this one, reference cascades, system sweeps),
+   * so the bytes die with the row no matter where the delete originates.
    * @param fileId - The `id` of the file to delete.
    */
   async deleteFile(fileId: string): Promise<void> {
     const db = getScopedDb();
-    if (this.driver.deleteFile) {
-      await this.driver.deleteFile(fileId);
-    }
-
     await db.delete(tables.File, { id: fileId });
   }
 }

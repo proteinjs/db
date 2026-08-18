@@ -18,6 +18,7 @@
   "scripts": {
     "clean": "rm -rf dist/ node_modules/ generated/",
     "build": "reflection-build && tsc",
+    "test": "jest --runInBand --passWithNoTests",
     "watch": "reflection-watch"
   },
   "dependencies": {

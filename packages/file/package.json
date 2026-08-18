@@ -18,6 +18,7 @@
   "scripts": {
     "clean": "rm -rf dist/ node_modules/ generated/",
     "build": "reflection-build && tsc",
+    "test": "jest --runInBand --passWithNoTests",
     "watch": "reflection-watch"
   },
   "dependencies": {
@@ -30,6 +31,7 @@
     "moment": "2.29.4"
   },
   "devDependencies": {
+    "@proteinjs/db-driver-spanner": "^1.21.0",
     "@proteinjs/reflection-build": "^1.4.10",
     "@types/jest": "29.5.5",
     "@types/node": "14.0.27",

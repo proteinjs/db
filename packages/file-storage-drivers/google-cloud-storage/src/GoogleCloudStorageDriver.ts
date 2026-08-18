@@ -64,4 +64,11 @@ export class GoogleCloudStorageDriver implements FileStorageDriver {
       },
     });
   }
+
+  async deleteFile(fileId: string): Promise<void> {
+    const gcsFile = this.storage.bucket(this.bucketName).file(fileId);
+    // ignoreNotFound implements the driver contract's idempotency: a retried row delete must not
+    // wedge because a prior attempt already removed the blob. Every other failure throws loudly.
+    await gcsFile.delete({ ignoreNotFound: true });
+  }
 }

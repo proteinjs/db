@@ -12,3 +12,4 @@ export * from './src/routes/getFileRoute';
 
 export * from './src/FileStorageDriver';
 export * from './src/DbFileStorageDriver';
+export * from './src/FileStorageTableWatcher';
