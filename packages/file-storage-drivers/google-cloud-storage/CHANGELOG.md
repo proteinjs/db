@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.4.0](https://github.com/proteinjs/db/compare/@proteinjs/db-file-storage-driver-gcs@1.3.15...@proteinjs/db-file-storage-driver-gcs@1.4.0) (2026-08-18)
+
+
+### Features
+
+* file bytes die with file rows — deleteFile is a required FileStorageDriver capability ([6d64305](https://github.com/proteinjs/db/commit/6d64305ec43cfaaa8aeb11490c548e803db8a14d))
+* signed-URL file serving — GET /file/:id 302-redirects to the blob store, true bytes at rest, media metadata columns ([fa61db9](https://github.com/proteinjs/db/commit/fa61db9d11793a39ead08254d87c5168702b2035))
+
+
+
+
+
 ## [1.3.15](https://github.com/proteinjs/db/compare/@proteinjs/db-file-storage-driver-gcs@1.3.14...@proteinjs/db-file-storage-driver-gcs@1.3.15) (2026-08-17)
 
 **Note:** Version bump only for package @proteinjs/db-file-storage-driver-gcs

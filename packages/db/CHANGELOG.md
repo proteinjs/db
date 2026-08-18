@@ -3,6 +3,19 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.34.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.33.0...@proteinjs/db@1.34.0) (2026-08-18)
+
+
+### Features
+
+* derive reverse-cascade edges from a per-process index instead of scanning all tables per delete ([8d97786](https://github.com/proteinjs/db/commit/8d9778695b2a13466ffc7405ff7b201646fb4980))
+* export the sync runner as SourceRecordSyncRunner ([f121a21](https://github.com/proteinjs/db/commit/f121a21eb2b3920ea7819236a4bf8cf88d0192bf))
+* source-record sync — onSourceRemoved policies, natural-key adoption, unique-index duplicate preflight ([1345bfc](https://github.com/proteinjs/db/commit/1345bfcd2bd3f457dddacb5770bf723828d98fa9))
+
+
+
+
+
 # [1.33.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.32.3...@proteinjs/db@1.33.0) (2026-08-17)
 
 

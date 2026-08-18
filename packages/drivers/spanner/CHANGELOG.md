@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.22.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.21.0...@proteinjs/db-driver-spanner@1.22.0) (2026-08-18)
+
+
+### Features
+
+* source-record sync — onSourceRemoved policies, natural-key adoption, unique-index duplicate preflight ([1345bfc](https://github.com/proteinjs/db/commit/1345bfcd2bd3f457dddacb5770bf723828d98fa9))
+
+
+
+
+
 # [1.21.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.20.3...@proteinjs/db-driver-spanner@1.21.0) (2026-08-17)
 
 
