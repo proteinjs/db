@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.34.2](https://github.com/proteinjs/db/compare/@proteinjs/db@1.34.1...@proteinjs/db@1.34.2) (2026-08-19)
+
+
+### Bug Fixes
+
+* anchor the default db driver on globalThis (duplicate-module-instance class) ([14c0cfb](https://github.com/proteinjs/db/commit/14c0cfbeb4ac8fcbbca129dd32db6de94c4a2904))
+
+
+
+
+
 ## [1.34.1](https://github.com/proteinjs/db/compare/@proteinjs/db@1.34.0...@proteinjs/db@1.34.1) (2026-08-19)
 
 

@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.11.0](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.10.2...@proteinjs/db-ui@1.11.0) (2026-08-19)
+
+
+### Features
+
+* record table page phone layout — full-width card with page gutters (task [#53](https://github.com/proteinjs/db/issues/53)) ([43061ff](https://github.com/proteinjs/db/commit/43061ff77d1677ff9294006a00da71c46659c281))
+
+
+
+
+
 ## [1.10.2](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.10.1...@proteinjs/db-ui@1.10.2) (2026-08-19)
 
 **Note:** Version bump only for package @proteinjs/db-ui

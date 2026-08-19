@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.23.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.22.1...@proteinjs/db-driver-spanner@1.23.0) (2026-08-19)
+
+
+### Features
+
+* export SpannerSchemaOperations from the spanner-driver root — consumer test harnesses provision cirun databases schema-first (task [#41](https://github.com/proteinjs/db/issues/41) adoption gate) ([3242ae4](https://github.com/proteinjs/db/commit/3242ae41d9f87bb5d788000b8e75ffbfead8fd0e))
+
+
+
+
+
 ## [1.22.1](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.22.0...@proteinjs/db-driver-spanner@1.22.1) (2026-08-19)
 
 
