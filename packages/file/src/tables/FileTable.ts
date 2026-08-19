@@ -1,5 +1,5 @@
-import { Table, StringColumn, IntegerColumn, ReferenceColumn, Reference } from '@proteinjs/db';
-import { ScopedRecord, withScopedRecordColumns } from '@proteinjs/user';
+import { Table, StringColumn, IntegerColumn, ReferenceColumn, Reference, DateColumn } from '@proteinjs/db';
+import { ScopedRecord, withScopedRecordColumns, createScopedIndex } from '@proteinjs/user';
 
 const FILE_TABLE_NAME = 'file';
 
@@ -22,6 +22,22 @@ export interface File extends ScopedRecord {
   width?: number;
   height?: number;
   durationMs?: number;
+  /**
+   * Web provenance — set when the bytes were fetched from the internet on the user's behalf
+   * (a saved web image): the direct URL the bytes came from, the page they were found on, and
+   * when they were retrieved. A provenance record (evidence the source was live and valid at
+   * save time — pages rot; the copy + stamp is what still proves it later) that every consumer
+   * needs to render source attribution without a join. Absent for locally-produced files.
+   */
+  sourceUrl?: string;
+  sourcePageUrl?: string;
+  retrievedAt?: Date;
+  /**
+   * SHA-256 of the stored bytes (hex), stamped at media ingest. Enables content dedup — the
+   * same web image saved twice (or cited from two pages) reuses one File row — and doubles as
+   * an integrity fact. Absent for files written before the column existed.
+   */
+  contentHash?: string;
 }
 
 export class FileTable extends Table<File> {
@@ -43,7 +59,15 @@ export class FileTable extends Table<File> {
     width: new IntegerColumn('width'),
     height: new IntegerColumn('height'),
     durationMs: new IntegerColumn('duration_ms'),
+    // Web provenance (see the interface docs). URLs can be long — MAX, like any URL storage.
+    sourceUrl: new StringColumn('source_url', {}, 'MAX'),
+    sourcePageUrl: new StringColumn('source_page_url', {}, 'MAX'),
+    retrievedAt: new DateColumn('retrieved_at'),
+    contentHash: new StringColumn('content_hash', {}, 64),
   });
+  // Dedup lookup path: find the caller's existing copy of these bytes (content_hash is only
+  // ever queried per-user — createScopedIndex prefixes the scope column).
+  public indexes = [createScopedIndex<File>({ columns: ['contentHash'], name: 'file_content_hash_idx' })];
   // No cascadeDeleteReferences for FileData: byte cleanup (FileData rows included) is owned by
   // FileStorageDriver.deleteFile, invoked for every file-row delete by FileStorageTableWatcher.
 }
