@@ -22,6 +22,15 @@ export interface File extends ScopedRecord {
   width?: number;
   height?: number;
   durationMs?: number;
+  /**
+   * Producer attribution — HOW these bytes came to exist (e.g. a user upload, a browser
+   * capture, model generation, a rendered mockup). Same layer ruling as `width`/`height`:
+   * provenance is a generic file fact consumers need without a join — e.g. evidence surfaces
+   * that must refuse non-capture media as proof. Set by ingest paths that know their producer;
+   * absent for everything else. Values are the producing domain's vocabulary, not enumerated
+   * here.
+   */
+  origin?: string;
 }
 
 export class FileTable extends Table<File> {
@@ -43,6 +52,7 @@ export class FileTable extends Table<File> {
     width: new IntegerColumn('width'),
     height: new IntegerColumn('height'),
     durationMs: new IntegerColumn('duration_ms'),
+    origin: new StringColumn('origin', undefined, 50),
   });
   // No cascadeDeleteReferences for FileData: byte cleanup (FileData rows included) is owned by
   // FileStorageDriver.deleteFile, invoked for every file-row delete by FileStorageTableWatcher.
