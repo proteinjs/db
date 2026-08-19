@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.11.6](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.11.5...@proteinjs/db-driver-knex@1.11.6) (2026-08-19)
+
+**Note:** Version bump only for package @proteinjs/db-driver-knex
+
+
+
+
+
 ## [1.11.5](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.11.4...@proteinjs/db-driver-knex@1.11.5) (2026-08-18)
 
 **Note:** Version bump only for package @proteinjs/db-driver-knex

@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.22.1](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.22.0...@proteinjs/db-driver-spanner@1.22.1) (2026-08-19)
+
+
+### Bug Fixes
+
+* migration run-state writes omit absent optional fields — a void run() or non-Error throw can never wedge a row at 'running' ([350dbb9](https://github.com/proteinjs/db/commit/350dbb9590c2ac697807b6e1f11cf29ef90c1cdb)), closes [#124](https://github.com/proteinjs/db/issues/124) [#57](https://github.com/proteinjs/db/issues/57)
+* spanner-driver rebuilds stop self-eating — dist excluded from tsc inputs ([35b3046](https://github.com/proteinjs/db/commit/35b304613f5b419027370cf53315aea26197aeef))
+
+
+
+
+
 # [1.22.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.21.0...@proteinjs/db-driver-spanner@1.22.0) (2026-08-18)
 
 
