@@ -58,6 +58,8 @@ export type DbDriverQueryStatementConfig = ParameterizationConfig & {
   prefixTablesWithDb?: boolean;
   getDriverColumnType?: (tableName: string, columnName: string) => string;
   handleCaseSensitivity: (tableName: string, columnName: string, caseSensitive: boolean) => string;
+  /** Driver SQL for truncating a datetime column to a bucket unit (`QueryBuilder.timeBucket`). */
+  dateTruncExpression?: (resolvedColumnName: string, unit: 'day') => string;
 };
 
 export type DbDriverDmlStatementConfig = ParameterizationConfig & {
@@ -706,6 +708,29 @@ export class Db<R extends Record = Record> implements DbService<R> {
       qb.toSql(this.statementConfigFactory.getStatementConfig(config));
     const result = await this.dbDriver.runQuery(generateQuery, this.transactionForDriver());
     return result[0]['count'];
+  }
+
+  /**
+   * Run a grouped-aggregation query and return the RAW result rows — one object per group,
+   * carrying the selected group fields (keyed by their DRIVER COLUMN names), any
+   * `timeBucket` dimension (keyed by its `resultProp`), and the aggregate values (keyed by
+   * their `resultProp`s). This is the scalable read for reporting rollups (SUM/COUNT per
+   * model/day/owner AT the database) — the alternative, `query()` + summing in memory, loads
+   * every underlying row and does not survive real data volumes.
+   *
+   * Rides the same authority as `query()`: table read auth unless run as system, and column
+   * queries (e.g. scope pre-filtering) are applied — a scoped caller aggregates only rows it
+   * could read. No record deserialization happens: aggregate rows are not records.
+   */
+  async queryAggregates<T extends R>(table: Table<T>, qb: QueryBuilder<T>): Promise<{ [key: string]: unknown }[]> {
+    if (!this.runAsSystem) {
+      this.auth.canQuery(table);
+    }
+
+    await this.addColumnQueries(table, qb);
+    const generateQuery = (config: DbDriverQueryStatementConfig) =>
+      qb.toSql(this.statementConfigFactory.getStatementConfig(config));
+    return await this.dbDriver.runQuery(generateQuery, this.transactionForDriver());
   }
 
   private async addColumnQueries<T extends R>(

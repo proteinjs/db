@@ -237,6 +237,10 @@ export class SpannerDriver implements DbDriver {
       prefixTablesWithDb: false,
       getDriverColumnType: this.getColumnType.bind(this),
       handleCaseSensitivity: this.handleCaseSensitivity.bind(this),
+      // GoogleSQL day truncation for QueryBuilder.timeBucket. UTC deliberately: bucket
+      // boundaries must be stable regardless of the serving process's TZ.
+      dateTruncExpression: (resolvedColumnName: string, _unit: 'day') =>
+        `TIMESTAMP_TRUNC(${resolvedColumnName}, DAY, 'UTC')`,
     });
 
     const startTime = process.hrtime.bigint();
