@@ -145,6 +145,10 @@ export class KnexDriver implements DbDriver {
       useParams: true,
       prefixTablesWithDb: true,
       handleCaseSensitivity: this.handleCaseSensitivity.bind(this),
+      // MySQL day truncation for QueryBuilder.timeBucket. DATE() buckets in the SESSION time
+      // zone; deployments needing strict UTC buckets should run the connection with time_zone
+      // = '+00:00' (the Spanner driver truncates in UTC unconditionally).
+      dateTruncExpression: (resolvedColumnName: string, _unit: 'day') => `DATE(${resolvedColumnName})`,
     });
 
     try {

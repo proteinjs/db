@@ -34,7 +34,10 @@ export class StatementConfigFactory {
       useNamedParams: config.useNamedParams,
       getColumnType: this.getColumnType(),
       getDriverColumnType: config.getDriverColumnType,
-      ...(this.isQueryConfig(config) && { handleCaseSensitivity: config.handleCaseSensitivity }),
+      ...(this.isQueryConfig(config) && {
+        handleCaseSensitivity: config.handleCaseSensitivity,
+        dateTruncExpression: config.dateTruncExpression,
+      }),
     };
   }
 
