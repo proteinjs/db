@@ -260,6 +260,13 @@ export class Db<R extends Record = Record> implements DbService<R> {
     qb.condition({ field: 'id', operator: '=', value: update.recordId as T[keyof T] });
     const rows = await this._query(table, qb);
     if (rows.length === 0) {
+      // Same id-targeted single-row refusal path as `update`/`delete`: 0 rows for a non-system
+      // caller can mean "row filtered out because the caller lacks write" — surface that as a
+      // typed refusal rather than a silent 0 (an existence-honest no-op still returns 0, since the
+      // hook only throws when the row exists AND the caller lacks write on its permission source).
+      if (!this.runAsSystem && typeof update.recordId === 'string') {
+        await this.runZeroRowFilteredWriteHooks(table, update.recordId, 'write');
+      }
       return 0;
     }
 
@@ -304,6 +311,11 @@ export class Db<R extends Record = Record> implements DbService<R> {
     qb.condition({ field: 'id', operator: '=', value: record.id as T[keyof T] });
     const rows = await this._query(table, qb);
     if (rows.length === 0) {
+      // See `updateArrayMembership`: fire the id-targeted zero-row refusal so a capability-denied
+      // preserving write surfaces a typed error instead of a silent 0.
+      if (!this.runAsSystem && typeof record.id === 'string') {
+        await this.runZeroRowFilteredWriteHooks(table, record.id, 'write');
+      }
       return 0;
     }
 
