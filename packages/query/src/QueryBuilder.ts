@@ -53,12 +53,15 @@ export interface Aggregate<T> {
  * under `resultProp` and grouped on, so aggregate rows come back per bucket (e.g. per UTC day).
  * Requires a driver that supplies `StatementConfig.dateTruncExpression` (drivers without one fail
  * loudly at statement generation — a silent full-table group would be a wrong answer, not a
- * degraded one). Only 'day' exists: coarser buckets (week/month) are honest folds of day rows in
- * application code, so every driver needs exactly one truncation expression.
+ * degraded one). Two units exist: 'day' and 'hour'. Coarser buckets than a day (week/month/year)
+ * are honest folds of day rows in application code; 'hour' is a genuine SQL grain because you
+ * cannot recover it from day rows, and finer than the atomic ledger row is meaningless — so every
+ * driver supplies exactly these two truncations. Both truncate in UTC (the Spanner driver
+ * unconditionally); hour-grain callers render the UTC buckets in the operator's local time.
  */
 export interface TimeBucket<T> {
   field: keyof T;
-  unit: 'day';
+  unit: 'day' | 'hour';
   resultProp: string; // Prop name in the object returned from the driver that contains the bucket start
 }
 

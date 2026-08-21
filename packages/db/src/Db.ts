@@ -59,7 +59,7 @@ export type DbDriverQueryStatementConfig = ParameterizationConfig & {
   getDriverColumnType?: (tableName: string, columnName: string) => string;
   handleCaseSensitivity: (tableName: string, columnName: string, caseSensitive: boolean) => string;
   /** Driver SQL for truncating a datetime column to a bucket unit (`QueryBuilder.timeBucket`). */
-  dateTruncExpression?: (resolvedColumnName: string, unit: 'day') => string;
+  dateTruncExpression?: (resolvedColumnName: string, unit: 'day' | 'hour') => string;
 };
 
 export type DbDriverDmlStatementConfig = ParameterizationConfig & {
