@@ -28,7 +28,7 @@ export interface StatementConfig extends ParameterizationConfig {
    * arrives already resolved and quoted. Optional: drivers without it reject time-bucketed
    * queries loudly at statement generation.
    */
-  dateTruncExpression?: (resolvedColumnName: string, unit: 'day') => string;
+  dateTruncExpression?: (resolvedColumnName: string, unit: 'day' | 'hour') => string;
 }
 
 interface Column {

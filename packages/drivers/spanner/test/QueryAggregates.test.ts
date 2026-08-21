@@ -177,4 +177,39 @@ describe('Db.queryAggregates (grouped aggregation + UTC day buckets)', () => {
     expect(Number(byKey.get('model-a/flow_request/2026-08-10')!.totalTokens)).toBe(200);
     expect(Number(byKey.get('model-a/chat_turn/2026-08-10')!.requests)).toBe(1);
   }, 60000);
+
+  // LAST test: it seeds an extra same-hour row; afterAll drops the table so no cleanup needed.
+  test('timeBucket(hour) buckets by UTC hour — cross-hour rows split, same-hour rows merge (V2.3)', async () => {
+    const hourQb = () =>
+      new QueryBuilderFactory()
+        .createQueryBuilder<UsageShape>(table)
+        .timeBucket({ field: 'created', unit: 'hour', resultProp: 'hour' })
+        .aggregate({ function: 'SUM', field: 'totalTokens', resultProp: 'totalTokens' })
+        .aggregate({ function: 'COUNT', resultProp: 'requests' });
+
+    // Seeded UTC instants: 10:00Z (1000), 23:30Z (200), next-day 00:30Z (40) — three DISTINCT
+    // UTC hours. Under DAY grain the first two merged (both 2026-08-10); under HOUR they split.
+    const byHour = new Map(
+      (await db.queryAggregates(table, hourQb())).map((row) => [
+        new Date(String(row.hour)).toISOString(),
+        Number(row.totalTokens),
+      ])
+    );
+    expect(byHour.size).toBe(3);
+    expect(byHour.get('2026-08-10T10:00:00.000Z')).toBe(1000);
+    expect(byHour.get('2026-08-10T23:00:00.000Z')).toBe(200); // 23:30Z floors to 23:00Z
+    expect(byHour.get('2026-08-11T00:00:00.000Z')).toBe(40); // 00:30Z → its own hour, not merged with 23:30Z
+
+    // A second row INSIDE an existing hour must MERGE, not open a new bucket (30 min apart, same hour).
+    await db.insert(
+      table,
+      seedRow({ model: 'model-c', totalTokens: 7, created: moment.utc('2026-08-10T10:45:00Z') }) as any
+    );
+    const byHour2 = new Map(
+      (await db.queryAggregates(table, hourQb())).map((row) => [new Date(String(row.hour)).toISOString(), row])
+    );
+    expect(byHour2.size).toBe(3); // still three hours — 10:00Z absorbed the 10:45Z row
+    expect(Number(byHour2.get('2026-08-10T10:00:00.000Z')!.totalTokens)).toBe(1007); // 1000 + 7
+    expect(Number(byHour2.get('2026-08-10T10:00:00.000Z')!.requests)).toBe(2);
+  }, 60000);
 });
