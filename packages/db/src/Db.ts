@@ -1,4 +1,4 @@
-import { DbService, Query, QueryOptions, getDbService } from './services/DbService';
+import { DbService, ObjectQuery, Query, QueryOptions, getDbService } from './services/DbService';
 import { Service } from '@proteinjs/service';
 import { Loadable, SourceRepository } from '@proteinjs/reflection';
 import {
@@ -220,6 +220,12 @@ export class Db<R extends Record = Record> implements DbService<R> {
         this.statementConfigFactory.getStatementConfig(config)
       );
     const recordUpdateCount = await this.dbDriver.runDml(generateUpdate, this.transactionForDriver());
+    if (!this.runAsSystem && recordUpdateCount === 0) {
+      const id = this.singleRowIdTarget(record, query);
+      if (id !== undefined) {
+        await this.runZeroRowFilteredWriteHooks(table, id, 'write');
+      }
+    }
     await this.tableWatcherRunner.runAfterUpdateTableWatchers(table, recordUpdateCount, recordCopy, qb);
     return recordUpdateCount;
   }
@@ -323,6 +329,12 @@ export class Db<R extends Record = Record> implements DbService<R> {
     await this.addColumnQueries(table, qb, 'delete');
     const recordsToDelete = await this._query(table, qb);
     if (recordsToDelete.length == 0) {
+      if (!this.runAsSystem) {
+        const id = this.singleRowIdTarget(undefined, query);
+        if (id !== undefined) {
+          await this.runZeroRowFilteredWriteHooks(table, id, 'delete');
+        }
+      }
       return 0;
     }
 
@@ -664,6 +676,34 @@ export class Db<R extends Record = Record> implements DbService<R> {
       const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
       if (column.options?.onBeforeInsert) {
         await column.options.onBeforeInsert(record, this.runAsSystem);
+      }
+    }
+  }
+
+  /**
+   * The single-row id a filtered write targets, or undefined when the write is not a single-row
+   * id target. Only these qualify for the `onZeroRowFilteredWrite` hook, so a multi-row filtered
+   * write that matches nothing is never mistaken for a capability denial. An arbitrary
+   * `QueryBuilder` is deliberately NOT introspected (returns undefined) — the id-target paths that
+   * matter (`update(table, { id, ... })` and `delete(table, { id })`) come through `record.id` or
+   * an `ObjectQuery`.
+   */
+  private singleRowIdTarget<T extends R>(record?: Partial<T>, query?: Query<T>): string | undefined {
+    if (query === undefined) {
+      return typeof record?.id === 'string' ? record.id : undefined;
+    }
+    if (isInstanceOf(query, QueryBuilder)) {
+      return undefined;
+    }
+    const objectQuery = query as ObjectQuery<T>;
+    return typeof objectQuery.id === 'string' ? objectQuery.id : undefined;
+  }
+
+  private async runZeroRowFilteredWriteHooks(table: Table<any>, id: string, operation: 'write' | 'delete') {
+    for (const columnPropertyName in table.columns) {
+      const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
+      if (column.options?.onZeroRowFilteredWrite) {
+        await column.options.onZeroRowFilteredWrite(table, id, operation, this.runAsSystem);
       }
     }
   }

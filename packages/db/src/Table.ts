@@ -170,6 +170,24 @@ export type ColumnOptions = {
   /** Add conditions to query; called on every query of this table */
   addToQuery?: (qb: QueryBuilder, runAsSystem: boolean, operation: 'read' | 'write' | 'delete') => Promise<void>;
   onBeforeInsert?: (insertObj: any & Record, runAsSystem: boolean) => Promise<void>;
+  /**
+   * Called after an id-targeted SINGLE-ROW filtered write (update or delete) on this table matched
+   * ZERO rows in a NON-system context. A column that narrows row visibility by capability (e.g.
+   * `SharedRecord`'s permission subquery) implements this to turn a silent 0 — which the caller
+   * cannot distinguish from a genuine capability denial — into a typed error. Return normally to
+   * leave the 0 as a legitimate no-op (row genuinely absent, or value unchanged for a caller who
+   * DOES hold the capability); throw (a `RecordAccessError`) to surface the refusal.
+   *
+   * Scope is deliberately narrow: only single-row id targets fire it, so a legitimate multi-row
+   * filtered write that matches nothing is never mis-flagged, and system-context maintenance
+   * writes never reach it.
+   */
+  onZeroRowFilteredWrite?: (
+    table: Table<any>,
+    id: string,
+    operation: 'write' | 'delete',
+    runAsSystem: boolean
+  ) => Promise<void>;
   ui?: {
     hidden?: boolean;
   };

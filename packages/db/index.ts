@@ -1,5 +1,6 @@
 export * from './src/Db';
 export * from './src/Table';
+export * from './src/RecordAccessError';
 export * from './src/auth/TableAuth';
 export * from './src/auth/TableServiceAuth';
 export * from './src/Columns';
