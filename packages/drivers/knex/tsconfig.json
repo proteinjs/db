@@ -1,26 +1,42 @@
 {
-  "compilerOptions": {
-    "noEmitOnError": true,
-    "rootDir": "./",
-    "target": "es5",
-    "module": "commonjs",
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "outDir": "./dist/",
-    "strict": true,
-    "noImplicitAny": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "typeRoots": ["./node_modules/@types"],
-    "types": ["node", "jest"],
-    "baseUrl": ".",
-    "paths": {
-      "@proteinjs/db-driver-knex": ["index.ts"],
-      "@proteinjs/db-driver-knex/*": ["src/*"],
-      "@proteinjs/db-driver-knex/test": ["test/index.ts"]
-    }
-  }
+    "compilerOptions": {
+        "noEmitOnError": true,
+        "rootDir": "./",
+        "target": "es5",
+        "module": "commonjs",
+        "declaration": true,
+        "declarationMap": true,
+        "sourceMap": true,
+        "outDir": "./dist/",
+        "strict": true,
+        "noImplicitAny": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "resolveJsonModule": true,
+        "typeRoots": [
+            "./node_modules/@types"
+        ],
+        "types": [
+            "node",
+            "jest"
+        ],
+        "baseUrl": ".",
+        "paths": {
+            "@proteinjs/db-driver-knex": [
+                "index.ts"
+            ],
+            "@proteinjs/db-driver-knex/*": [
+                "src/*"
+            ],
+            "@proteinjs/db-driver-knex/test": [
+                "test/index.ts"
+            ]
+        }
+    },
+    "exclude": [
+        "node_modules",
+        "test.js",
+        "test.d.ts"
+    ]
 }
