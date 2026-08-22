@@ -43,7 +43,7 @@
   "dependencies": {
     "@proteinjs/db-query": "^1.7.0",
     "@proteinjs/logger": "^1.0.21",
-    "@proteinjs/reflection": "^1.1.12",
+    "@proteinjs/reflection": "^1.1.14",
     "@proteinjs/serializer": "^1.1.10",
     "@proteinjs/server-api": "^3.0.11",
     "@proteinjs/service": "^1.5.1",
@@ -53,7 +53,7 @@
     "uuid": "8.3.0"
   },
   "devDependencies": {
-    "@proteinjs/reflection-build": "^1.4.10",
+    "@proteinjs/reflection-build": "^2.0.1",
     "@types/jest": "29.5.5",
     "@types/node": "14.0.27",
     "@types/uuid": "8.3.0",
