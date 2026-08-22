@@ -169,7 +169,21 @@ export type ColumnOptions = {
   immutable?: boolean | ((runAsSystem: boolean) => boolean);
   /** Add conditions to query; called on every query of this table */
   addToQuery?: (qb: QueryBuilder, runAsSystem: boolean, operation: 'read' | 'write' | 'delete') => Promise<void>;
-  onBeforeInsert?: (insertObj: any & Record, runAsSystem: boolean) => Promise<void>;
+  /**
+   * Called before the row's insert DML runs, after defaults and before-insert table watchers.
+   * Runs where inserts execute (`Db.insert` — the server; a browser only ever proxies or queues),
+   * so guards here hold regardless of where column DEFAULTS were applied (the client `Transaction`
+   * path applies them in the browser). Throw to refuse the insert.
+   */
+  onBeforeInsert?: (table: Table<any>, insertObj: any & Record, runAsSystem: boolean) => Promise<void>;
+  /**
+   * Called after the row's insert DML SUCCEEDS, before after-insert table watchers. The seam for
+   * side-effect writes that are part of the row's birth (e.g. `SharedRecord`'s platform-conferred
+   * owner grant): running server-side keeps column defaults pure enough for driverless client
+   * contexts, and running after the DML means a failed insert (duplicate id, refused guard) can
+   * never leave the side effect behind.
+   */
+  onAfterInsert?: (table: Table<any>, insertObj: any & Record, runAsSystem: boolean) => Promise<void>;
   /**
    * Called after an id-targeted SINGLE-ROW filtered write (update or delete) on this table matched
    * ZERO rows in a NON-system context. A column that narrows row visibility by capability (e.g.

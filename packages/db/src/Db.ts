@@ -177,6 +177,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
         this.statementConfigFactory.getStatementConfig(config)
       );
     await this.dbDriver.runDml(generateInsert, this.transactionForDriver());
+    await this.runColumnAfterInsertHooks(table, recordCopy);
     await this.tableWatcherRunner.runAfterInsertTableWatchers(table, recordCopy as T);
     return recordCopy as T;
   }
@@ -687,7 +688,17 @@ export class Db<R extends Record = Record> implements DbService<R> {
     for (const columnPropertyName in table.columns) {
       const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
       if (column.options?.onBeforeInsert) {
-        await column.options.onBeforeInsert(record, this.runAsSystem);
+        await column.options.onBeforeInsert(table, record, this.runAsSystem);
+      }
+    }
+  }
+
+  /** Post-DML mirror of {@link addColumnInsertHooks} — see `ColumnOptions.onAfterInsert`. */
+  private async runColumnAfterInsertHooks(table: Table<any>, record: any) {
+    for (const columnPropertyName in table.columns) {
+      const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
+      if (column.options?.onAfterInsert) {
+        await column.options.onAfterInsert(table, record, this.runAsSystem);
       }
     }
   }
