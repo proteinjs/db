@@ -34,7 +34,7 @@ export interface ProjectManager extends Record {
 
 export class ProjectAssignmentTable extends Table<ProjectAssignment> {
   name = 'db_test_dr_project_assignments';
-  columns = withRecordColumns<ProjectAssignment>({
+  columns: Table<ProjectAssignment>['columns'] = withRecordColumns<ProjectAssignment>({
     projectName: new StringColumn('project_name'),
     employeeTableName: new DynamicReferenceTableNameColumn('employee_table_name', 'employee_ref'),
     employeeRef: new DynamicReferenceColumn<Engineer | Designer | ProjectManager>(
@@ -57,7 +57,7 @@ export class ProjectAssignmentTable extends Table<ProjectAssignment> {
 
 export class EngineerTable extends Table<Engineer> {
   name = 'db_test_dr_engineers';
-  columns = withRecordColumns<Engineer>({
+  columns: Table<Engineer>['columns'] = withRecordColumns<Engineer>({
     name: new StringColumn('name'),
     yearsOfExperience: new StringColumn('years_of_experience'),
   });
@@ -65,7 +65,7 @@ export class EngineerTable extends Table<Engineer> {
 
 export class DesignerTable extends Table<Designer> {
   name = 'db_test_dr_designers';
-  columns = withRecordColumns<Designer>({
+  columns: Table<Designer>['columns'] = withRecordColumns<Designer>({
     name: new StringColumn('name'),
     specialization: new StringColumn('specialization'),
   });
@@ -73,7 +73,7 @@ export class DesignerTable extends Table<Designer> {
 
 export class ProjectManagerTable extends Table<ProjectManager> {
   name = 'db_test_dr_project_managers';
-  columns = withRecordColumns<ProjectManager>({
+  columns: Table<ProjectManager>['columns'] = withRecordColumns<ProjectManager>({
     name: new StringColumn('name'),
     certificate: new StringColumn('certificate'),
   });

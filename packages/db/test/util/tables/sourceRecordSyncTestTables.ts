@@ -30,7 +30,7 @@ export interface SyncMachineAccount extends SourceRecord {
 /** The machine-account shape: natural-key adoption by email, removed rows flagged not deleted. */
 export class SyncMachineAccountTable extends Table<SyncMachineAccount> {
   name = 'db_test_sync_machine_account';
-  columns = withSourceRecordColumns<SyncMachineAccount>({
+  columns: Table<SyncMachineAccount>['columns'] = withSourceRecordColumns<SyncMachineAccount>({
     email: new StringColumn('email', {
       unique: { unique: true, indexName: 'db_test_sync_machine_account_email_unique' },
     }),
@@ -52,7 +52,7 @@ export interface SyncDefaultPolicyRecord extends SourceRecord {
 /** Default options: id-keyed, removed source rows are deleted (today's behavior). */
 export class SyncDefaultPolicyTable extends Table<SyncDefaultPolicyRecord> {
   name = 'db_test_sync_default_policy';
-  columns = withSourceRecordColumns<SyncDefaultPolicyRecord>({
+  columns: Table<SyncDefaultPolicyRecord>['columns'] = withSourceRecordColumns<SyncDefaultPolicyRecord>({
     email: new StringColumn('email'),
     displayName: new StringColumn('display_name'),
   });
@@ -65,7 +65,7 @@ export interface DupePreflightRecord extends DbRecord {
 /** Generation 1: no uniqueness — the table under which duplicate rows accumulate. */
 export class DupePreflightTable extends Table<DupePreflightRecord> {
   name = 'db_test_dupe_preflight';
-  columns = withRecordColumns<DupePreflightRecord>({
+  columns: Table<DupePreflightRecord>['columns'] = withRecordColumns<DupePreflightRecord>({
     email: new StringColumn('email'),
   });
 }
@@ -73,7 +73,7 @@ export class DupePreflightTable extends Table<DupePreflightRecord> {
 /** Generation 2: same table, email now unique — loading it runs the alter-path preflight. */
 export class DupePreflightUniqueEmailTable extends Table<DupePreflightRecord> {
   name = 'db_test_dupe_preflight';
-  columns = withRecordColumns<DupePreflightRecord>({
+  columns: Table<DupePreflightRecord>['columns'] = withRecordColumns<DupePreflightRecord>({
     email: new StringColumn('email', { unique: { unique: true, indexName: 'db_test_dupe_preflight_email_unique' } }),
   });
 }

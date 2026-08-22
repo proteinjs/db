@@ -11,7 +11,7 @@ export interface Employee extends Record {
 
 export class EmployeeTestTable extends Table<Employee> {
   name = 'db_test_employee';
-  columns = withRecordColumns<Employee>({
+  columns: Table<Employee>['columns'] = withRecordColumns<Employee>({
     name: new StringColumn('name'),
     department: new StringColumn('department'),
     isRemote: new BooleanColumn('is_remote'),
@@ -30,7 +30,7 @@ export interface ReservedWordTest extends Record {
 
 export class ReservedWordTestTable extends Table<ReservedWordTest> {
   name = 'db_test_reserved_word';
-  columns = withRecordColumns<ReservedWordTest>({
+  columns: Table<ReservedWordTest>['columns'] = withRecordColumns<ReservedWordTest>({
     name: new StringColumn('name'),
     order: new StringColumn('order'),
     select: new StringColumn('select'),

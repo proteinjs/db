@@ -22,7 +22,7 @@ export interface User extends Record {
 
 export class UserTestTable extends Table<User> {
   name = 'db_test_user';
-  columns = withRecordColumns<User>({
+  columns: Table<User>['columns'] = withRecordColumns<User>({
     name: new StringColumn('name'),
     email: new StringColumn('email'),
     active: new BooleanColumn('active'),
@@ -41,7 +41,7 @@ export interface MappedIndexUser extends Record {
 
 export class MappedIndexUserTable extends Table<MappedIndexUser> {
   name = 'db_test_tm_mapped_index_user';
-  columns = withRecordColumns<MappedIndexUser>({
+  columns: Table<MappedIndexUser>['columns'] = withRecordColumns<MappedIndexUser>({
     emailAddress: new StringColumn('email_address'),
     accountStatus: new StringColumn('account_status'),
     createdOn: new DateColumn('created_on'),
@@ -75,7 +75,7 @@ export interface ColumnTypes extends Record {
 
 export class ColumnTypesTable extends Table<ColumnTypes> {
   name = 'db_test_tm_column_types';
-  columns = withRecordColumns<ColumnTypes>({
+  columns: Table<ColumnTypes>['columns'] = withRecordColumns<ColumnTypes>({
     integer: new IntegerColumn('integer', { nullable: true }),
     bigInteger: new IntegerColumn('big_integer', { nullable: false }, true),
     string: new StringColumn('string', { references: { table: 'db_test_user' } }),

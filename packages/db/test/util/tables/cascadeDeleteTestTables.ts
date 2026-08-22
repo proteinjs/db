@@ -118,13 +118,13 @@ const MISSION_TABLE = 'db_test_cd_missions';
 // Cascade: ReferenceColumn
 export class MemberRefTable extends Table<MemberRef> {
   name = MEMBER_REF_TABLE;
-  columns = withRecordColumns<MemberRef>({
+  columns: Table<MemberRef>['columns'] = withRecordColumns<MemberRef>({
     name: new StringColumn('name'),
   });
 }
 export class GroupRefTable extends Table<GroupRef> {
   name = GROUP_REF_TABLE;
-  columns = withRecordColumns<GroupRef>({
+  columns: Table<GroupRef>['columns'] = withRecordColumns<GroupRef>({
     groupName: new StringColumn('group_name'),
     memberRef: new ReferenceColumn<MemberRef>(
       'member_id',
@@ -137,13 +137,13 @@ export class GroupRefTable extends Table<GroupRef> {
 // Cascade: ReferenceArrayColumn
 export class MemberArrTable extends Table<MemberArr> {
   name = MEMBER_ARR_TABLE;
-  columns = withRecordColumns<MemberArr>({
+  columns: Table<MemberArr>['columns'] = withRecordColumns<MemberArr>({
     name: new StringColumn('name'),
   });
 }
 export class GroupArrTable extends Table<GroupArr> {
   name = GROUP_ARR_TABLE;
-  columns = withRecordColumns<GroupArr>({
+  columns: Table<GroupArr>['columns'] = withRecordColumns<GroupArr>({
     groupName: new StringColumn('group_name'),
     memberRefs: new ReferenceArrayColumn<MemberArr>(
       'member_ids',
@@ -156,13 +156,13 @@ export class GroupArrTable extends Table<GroupArr> {
 // Cascade: DynamicReferenceColumn
 export class MemberDynTable extends Table<MemberDyn> {
   name = MEMBER_DYN_TABLE;
-  columns = withRecordColumns<MemberDyn>({
+  columns: Table<MemberDyn>['columns'] = withRecordColumns<MemberDyn>({
     name: new StringColumn('name'),
   });
 }
 export class GroupDynTable extends Table<GroupDyn> {
   name = GROUP_DYN_TABLE;
-  columns = withRecordColumns<GroupDyn>({
+  columns: Table<GroupDyn>['columns'] = withRecordColumns<GroupDyn>({
     groupName: new StringColumn('group_name'),
     memberDynTableName: new DynamicReferenceTableNameColumn('member_dyn_table_name', 'member_dyn_ref'),
     memberDynRef: new DynamicReferenceColumn<MemberDyn>(
@@ -176,13 +176,13 @@ export class GroupDynTable extends Table<GroupDyn> {
 // Reverse: ReferenceColumn
 export class PostTable extends Table<Post> {
   name = POST_TABLE;
-  columns = withRecordColumns<Post>({
+  columns: Table<Post>['columns'] = withRecordColumns<Post>({
     title: new StringColumn('title'),
   });
 }
 export class CommentTable extends Table<Comment> {
   name = COMMENT_TABLE;
-  columns = withRecordColumns<Comment>({
+  columns: Table<Comment>['columns'] = withRecordColumns<Comment>({
     text: new StringColumn('text'),
     postRef: new ReferenceColumn<Post>(
       'post_id',
@@ -196,13 +196,13 @@ export class CommentTable extends Table<Comment> {
 // Reverse: ReferenceArrayColumn
 export class MemberArrRevTable extends Table<MemberArrRev> {
   name = MEMBER_ARR_REV_TABLE;
-  columns = withRecordColumns<MemberArrRev>({
+  columns: Table<MemberArrRev>['columns'] = withRecordColumns<MemberArrRev>({
     name: new StringColumn('name'),
   });
 }
 export class GroupArrRevTable extends Table<GroupArrRev> {
   name = GROUP_ARR_REV_TABLE;
-  columns = withRecordColumns<GroupArrRev>({
+  columns: Table<GroupArrRev>['columns'] = withRecordColumns<GroupArrRev>({
     groupName: new StringColumn('group_name'),
     memberRefs: new ReferenceArrayColumn<MemberArrRev>(
       'member_ids',
@@ -216,13 +216,13 @@ export class GroupArrRevTable extends Table<GroupArrRev> {
 // Reverse: DynamicReferenceColumn
 export class WorkerTable extends Table<Worker> {
   name = WORKER_TABLE;
-  columns = withRecordColumns<Worker>({
+  columns: Table<Worker>['columns'] = withRecordColumns<Worker>({
     name: new StringColumn('name'),
   });
 }
 export class TaskTable extends Table<Task> {
   name = TASK_TABLE;
-  columns = withRecordColumns<Task>({
+  columns: Table<Task>['columns'] = withRecordColumns<Task>({
     title: new StringColumn('title'),
     assigneeTableName: new DynamicReferenceTableNameColumn('assignee_table_name', 'assignee_ref'),
     assigneeRef: new DynamicReferenceColumn<Worker>(
@@ -237,19 +237,19 @@ export class TaskTable extends Table<Task> {
 // Reverse: DynamicReferenceColumn across multiple target tables
 export class PilotTable extends Table<Pilot> {
   name = PILOT_TABLE;
-  columns = withRecordColumns<Pilot>({
+  columns: Table<Pilot>['columns'] = withRecordColumns<Pilot>({
     name: new StringColumn('name'),
   });
 }
 export class RobotTable extends Table<Robot> {
   name = ROBOT_TABLE;
-  columns = withRecordColumns<Robot>({
+  columns: Table<Robot>['columns'] = withRecordColumns<Robot>({
     name: new StringColumn('name'),
   });
 }
 export class MissionTable extends Table<Mission> {
   name = MISSION_TABLE;
-  columns = withRecordColumns<Mission>({
+  columns: Table<Mission>['columns'] = withRecordColumns<Mission>({
     title: new StringColumn('title'),
     assigneeTableName: new DynamicReferenceTableNameColumn('assignee_table_name', 'assignee_ref'),
     assigneeRef: new DynamicReferenceColumn<Pilot | Robot>(

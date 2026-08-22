@@ -11,7 +11,7 @@ export interface TransactionEmployee extends Record {
 
 export class TransactionEmployeeTestTable extends Table<TransactionEmployee> {
   name = 'db_test_transaction_employee';
-  columns = withRecordColumns<TransactionEmployee>({
+  columns: Table<TransactionEmployee>['columns'] = withRecordColumns<TransactionEmployee>({
     name: new StringColumn('name'),
     department: new StringColumn('department'),
     isRemote: new BooleanColumn('is_remote'),
@@ -30,7 +30,7 @@ export interface TransactionReservedWordTest extends Record {
 
 export class TransactionReservedWordTestTable extends Table<TransactionReservedWordTest> {
   name = 'db_test_transaction_reserved_word';
-  columns = withRecordColumns<TransactionReservedWordTest>({
+  columns: Table<TransactionReservedWordTest>['columns'] = withRecordColumns<TransactionReservedWordTest>({
     name: new StringColumn('name'),
     order: new StringColumn('order'),
     select: new StringColumn('select'),
