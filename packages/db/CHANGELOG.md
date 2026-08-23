@@ -3,6 +3,19 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.34.3](https://github.com/proteinjs/db/compare/@proteinjs/db@1.34.2...@proteinjs/db@1.34.3) (2026-08-23)
+
+
+### Bug Fixes
+
+* column insert hooks get the table + a post-DML onAfterInsert seam ([f1aa226](https://github.com/proteinjs/db/commit/f1aa226692bc59d7cca57231c73d4d90938cf38e))
+* id-targeted zero-row refusal also covers updateArrayMembership + updatePreserving ([36942ec](https://github.com/proteinjs/db/commit/36942ece8a24bc2ddeba56d71a46ed6856d85b15))
+* row-level capability primitives — RecordAccessError + zero-row filtered-write hook ([0d3d531](https://github.com/proteinjs/db/commit/0d3d531f056c7f7d3105a6c137f2aec9a97396fa))
+
+
+
+
+
 ## [1.34.2](https://github.com/proteinjs/db/compare/@proteinjs/db@1.34.1...@proteinjs/db@1.34.2) (2026-08-19)
 
 
