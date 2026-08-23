@@ -78,7 +78,27 @@ export class DupePreflightUniqueEmailTable extends Table<DupePreflightRecord> {
   });
 }
 
+export interface InheritedStampRecord extends SourceRecord {
+  email: string;
+}
+
+/**
+ * The one-owner guard fixture: declares ONLY its own column. The ownership stamps
+ * (source_package, source_package_version) must arrive from withSourceRecordColumns — the single
+ * owner of the SourceRecord column set — never by per-table declaration. Its physical table is
+ * minted by the harness through the normal schema-sync path (TableManager deriving DDL from the
+ * type), so the inheritance guard test proves a NEW table gets the stamp columns without
+ * declaring them.
+ */
+export class InheritedStampTable extends Table<InheritedStampRecord> {
+  name = 'db_test_sync_inherited_stamp';
+  columns: Table<InheritedStampRecord>['columns'] = withSourceRecordColumns<InheritedStampRecord>({
+    email: new StringColumn('email'),
+  });
+}
+
 export const sourceRecordSyncTestTables = {
   SyncMachineAccount: new SyncMachineAccountTable() as Table<SyncMachineAccount>,
   SyncDefaultPolicy: new SyncDefaultPolicyTable() as Table<SyncDefaultPolicyRecord>,
+  InheritedStamp: new InheritedStampTable() as Table<InheritedStampRecord>,
 };
