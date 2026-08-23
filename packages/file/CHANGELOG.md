@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.6.0](https://github.com/proteinjs/db/compare/@proteinjs/db-file@1.5.3...@proteinjs/db-file@1.6.0) (2026-08-23)
+
+
+### Features
+
+* File web provenance + content hash — source_url/source_page_url/retrieved_at columns, scoped content_hash dedup index ([8fd4221](https://github.com/proteinjs/db/commit/8fd422181320e247d2776fa15d66a43010491fb3))
+
+
+
+
+
 ## [1.5.3](https://github.com/proteinjs/db/compare/@proteinjs/db-file@1.5.2...@proteinjs/db-file@1.5.3) (2026-08-23)
 
 **Note:** Version bump only for package @proteinjs/db-file
