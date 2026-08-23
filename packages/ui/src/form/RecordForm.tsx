@@ -2,7 +2,7 @@ import React from 'react';
 import S from 'string';
 import moment from 'moment';
 import { StringUtil, isInstanceOf } from '@proteinjs/util';
-import { Form, Fields, textField, checkboxField, dateField, FormButtons } from '@proteinjs/ui';
+import { Form, Fields, FieldComponentProps, textField, checkboxField, dateField, FormButtons } from '@proteinjs/ui';
 import {
   Table,
   Record,
@@ -18,7 +18,7 @@ import {
 } from '@proteinjs/db';
 import { recordTableLink } from '../pages/RecordTablePage';
 import { recordFormLink } from '../pages/RecordFormPage';
-import { getRecordFormCustomization } from './RecordFormCustomization';
+import { getRecordFormCustomization, RecordFormFieldRenderer } from './RecordFormCustomization';
 
 export type RecordFormProps<T extends Record> = {
   table: Table<T>;
@@ -149,7 +149,8 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
         continue;
       }
 
-      if (column.options?.ui?.hidden) {
+      // A customization's field component surfaces a column the default form hides
+      if (column.options?.ui?.hidden && !getFieldRenderer(columnPropertyName)) {
         continue;
       }
 
@@ -192,10 +193,28 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
     );
   }
 
+  /**
+   * A customization's component for the field, if it declared one. Only existing records have
+   * stored state to present, so the new-record form never consults renderers (see
+   * `RecordFormCustomization.getFieldRenderer`).
+   */
+  function getFieldRenderer(columnPropertyName: string): RecordFormFieldRenderer<T> | undefined {
+    if (isNewRecord || !recordFormCustomization) {
+      return undefined;
+    }
+
+    return recordFormCustomization.getFieldRenderer(columnPropertyName, record);
+  }
+
   /** Pick the field control that tells the truth about the column's type. */
   function createField(columnPropertyName: string, column: Column<T, any>) {
     const name = columnPropertyName;
     const label = StringUtil.humanizeCamel(columnPropertyName);
+
+    const fieldRenderer = getFieldRenderer(columnPropertyName);
+    if (fieldRenderer) {
+      return customField(name, label, column, fieldRenderer);
+    }
 
     // Readonly values render as text (a native date input isn't text-selectable): copyable
     // ids/timestamps beat a type-specific control the user can't interact with anyway.
@@ -240,6 +259,38 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
     }
 
     return textField({ name, label });
+  }
+
+  /**
+   * The slot a customization's component renders in. The component reads its value from the
+   * loaded record (not the form's field value), so one `reload` refreshes every custom field:
+   * reload re-reads the record in place and reports the change through the form's own onChange,
+   * which is what re-renders the form.
+   */
+  function customField(name: string, label: string, column: Column<T, any>, FieldRenderer: RecordFormFieldRenderer<T>) {
+    const loadedRecord = record as T;
+    return {
+      field: { name, label },
+      component: ({ field, onChange }: FieldComponentProps<any, Fields>) => (
+        <FieldRenderer
+          table={table}
+          column={column}
+          fieldName={name}
+          label={label}
+          record={loadedRecord}
+          value={(loadedRecord as any)[name]}
+          reload={async () => {
+            const fresh = await getDbService().get(table, { id: loadedRecord.id } as any);
+            if (!fresh) {
+              throw new Error(`${S(table.name).humanize().s} no longer exists`);
+            }
+
+            Object.assign(loadedRecord, fresh);
+            await onChange(field, (fresh as any)[name], () => {});
+          }}
+        />
+      ),
+    };
   }
 
   function fieldLayout(): any {
@@ -298,6 +349,23 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
     return fieldValue;
   }
 
+  /**
+   * The update payload is the loaded record minus what this form doesn't own: service-protected
+   * columns, and custom-rendered fields — those are their component's, written through the
+   * component's own service. Echoing a loaded value back would clobber whatever that service
+   * wrote since the load.
+   */
+  function savePayload(): Partial<T> {
+    const payload: any = stripServiceProtectedColumns(table, record as T);
+    for (const columnPropertyName in getColumns()) {
+      if (getFieldRenderer(columnPropertyName)) {
+        delete payload[columnPropertyName];
+      }
+    }
+
+    return payload;
+  }
+
   function buttons(): FormButtons<any> {
     let newRecord: T;
     return {
@@ -352,11 +420,15 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
               continue;
             }
 
+            if (getFieldRenderer(columnPropertyName)) {
+              continue;
+            }
+
             const field = fields[columnPropertyName];
             (record as any)[columnPropertyName] = getFieldValue(columnPropertyName, field.field.value);
           }
 
-          await getDbService().update(table, stripServiceProtectedColumns(table, record));
+          await getDbService().update(table, savePayload());
           return `Saved ${S(table.name).humanize().s}`;
         },
         progressMessage: (fields: Fields) => {
@@ -398,6 +470,11 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
     }
 
     for (const columnPropertyName in fields) {
+      // Custom-rendered fields read straight from the loaded record
+      if (getFieldRenderer(columnPropertyName)) {
+        continue;
+      }
+
       const column = getColumn(columnPropertyName);
       const field = fields[columnPropertyName].field;
       let fieldValue = (record as any)[columnPropertyName];
