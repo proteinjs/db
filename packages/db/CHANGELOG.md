@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.34.4](https://github.com/proteinjs/db/compare/@proteinjs/db@1.34.3...@proteinjs/db@1.34.4) (2026-08-24)
+
+
+### Bug Fixes
+
+* owner-scoped source-record sync — a boot reconciles only rows its own packages declared, never a newer version's ([cff11f0](https://github.com/proteinjs/db/commit/cff11f0c1d4b503f22d92573b59c70e7918498f8))
+
+
+
+
+
 ## [1.34.3](https://github.com/proteinjs/db/compare/@proteinjs/db@1.34.2...@proteinjs/db@1.34.3) (2026-08-23)
 
 
