@@ -45,7 +45,7 @@
     "@proteinjs/db-query": "^1.7.1",
     "@proteinjs/db-transaction-context": "^0.5.16",
     "@proteinjs/logger": "^1.0.21",
-    "@proteinjs/reflection": "^1.1.14",
+    "@proteinjs/reflection": "^1.2.0",
     "@proteinjs/util": "^1.6.1",
     "knex": "0.21.5",
     "moment": "2.29.4",
