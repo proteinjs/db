@@ -97,7 +97,20 @@ export class SourceRecordLoader {
         if (sourceVersion !== undefined) {
           sourceRecord.sourcePackageVersion = sourceVersion;
         }
-        const existingRecord = await db.get(table, { [keyProperty]: (sourceRecord as any)[keyProperty] });
+        let existingRecord = await db.get(table, { [keyProperty]: (sourceRecord as any)[keyProperty] });
+        let reclaimedSoftRemoved = false;
+        if (!existingRecord) {
+          existingRecord = await this.softRemovedRecordHoldingDeclaredId(
+            db,
+            table,
+            keyProperty,
+            sourceRecord.id,
+            source,
+            allDeclaredKeys
+          );
+          reclaimedSoftRemoved = existingRecord !== undefined;
+        }
+
         if (existingRecord) {
           if (
             existingRecord.sourcePackage === source &&
@@ -123,6 +136,18 @@ export class SourceRecordLoader {
             this.logger.info({
               message: `(${table.name}) Adopting existing record into source ownership`,
               obj: { [keyProperty]: (sourceRecord as any)[keyProperty], id: existingRecord.id },
+            });
+          } else if (reclaimedSoftRemoved) {
+            // A soft-removed row re-claimed by its declaration under a changed natural key:
+            // adopted in place and reactivated from the declaration by the update below.
+            adoptedCount += 1;
+            this.logger.info({
+              message: `(${table.name}) Adopting soft-removed record re-declared under a changed ${keyProperty}`,
+              obj: {
+                id: existingRecord.id,
+                [`removed_${keyProperty}`]: (existingRecord as any)[keyProperty],
+                [keyProperty]: (sourceRecord as any)[keyProperty],
+              },
             });
           }
 
@@ -229,6 +254,60 @@ export class SourceRecordLoader {
     }
 
     return { deleteCount: 0, removedUpdateCount, skippedNewer };
+  }
+
+  /**
+   * The widened adoption match for tables that SOFT-remove (keep rows on removal via the
+   * `onSourceRemoved` update policy): a declaration whose natural key matched nothing may still
+   * be a RE-declaration of a removed-and-kept row — the same stable declared id under a changed
+   * natural key (e.g. a machine account renamed while decommissioned). Without this, the insert
+   * leg collides with the kept row's primary key and the boot fails.
+   *
+   * Returns the soft-removed row the declaration re-claims, or undefined. The match is
+   * deliberately strict — all of:
+   * - the table keeps removed rows (`onSourceRemoved` is an update patch — soft removal);
+   * - a row holds the DECLARED id;
+   * - that row is source-owned (`is_loaded_from_source = true`) by THIS declaration's package
+   *   (never adopt a human/runtime row, or another package's row, by id);
+   * - no declaration in this build claims the row by natural key (it is a removed row, not a
+   *   duplicate-id declaration — that case still fails the boot loudly at insert).
+   *
+   * The caller then reactivates the row by re-deriving every declared field from the current
+   * declaration (natural key included) through the normal drift-reversion update — declaration
+   * is the source of truth, so nothing removed-era (grants, status, natural key) survives
+   * re-adoption; runtime-owned fields the declaration never emits are untouched. The version
+   * guard is the caller's existing stamped-newer branch, which applies to the returned row
+   * verbatim (same package by construction).
+   *
+   * This is the one-off form of a future generic `softRemoval` hook (adopt-including-removed +
+   * reactivate-from-declaration): graduating it means lifting this method behind a table-level
+   * seam, not rewriting the semantics. The contract lives on
+   * {@link SourceRecordOptions.onSourceRemoved}.
+   */
+  private async softRemovedRecordHoldingDeclaredId(
+    db: Db,
+    table: Table<any>,
+    keyProperty: string,
+    declaredId: string,
+    source: string,
+    allDeclaredKeys: unknown[]
+  ): Promise<SourceRecord | undefined> {
+    const policy = table.sourceRecordOptions.onSourceRemoved;
+    if (typeof policy !== 'object') {
+      return undefined;
+    }
+
+    const holder: SourceRecord | undefined = await db.get(table, { id: declaredId });
+    if (
+      !holder ||
+      holder.isLoadedFromSource !== true ||
+      holder.sourcePackage !== source ||
+      allDeclaredKeys.includes((holder as any)[keyProperty])
+    ) {
+      return undefined;
+    }
+
+    return holder;
   }
 
   /**

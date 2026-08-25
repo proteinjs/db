@@ -266,6 +266,51 @@ export const sourceRecordSyncTests = (
       expect((await db.get(machineTable, { id: 'machine-1' })).status).toBe('active');
     });
 
+    test('soft removal + re-declaration under a renamed natural key: the kept row is adopted by its declared id — reactivated and re-derived, never collided into', async () => {
+      const db = getDbAsSystem();
+      const keeper = machineDeclaration({ id: 'machine-keep', email: 'keeper@test.local' });
+      await boot([machineDeclaration({ id: 'machine-rn', email: 'rn-old@test.local', displayName: 'Ops' }), keeper]);
+      // Runtime-owned state the adoption must preserve (the credential stand-in).
+      await db.update(machineTable, { id: 'machine-rn', runtimeNote: 'provisioned' });
+
+      // The declaration is removed: the update policy KEEPS the row (soft removal).
+      await boot([keeper]);
+      expect((await db.get(machineTable, { id: 'machine-rn' })).status).toBe('deactivated');
+
+      // Re-declared under a NEW email: the natural-key match misses, but the soft-removed row
+      // still holds the declared id. The sync must adopt that row in place — pre-fix this boot
+      // crashed on a PK collision (insert of an id the kept row still occupies).
+      RecordingMachineAccountWatcher.updates = [];
+      const summary = await boot([
+        machineDeclaration({ id: 'machine-rn', email: 'rn-new@test.local', displayName: 'Ops' }),
+        keeper,
+      ]);
+
+      expect(summary[machineTable.name].adopted).toBe(1);
+      expect(await db.get(machineTable, { email: 'rn-old@test.local' })).toBeUndefined();
+      const adopted = await db.get(machineTable, { id: 'machine-rn' });
+      // Reactivated and re-derived from the declaration; runtime-owned state preserved.
+      expect(adopted).toMatchObject({
+        email: 'rn-new@test.local',
+        status: 'active',
+        runtimeNote: 'provisioned',
+        isLoadedFromSource: true,
+      });
+      // No duplicate row was minted: the account's history stays on the one row.
+      expect(await machineRows()).toHaveLength(2);
+      // The reactivation went through Db.update — watchers observed it.
+      const reactivations = RecordingMachineAccountWatcher.updates.filter(
+        (update) => update.id === 'machine-rn' && update.status === 'active'
+      );
+      expect(reactivations).toHaveLength(1);
+      expect(reactivations[0]).toMatchObject({ email: 'rn-new@test.local' });
+
+      // Adoption converges: the next boot writes nothing.
+      const stampBefore = adopted.updated.valueOf();
+      await boot([machineDeclaration({ id: 'machine-rn', email: 'rn-new@test.local', displayName: 'Ops' }), keeper]);
+      expect((await db.get(machineTable, { id: 'machine-rn' })).updated.valueOf()).toBe(stampBefore);
+    });
+
     test(`onSourceRemoved default: removed source rows are deleted; human rows survive`, async () => {
       const db = getDbAsSystem();
       const human = await db.insert(defaultPolicyTable, { email: 'human@test.local' });
@@ -277,6 +322,30 @@ export const sourceRecordSyncTests = (
       expect(await db.get(defaultPolicyTable, { id: 'default-1' })).toBeUndefined();
       expect(await db.get(defaultPolicyTable, { id: 'default-keep' })).toBeDefined();
       expect(await db.get(defaultPolicyTable, { id: human.id })).toBeDefined();
+    });
+
+    test('the default lifecycle is rollback-idempotent: declare → remove (prune) → re-declare is a clean re-insert, never a collision', async () => {
+      const db = getDbAsSystem();
+      const keeper = { table: defaultPolicyTable, record: { id: 'default-keep', email: 'keeper@test.local' } };
+      const declared = { table: defaultPolicyTable, record: { id: 'rb-1', email: 'rb1@test.local' } };
+      await boot([declared, keeper]);
+      expect(await db.get(defaultPolicyTable, { id: 'rb-1' })).toBeDefined();
+
+      // Rollback: the declaration is removed — the default policy hard-deletes the row...
+      await boot([keeper]);
+      expect(await db.get(defaultPolicyTable, { id: 'rb-1' })).toBeUndefined();
+
+      // ...so rolling forward again is a plain re-insert under the declared id — no PK
+      // collision, no adoption needed. Tables that soft-remove (keep rows on removal) do not
+      // get this for free: they must adopt the kept row instead (pinned above on the machine
+      // table).
+      const summary = await boot([declared, keeper]);
+      expect(summary[defaultPolicyTable.name].inserts).toBe(1);
+      expect(await db.get(defaultPolicyTable, { id: 'rb-1' })).toMatchObject({
+        email: 'rb1@test.local',
+        isLoadedFromSource: true,
+        sourcePackage: DEFAULT_TEST_SOURCE,
+      });
     });
 
     /**
