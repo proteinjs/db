@@ -248,7 +248,7 @@ export class SpannerDriver implements DbDriver {
         sql,
         runner.run({
           sql,
-          params: namedParams?.params,
+          params: this.bindableParams(namedParams),
           types: namedParams?.types,
           // The gRPC deadline is what actually cancels the RPC on a dead channel: the stream
           // errors, the library ends the snapshot, and the borrowed session RETURNS to the
@@ -336,7 +336,7 @@ export class SpannerDriver implements DbDriver {
       const [rowCounts] = await this.withDeadline(
         'spanner dml',
         sql,
-        runner.batchUpdate([{ sql, params: namedParams?.params, types: namedParams?.types }], {
+        runner.batchUpdate([{ sql, params: this.bindableParams(namedParams), types: namedParams?.types }], {
           gaxOptions: this.dmlGaxOptions(),
         })
       );
@@ -590,6 +590,42 @@ export class SpannerDriver implements DbDriver {
 
   private deadlineFailuresBeforeRecycle(): number {
     return this.config.deadlineFailuresBeforeRecycle ?? 3;
+  }
+
+  /**
+   * Bind-boundary FLOAT64 wrapping — every query/dml param passes through here on its way to
+   * the client. The client codec encodes param VALUES by their JS shape, ignoring the declared
+   * param type: any integral JS number (`0`, `7`) is stringified into the INT64 wire encoding,
+   * which a FLOAT64 column rejects ("Could not parse 0 as a FLOAT64" — sandbox cost telemetry
+   * failed on every provision writing `compute_seconds=0`, 2026-08-24). `Spanner.float()` is
+   * the client's own escape hatch: the codec unwraps it to a raw number, FLOAT64's correct
+   * encoding. Typing is categorical — driven by the statement's types map, which carries the
+   * COLUMN type (SpannerColumnTypeFactory via getColumnType) — never by the value's
+   * integralness, so `0` and `0.5` bind identically. Scalars and ARRAY<FLOAT64> elements are
+   * both wrapped; non-number values (null) pass through untouched.
+   */
+  private bindableParams(namedParams?: Statement['namedParams']): { [param: string]: any } | undefined {
+    // An untyped statement (hand-written generators may carry params with no types map) has
+    // nothing to key the wrapping on — the params pass through exactly as before.
+    if (!namedParams?.types) {
+      return namedParams?.params;
+    }
+    const types = namedParams.types as { [param: string]: string | { type: string; child?: { type: string } } };
+    const params: { [param: string]: any } = { ...namedParams.params };
+    for (const [name, type] of Object.entries(types)) {
+      const value = params[name];
+      if (type === 'float64' && typeof value === 'number') {
+        params[name] = Spanner.float(value);
+      } else if (
+        typeof type === 'object' &&
+        type.type === 'array' &&
+        type.child?.type === 'float64' &&
+        Array.isArray(value)
+      ) {
+        params[name] = value.map((element) => (typeof element === 'number' ? Spanner.float(element) : element));
+      }
+    }
+    return params;
   }
 
   /**
