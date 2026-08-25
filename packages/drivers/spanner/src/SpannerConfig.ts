@@ -1,5 +1,6 @@
 import { SpannerOptions } from '@google-cloud/spanner';
 import { SessionPoolOptions } from '@google-cloud/spanner/build/src/session-pool';
+import { SpannerEnvTokenRefreshHook } from './SpannerEnvTokenAuth';
 
 export type SpannerConfig = {
   projectId: string;
@@ -27,4 +28,12 @@ export type SpannerConfig = {
    * client/channel (default 3). Any op success resets the count.
    */
   deadlineFailuresBeforeRecycle?: number;
+  /**
+   * In-run token refresh for env-token auth: when the driver is running on an env-delivered
+   * access token (`CLOUDSDK_AUTH_ACCESS_TOKEN` present at client construction) and the token
+   * expires or is rejected mid-run, this hook mints the replacement. Default (no hook): re-read
+   * the env var. Only consulted in env-token mode — it never turns ADC into env-token auth, and
+   * a hook that returns nothing is a loud `SpannerEnvTokenAuthError`, never an ADC fallback.
+   */
+  envTokenRefreshHook?: SpannerEnvTokenRefreshHook;
 };
