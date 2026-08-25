@@ -22,6 +22,13 @@ export interface StatementConfig extends ParameterizationConfig {
   getColumnType?: (tableName: string, columnPropertyName: string) => string;
   getDriverColumnType?: (tableName: string, columnPropertyName: string) => string;
   handleCaseSensitivity?: (tableName: string, columnName: string, caseSensitive: boolean) => string;
+  /**
+   * The driver's SQL for truncating a datetime column to a bucket unit (QueryBuilder.timeBucket) —
+   * e.g. Spanner `TIMESTAMP_TRUNC(col, DAY, 'UTC')`, MySQL `DATE(col)`. `resolvedColumnName`
+   * arrives already resolved and quoted. Optional: drivers without it reject time-bucketed
+   * queries loudly at statement generation.
+   */
+  dateTruncExpression?: (resolvedColumnName: string, unit: 'day' | 'hour') => string;
 }
 
 interface Column {

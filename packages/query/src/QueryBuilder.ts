@@ -47,6 +47,23 @@ export interface Aggregate<T> {
   resultProp?: string; // Prop name in the object returned from driver that contains the aggregate value
 }
 
+/**
+ * A time-bucketed GROUP BY dimension: the datetime column truncated to the bucket unit, selected
+ * under `resultProp` and grouped on, so aggregate rows come back per bucket (e.g. per UTC day).
+ * Requires a driver that supplies `StatementConfig.dateTruncExpression` (drivers without one fail
+ * loudly at statement generation — a silent full-table group would be a wrong answer, not a
+ * degraded one). Two units exist: 'day' and 'hour'. Coarser buckets than a day (week/month/year)
+ * are honest folds of day rows in application code; 'hour' is a genuine SQL grain because you
+ * cannot recover it from day rows, and finer than the atomic ledger row is meaningless — so every
+ * driver supplies exactly these two truncations. Both truncate in UTC (the Spanner driver
+ * unconditionally); hour-grain callers render the UTC buckets in the operator's local time.
+ */
+export interface TimeBucket<T> {
+  field: keyof T;
+  unit: 'day' | 'hour';
+  resultProp: string; // Prop name in the object returned from the driver that contains the bucket start
+}
+
 export interface Pagination {
   start: number;
   end: number;
@@ -277,6 +294,14 @@ export class QueryBuilder<T = any> {
     return this;
   }
 
+  /** Add a time-bucketed GROUP BY dimension (see {@link TimeBucket}). */
+  timeBucket(bucket: TimeBucket<T>): this {
+    const id = this.generateId();
+    this.graph.setNode(id, { ...bucket, type: 'TIME_BUCKET' });
+    this.graph.setEdge(this.rootId, id);
+    return this;
+  }
+
   paginate(pagination: Pagination): this {
     const paginationNodeExists = typeof this.paginationNodeId !== 'undefined';
     const id = this.paginationNodeId ? this.paginationNodeId : this.generateId();
@@ -415,6 +440,7 @@ export class QueryBuilder<T = any> {
     let select: Select<any> | undefined;
     const aggregates: string[] = [];
     const groupBys: string[] = [];
+    const bucketSelects: string[] = [];
     let pagination: Pagination | undefined;
     const sortClauses: string[] = [];
     const paramManager = new StatementParamManager(config);
@@ -446,6 +472,21 @@ export class QueryBuilder<T = any> {
                 : `\`${String(field)}\``
             )
           );
+          return '';
+        }
+        case 'TIME_BUCKET': {
+          if (!config.dateTruncExpression) {
+            throw new Error(
+              `Query on ${this.tableName} uses timeBucket('${node.unit}'), but the driver's statement config provides no dateTruncExpression`
+            );
+          }
+          const resolvedBucketFieldName = config.resolveFieldName
+            ? `\`${config.resolveFieldName(this.tableName, String(node.field))}\``
+            : `\`${String(node.field)}\``;
+          const bucketExpression = config.dateTruncExpression(resolvedBucketFieldName, node.unit);
+          bucketSelects.push(`${bucketExpression} as ${node.resultProp}`);
+          // Group on the expression (not the alias) — valid in both GoogleSQL and MySQL.
+          groupBys.push(bucketExpression);
           return '';
         }
         case 'PAGINATION':
@@ -487,17 +528,20 @@ export class QueryBuilder<T = any> {
     // order dependent for parameter value sequencing in paramManager.params
 
     let sql = 'SELECT ';
+    // Plain fields, time-bucket expressions, and aggregates COMPOSE in one select list —
+    // `SELECT model, SUM(tokens) as t ... GROUP BY model` is the grouped-aggregation shape.
+    // (Previously select fields silently DROPPED any aggregates; nothing depended on that.)
+    const selectParts: string[] = [];
     if (select?.fields) {
-      const resolved = select.fields.map((field) => {
-        const col = config.resolveFieldName ? config.resolveFieldName(this.tableName, String(field)) : String(field);
-        return `\`${col}\``;
-      });
-      sql += resolved.join(', ');
-    } else if (aggregates.length > 0) {
-      sql += aggregates.join(', ');
-    } else {
-      sql += '*';
+      selectParts.push(
+        ...select.fields.map((field) => {
+          const col = config.resolveFieldName ? config.resolveFieldName(this.tableName, String(field)) : String(field);
+          return `\`${col}\``;
+        })
+      );
     }
+    selectParts.push(...bucketSelects, ...aggregates);
+    sql += selectParts.length > 0 ? selectParts.join(', ') : '*';
     sql += ` FROM ${config.dbName ? `\`${config.dbName}\`.` : ''}\`${this.tableName}\``;
 
     if (whereClause.length > 0) {
