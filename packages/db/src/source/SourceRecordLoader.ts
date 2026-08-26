@@ -61,12 +61,21 @@ export class SourceRecordLoader {
    * boot carries its authority — clean up explicitly); two builds of one package at the SAME
    * version with differing sets (uncommitted local skew) are last-writer-wins, since versions
    * cannot order them.
+   *
+   * With no argument, every source-record table is synced (the `Db.init` full pass). Passing
+   * `onlyTable` scopes the sync to that one table — the pre-schema-sync migration phase uses
+   * this to land the migration ledger's rows before the full schema sync has run (see
+   * {@link MigrationRunner.runPreSchemaSyncMigrations}); the later full pass re-reconciles the
+   * same rows idempotently under the same ownership model.
    */
-  async load(): Promise<SourceRecordLoadSummary> {
+  async load(onlyTable?: Table<any>): Promise<SourceRecordLoadSummary> {
     const { tables, buildSources } = await this.getDeclarations();
     const db = getDbAsSystem();
     const summary: SourceRecordLoadSummary = {};
     for (const tableName in tables) {
+      if (onlyTable && tableName !== onlyTable.name) {
+        continue;
+      }
       const { table, records } = tables[tableName];
       // 'id' unless the table declares a natural key (validated: unique-indexed, present and
       // unambiguous across declarations).

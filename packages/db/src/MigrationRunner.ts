@@ -2,9 +2,12 @@ import { Moment, moment } from './opt/moment';
 import { Db, getDb, getDbAsSystem } from './Db';
 import { Table } from './Table';
 import { SourceRecordRepo } from './source/SourceRecordRepo';
+import { SourceRecordLoader } from './source/SourceRecordLoader';
+import { getSourceRecordLoaders } from './source/SourceRecord';
 import { MigrationRunnerService, getMigrationRunnerService } from './services/MigrationRunnerService';
 import { Migration, MigrationTable } from './tables/MigrationTable';
 import { QueryBuilderFactory } from './QueryBuilderFactory';
+import { TableManager } from './schema/TableManager';
 import { Service } from '@proteinjs/service';
 import { Logger } from '@proteinjs/logger';
 
@@ -90,6 +93,65 @@ export class MigrationRunner implements MigrationRunnerService {
     const migration = this.resolveMigration(migrationTable, id);
     await this.runAndRecord(migrationTable, migration, () => db);
     return migration;
+  }
+
+  /**
+   * Pre-schema-sync phase — called by {@link Db.init} between database creation and schema sync:
+   * runs every source-declared migration flagged {@link Migration.preSchemaSync}, so data repairs
+   * a new schema invariant depends on (e.g. deduplicating rows a new unique index would reject —
+   * TableManager's unique-index preflight fails loudly over violating data) land BEFORE the DDL
+   * that needs them. The ordinary series ({@link runPendingMigrations}) runs after init — too
+   * late for this class by construction.
+   *
+   * ZERO-COST WHEN UNUSED: no flagged migrations -> immediate return (no ledger IO, no DDL) —
+   * the common boot pays nothing.
+   *
+   * Bootstrap: the phase runs before schema sync, so it fronts the two pieces it needs itself —
+   * the migration TABLE's own schema (framework-owned, never data-hazardous) and the migration
+   * table's source-record sync (ledger rows + SourceRecordRepo registration, which
+   * {@link ensureMigrationRun}'s resolveMigration reads). The full loadTables/source sync that
+   * follows re-reconciles both idempotently.
+   *
+   * Runs through {@link ensureMigrationRun} — full ledger semantics: skip on 'success', retry on
+   * 'failure'/'running' (a crashed earlier boot). Multiple flagged migrations run in series
+   * ordered by id (deterministic; their ledger rows may not exist yet, so created-order cannot
+   * apply). A non-success outcome THROWS: Db.init must fail as loudly as the schema sync it
+   * protects would have — the boot crash / deploy-Job failure names the migration instead of an
+   * opaque index-backfill error, and the recorded failure row retries on the next boot.
+   */
+  async runPreSchemaSyncMigrations(tableManager: TableManager): Promise<void> {
+    const migrationTable: Table<Migration> = new MigrationTable();
+    const flagged = getSourceRecordLoaders<Migration>()
+      // db >=1.34.4: declarations are { source, loader } pairs — the loader carries table/record.
+      .filter(({ loader }) => loader.table.name === migrationTable.name && (loader.record as Migration).preSchemaSync)
+      .map(({ loader }) => loader.record as Migration)
+      .sort((a, b) => a.id.localeCompare(b.id));
+    if (flagged.length === 0) {
+      return;
+    }
+
+    const contradictions = flagged.filter((migration) => migration.manual);
+    if (contradictions.length > 0) {
+      throw new Error(
+        `Migration(s) declare both preSchemaSync and manual — a contradiction (the pre-schema-sync phase ` +
+          `exists to run unattended before DDL): ${contradictions.map((migration) => migration.id).join(', ')}`
+      );
+    }
+
+    await tableManager.loadTable(migrationTable);
+    await new SourceRecordLoader().load(migrationTable);
+    this.logger.info({
+      message: `Running ${flagged.length} pre-schema-sync migration${flagged.length === 1 ? '' : 's'} before schema sync`,
+      obj: { ids: flagged.map((migration) => migration.id) },
+    });
+    for (const migration of flagged) {
+      const outcome = await this.ensureMigrationRun(migration.id);
+      if (outcome.status !== 'success') {
+        throw new Error(
+          `Pre-schema-sync migration (${outcome.id}) failed; schema sync not attempted: ${outcome.failureMessage}`
+        );
+      }
+    }
   }
 
   /**
