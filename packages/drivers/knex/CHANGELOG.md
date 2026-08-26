@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.11.11](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.11.10...@proteinjs/db-driver-knex@1.11.11) (2026-08-26)
+
+
+### Bug Fixes
+
+* exclude dist from tsc inputs in db + knex tsconfigs — the test-subpath exclude list (08d47040) replaced TS defaults and lost the automatic outDir exclusion, so any rebuild with an existing dist hit TS5055 (dist d.ts treated as input); spanner driver already carried the corrected pattern ([c8b08ba](https://github.com/proteinjs/db/commit/c8b08baea981ba2dd4bfbe1ba408a69625c6f31d))
+
+
+
+
+
 ## [1.11.10](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.11.9...@proteinjs/db-driver-knex@1.11.10) (2026-08-26)
 
 **Note:** Version bump only for package @proteinjs/db-driver-knex
