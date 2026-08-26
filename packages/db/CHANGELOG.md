@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.35.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.34.4...@proteinjs/db@1.35.0) (2026-08-26)
+
+
+### Features
+
+* pre-schema-sync migrations — data repairs run before the DDL that needs them ([a8bd6a0](https://github.com/proteinjs/db/commit/a8bd6a08544c743dfd5fe445836599322940bd65))
+
+
+
+
+
 ## [1.34.4](https://github.com/proteinjs/db/compare/@proteinjs/db@1.34.3...@proteinjs/db@1.34.4) (2026-08-24)
 
 
