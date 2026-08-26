@@ -23,5 +23,5 @@
       "@proteinjs/db/test": ["test/index.ts"]
     }
   },
-  "exclude": ["node_modules", "test.js", "test.d.ts"]
+  "exclude": ["node_modules", "dist", "test.js", "test.d.ts"]
 }
