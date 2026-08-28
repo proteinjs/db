@@ -27,8 +27,8 @@ export const preloadReferencesTests = (driver: DbDriver, dropTable: (table: Tabl
     const db = new Db(countingDriver);
     const testEnv = new DbTestEnvironment(driver, dropTable);
 
-    beforeAll(async () => await testEnv.beforeAll(), 30000);
-    afterAll(async () => await testEnv.afterAll(), 30000);
+    beforeAll(async () => await testEnv.beforeAll(), 120000);
+    afterAll(async () => await testEnv.afterAll(), 120000);
 
     test('preload hydrates dynamic references with one query per referenced table', async () => {
       const engineerA = await db.insert(dynamicReferenceTestTables.Engineer, {

@@ -2,6 +2,7 @@ import { Logger } from '@proteinjs/logger';
 import { Graph, isInstanceOf } from '@proteinjs/util';
 import { Serializer } from '@proteinjs/serializer';
 import { Statement, StatementConfig, StatementParamManager } from './StatementFactory';
+import { ColumnQueryTransformProvider } from './ColumnQueryTransform';
 
 export interface Select<T> {
   fields?: (keyof T)[];
@@ -65,6 +66,8 @@ export class QueryBuilder<T = any> {
   public rootId: string = 'root';
   public currentContextIds: string[] = [];
   public paginationNodeId?: string;
+  /** Set once {@link applyColumnTransforms} has run — the phase applies once per builder. */
+  public columnTransformsApplied = false;
   private debugLogicalGrouping = false;
 
   constructor(public tableName: string) {
@@ -222,24 +225,7 @@ export class QueryBuilder<T = any> {
       throw new Error(`Must use a new QueryBuilder instance for subquery`);
     }
 
-    let resolvedCondition = condition;
-    if (
-      (Array.isArray(condition.value) && condition.value.length == 0) ||
-      ((condition.operator === 'IN' || condition.operator === 'NOT IN') && !condition.value)
-    ) {
-      resolvedCondition = Object.assign(resolvedCondition, { value: null, empty: true }) as InternalCondition<T>;
-    }
-
-    if (typeof resolvedCondition.value === 'undefined') {
-      if (condition.operator !== 'IS NULL' && condition.operator !== 'IS NOT NULL') {
-        throw new Error(
-          `Must not pass in undefined for value in condition. Undefined was found when checking value property in this condition: ${JSON.stringify(condition)}`
-        );
-      }
-      resolvedCondition.value = null;
-    }
-
-    resolvedCondition = Object.assign(resolvedCondition, { caseSensitive }) as InternalCondition<T>;
+    const resolvedCondition = this.normalizeCondition(condition, caseSensitive);
 
     const logger = new Logger({
       name: `${this.constructor.name}.condition`,
@@ -260,6 +246,139 @@ export class QueryBuilder<T = any> {
       this.currentContextIds.push(conditionId);
     }
     return this;
+  }
+
+  /**
+   * Shared normalization for caller-built conditions and transform-produced replacements
+   * ({@link applyColumnTransforms}): empty IN sets become an empty-set condition (renders
+   * `1=0`), undefined values fail loudly, and the case-sensitivity flag is stamped.
+   */
+  private normalizeCondition(condition: Condition<T>, caseSensitive: boolean): InternalCondition<T> {
+    let resolvedCondition = condition;
+    if (
+      (Array.isArray(condition.value) && condition.value.length == 0) ||
+      ((condition.operator === 'IN' || condition.operator === 'NOT IN') && !condition.value)
+    ) {
+      resolvedCondition = Object.assign(resolvedCondition, { value: null, empty: true }) as InternalCondition<T>;
+    }
+
+    if (typeof resolvedCondition.value === 'undefined') {
+      if (condition.operator !== 'IS NULL' && condition.operator !== 'IS NOT NULL') {
+        throw new Error(
+          `Must not pass in undefined for value in condition. Undefined was found when checking value property in this condition: ${JSON.stringify(condition)}`
+        );
+      }
+      resolvedCondition.value = null;
+    }
+
+    return Object.assign(resolvedCondition, { caseSensitive }) as InternalCondition<T>;
+  }
+
+  /**
+   * The column-transform phase of the query model: build → APPLY COLUMN TRANSFORMS →
+   * render. Consults each column's `ColumnQueryTransform` (via `provider`) for every use
+   * of the column in this query — conditions (including inside subquery values, which are
+   * transformed recursively), ORDER BY criteria, aggregations, and GROUP BY fields — and
+   * splices the returned replacements into the graph in place. A transform that cannot
+   * serve a use throws its contract error here, at query-build time.
+   *
+   * Runs where statements are generated (the server): transforms may consult derived
+   * index state, which is why this is a distinct async phase rather than part of the
+   * sync, wire-portable builder API. Applies exactly once per builder instance;
+   * replacement conditions go through the same normalization as caller-built ones and
+   * compare case-sensitively (they target derived artifacts, not caller text).
+   */
+  async applyColumnTransforms(provider: ColumnQueryTransformProvider): Promise<void> {
+    if (this.columnTransformsApplied) {
+      return;
+    }
+
+    for (const nodeId of this.graph.nodes().slice()) {
+      const node: any = this.graph.node(nodeId);
+      if (!node) {
+        continue;
+      }
+
+      switch (node.type) {
+        case 'CONDITION': {
+          if (isInstanceOf(node.value, QueryBuilder)) {
+            await (node.value as QueryBuilder<any>).applyColumnTransforms(provider);
+          }
+          const transform = provider.getTransform(this.tableName, node.field);
+          if (!transform?.transformCondition) {
+            break;
+          }
+          const replacement = await transform.transformCondition(
+            { field: node.field, operator: node.operator, value: node.value },
+            { caseSensitive: node.caseSensitive !== false }
+          );
+          if (!replacement) {
+            break;
+          }
+          if (this.isLogicalGroup(replacement)) {
+            this.replaceNodeWithGroup(nodeId, replacement as LogicalGroup<T>);
+          } else {
+            this.graph.setNode(nodeId, {
+              ...this.normalizeCondition({ ...(replacement as Condition<T>) }, true),
+              type: 'CONDITION',
+            });
+          }
+          break;
+        }
+        case 'SORT': {
+          const transform = provider.getTransform(this.tableName, node.criteria?.field);
+          const replacement = transform?.transformSort?.({ ...node.criteria });
+          if (replacement) {
+            node.criteria = replacement;
+          }
+          break;
+        }
+        case 'AGGREGATE': {
+          const transform = provider.getTransform(this.tableName, node.field);
+          const replacement = transform?.transformAggregate?.({
+            function: node.function,
+            field: node.field,
+            resultProp: node.resultProp,
+          });
+          if (replacement) {
+            this.graph.setNode(nodeId, { ...replacement, type: 'AGGREGATE' });
+          }
+          break;
+        }
+        case 'GROUP_BY': {
+          node.fields = (node.fields || []).map(
+            (field: string) => provider.getTransform(this.tableName, field)?.transformGroupByField?.(field) ?? field
+          );
+          break;
+        }
+      }
+    }
+
+    // Marked only after full success: a contract rejection above must re-reject on a
+    // retried application, never silently skip enforcement. Partial application is safe to
+    // retry — replacements target derived/id fields, which carry no transforms of their own.
+    this.columnTransformsApplied = true;
+  }
+
+  /** Populate `nodeId` as a LOGICAL group with fresh child nodes (transform replacements). */
+  private replaceNodeWithGroup(nodeId: string, group: LogicalGroup<T>): void {
+    this.graph.setNode(nodeId, { type: 'LOGICAL', operator: group.operator });
+    for (const child of group.children) {
+      const childId = this.generateId();
+      if (this.isLogicalGroup(child)) {
+        this.replaceNodeWithGroup(childId, child);
+      } else {
+        this.graph.setNode(childId, {
+          ...this.normalizeCondition({ ...(child as Condition<T>) }, true),
+          type: 'CONDITION',
+        });
+      }
+      this.graph.setEdge(nodeId, childId);
+    }
+  }
+
+  private isLogicalGroup(value: Condition<any> | LogicalGroup<any>): value is LogicalGroup<any> {
+    return 'children' in value && 'operator' in value && Array.isArray((value as LogicalGroup<T>).children);
   }
 
   aggregate(aggregate: Aggregate<T>): this {

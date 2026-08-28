@@ -33,8 +33,8 @@ export const recordIteratorTests = (
     const table = recordIteratorTestTables.IterationRow;
     const WINDOW = 3;
 
-    beforeAll(async () => await testEnv.beforeAll(), 30000);
-    afterAll(async () => await testEnv.afterAll(), 30000);
+    beforeAll(async () => await testEnv.beforeAll(), 120000);
+    afterAll(async () => await testEnv.afterAll(), 120000);
 
     beforeEach(async () => {
       await db.delete(

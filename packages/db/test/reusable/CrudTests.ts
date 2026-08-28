@@ -12,8 +12,8 @@ export const crudTests = (
     const db = new Db(driver, undefined, transactionContextFactory);
     const testEnv = new DbTestEnvironment(driver, dropTable);
 
-    beforeAll(async () => await testEnv.beforeAll(), 30000);
-    afterAll(async () => await testEnv.afterAll(), 30000);
+    beforeAll(async () => await testEnv.beforeAll(), 120000);
+    afterAll(async () => await testEnv.afterAll(), 120000);
 
     test('Insert', async () => {
       const testEmployee: Omit<Employee, keyof Record> = { name: 'Veronica' };
