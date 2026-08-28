@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.7.5](https://github.com/proteinjs/db/compare/@proteinjs/db-file@1.7.4...@proteinjs/db-file@1.7.5) (2026-08-28)
+
+
+### Bug Fixes
+
+* file byte access gates on the file row — the browser-facing byte ops refuse ids whose row the caller cannot reach ([3ba4a7c](https://github.com/proteinjs/db/commit/3ba4a7cf50d5055998ea3ccc479068fe8262aad0))
+
+
+
+
+
 ## [1.7.4](https://github.com/proteinjs/db/compare/@proteinjs/db-file@1.7.3...@proteinjs/db-file@1.7.4) (2026-08-28)
 
 
