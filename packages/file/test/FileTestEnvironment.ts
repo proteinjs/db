@@ -58,6 +58,10 @@ export class FileTestEnvironment {
     objectCache['@proteinjs/db/Table'] = [...Object.values(userTables), ...Object.values(fileTables)] as unknown[];
     // The byte-deletion seam under test: prod loads it from the generated source graph.
     objectCache['@proteinjs/db/TableWatcher'] = [new FileStorageTableWatcher()];
+    // The shared-content reachability seam getFile consults on a scoped-read miss (prod loads
+    // implementations from the generated source graph; a graph-less harness lookup THROWS).
+    // Default: no registered resolvers. Suites exercising the seam overwrite this entry.
+    objectCache['@proteinjs/db-file/FileReachabilityResolver'] = [];
     Session.setData({
       sessionId: 'test-session',
       user: 'guest',

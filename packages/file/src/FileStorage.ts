@@ -1,8 +1,9 @@
-import { ScopedRecord, getScopedDb } from '@proteinjs/user';
+import { ScopedRecord, getScopedDb, getScopedDbAsSystem } from '@proteinjs/user';
 import { File } from './tables/FileTable';
 import { tables } from './tables/tables';
 import { FileStorageService, getFileStorageService } from './services/FileStorageService';
 import { FileStorageDriver } from './FileStorageDriver';
+import { getFileReachabilityResolvers } from './FileReachabilityResolver';
 import { Loadable, SourceRepository } from '@proteinjs/reflection';
 import { Logger } from '@proteinjs/logger';
 import { DbFileStorageDriver } from './DbFileStorageDriver';
@@ -73,13 +74,32 @@ export class FileStorage implements FileStorageService {
   }
 
   /**
-   * Retrieves the metadata of a given file.
+   * Retrieves the metadata of a given file — THE file-read access decision every serving path
+   * derives from (`/file/:id`, signed-URL minting, the browser service).
+   *
+   * Two legs: the caller's own file resolves by the SCOPED read; when that misses, the
+   * shared-content leg asks the registered {@link FileReachabilityResolver}s whether the caller
+   * can read a row that REFERENCES the file (a shared thought's media node) — content access
+   * confers file access, through the content's own grant-filtered read, never by widening file
+   * scope. No resolver vouching means the miss stands. Reads only: writes/deletes stay scoped.
    * @param fileId - The `id` of the file.
-   * @returns The file metadata.
+   * @returns The file metadata, or `undefined` when the caller can neither own nor reach it.
    */
   async getFile(fileId: string): Promise<File> {
     const db = getScopedDb();
     const file = await db.get(tables.File, { id: fileId });
+    if (file) {
+      return file;
+    }
+
+    for (const resolver of getFileReachabilityResolvers()) {
+      if (await resolver.canReadViaReference(fileId)) {
+        // Reachability established through the caller's grant-filtered content read — the row
+        // itself lives in the owner's scope, so it is served via system read.
+        return await getScopedDbAsSystem().get(tables.File, { id: fileId });
+      }
+    }
+
     return file;
   }
 
@@ -95,7 +115,8 @@ export class FileStorage implements FileStorageService {
   /**
    * Mint a short-lived, read-only URL for the file's bytes (server-only; not part of the
    * browser-facing `FileStorageService`). A signed URL is a bearer capability, so minting
-   * verifies the caller can read the file row (scoped read) before signing.
+   * verifies the caller can read the file row (the two-legged {@link getFile} read — own scope
+   * or shared-content reachability) before signing.
    * @param fileId - The `id` of the file.
    * @param options.ttlMs - How long the URL stays valid; the driver applies its default when omitted.
    * @returns The signed URL, or `undefined` when the driver has no external URL space

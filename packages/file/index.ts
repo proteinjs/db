@@ -10,6 +10,7 @@ export * from './src/services/FileStorageService';
 
 export * from './src/routes/getFileRoute';
 
+export * from './src/FileReachabilityResolver';
 export * from './src/FileStorageDriver';
 export * from './src/DbFileStorageDriver';
 export * from './src/FileStorageTableWatcher';

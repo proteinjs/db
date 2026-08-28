@@ -4,7 +4,10 @@ import { UserAuth } from '@proteinjs/user';
 import { resolveByteRange } from './byteRange';
 
 /**
- * Serves a file's bytes. Auth first (logged-in + scoped row read), then one of two paths:
+ * Serves a file's bytes. Auth first: logged-in, then the `FileStorage.getFile` row read as the
+ * access decision — the caller's SCOPED read, else the shared-content reachability leg
+ * (`FileReachabilityResolver`: the caller may read a file when they may read a row that
+ * references it, e.g. a shared thought's media node). Then one of two serving paths:
  *
  * - **302 redirect** to a short-lived signed URL when the driver's store has an external URL
  *   space (GCS). The app URL stays the one stable reference every `<img>`/`<video>`/chip uses;
@@ -28,7 +31,7 @@ export const getFile: Route = {
     const fileId = request.params.id;
     const fileStorage = getFileStorage();
     try {
-      // The file row decides existence (a scoped read, so it is also the access check).
+      // The file row decides existence (a scoped-or-reachable read, so it is also the access check).
       const file = await fileStorage.getFile(fileId);
       if (!file) {
         response.status(404).send('File not found');
