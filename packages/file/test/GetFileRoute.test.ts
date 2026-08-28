@@ -131,9 +131,12 @@ class ResponseRecorder {
 type RouteRequest = Parameters<typeof getFile.onRequest>[0];
 type RouteResponse = Parameters<typeof getFile.onRequest>[1];
 
-const invokeRoute = async (fileId: string): Promise<ResponseRecorder> => {
+const invokeRoute = async (fileId: string, headers: Record<string, string> = {}): Promise<ResponseRecorder> => {
   const response = new ResponseRecorder();
-  await getFile.onRequest({ params: { id: fileId } } as unknown as RouteRequest, response as unknown as RouteResponse);
+  await getFile.onRequest(
+    { params: { id: fileId }, headers } as unknown as RouteRequest,
+    response as unknown as RouteResponse
+  );
   return response;
 };
 
@@ -188,6 +191,69 @@ describe('GET /file/:id — proxy serving (driver without signed URLs)', () => {
 
     expect(Buffer.isBuffer(response.body)).toBe(true);
     expect(Buffer.compare(response.body as Buffer, rawBytes)).toBe(0);
+  });
+
+  // ── HTTP Range on the proxy path — video streaming parity with the signed-URL path, so a
+  //    <video> can seek against a proxy-served blob instead of downloading it whole. ──────────
+  describe('Range requests (video seek parity with the signed-URL path)', () => {
+    let videoFileId: string;
+
+    beforeAll(async () => {
+      const file = await new FileStorage().createFile(
+        { name: 'smoke.webm', type: 'video/webm', size: rawBytes.length } as File,
+        rawBytes.toString('base64')
+      );
+      videoFileId = file.id;
+    });
+
+    it('advertises Accept-Ranges and serves the whole file when no Range is asked', async () => {
+      const response = await invokeRoute(videoFileId);
+      expect(response.headers['accept-ranges']).toEqual('bytes');
+      expect(Buffer.compare(response.body as Buffer, rawBytes)).toBe(0);
+    });
+
+    it('serves a bounded range as 206 with Content-Range and exactly those bytes', async () => {
+      const response = await invokeRoute(videoFileId, { range: 'bytes=10-19' });
+      expect(response.statusCode).toEqual(206);
+      expect(response.headers['content-range']).toEqual('bytes 10-19/256');
+      expect(response.headers['accept-ranges']).toEqual('bytes');
+      expect(Buffer.compare(response.body as Buffer, rawBytes.subarray(10, 20))).toBe(0);
+    });
+
+    it('serves an open-ended range to EOF (the video-seek shape)', async () => {
+      const response = await invokeRoute(videoFileId, { range: 'bytes=200-' });
+      expect(response.statusCode).toEqual(206);
+      expect(response.headers['content-range']).toEqual('bytes 200-255/256');
+      expect(Buffer.compare(response.body as Buffer, rawBytes.subarray(200))).toBe(0);
+    });
+
+    it('serves a suffix range (last N bytes)', async () => {
+      const response = await invokeRoute(videoFileId, { range: 'bytes=-16' });
+      expect(response.statusCode).toEqual(206);
+      expect(response.headers['content-range']).toEqual('bytes 240-255/256');
+      expect(Buffer.compare(response.body as Buffer, rawBytes.subarray(240))).toBe(0);
+    });
+
+    it('clamps an over-long range to the end of the file', async () => {
+      const response = await invokeRoute(videoFileId, { range: 'bytes=250-999' });
+      expect(response.statusCode).toEqual(206);
+      expect(response.headers['content-range']).toEqual('bytes 250-255/256');
+      expect(Buffer.compare(response.body as Buffer, rawBytes.subarray(250))).toBe(0);
+    });
+
+    it('416s an unsatisfiable range, naming the size', async () => {
+      const response = await invokeRoute(videoFileId, { range: 'bytes=999-' });
+      expect(response.statusCode).toEqual(416);
+      expect(response.headers['content-range']).toEqual('bytes */256');
+    });
+
+    it('ignores malformed and multi-range headers — the whole file serves', async () => {
+      for (const range of ['bytes=5-2', 'apples=1-2', 'bytes=0-1,3-4', 'bytes=x-y']) {
+        const response = await invokeRoute(videoFileId, { range });
+        expect(response.statusCode).not.toEqual(206);
+        expect(Buffer.compare(response.body as Buffer, rawBytes)).toBe(0);
+      }
+    });
   });
 });
 

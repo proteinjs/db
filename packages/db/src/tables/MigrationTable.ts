@@ -15,6 +15,29 @@ export interface Migration extends SourceRecord {
    */
   manual?: boolean;
   /**
+   * Runs during `Db.init()` BEFORE schema sync (the pre-schema-sync phase —
+   * {@link MigrationRunner.runPreSchemaSyncMigrations}), instead of after init like the
+   * deploy-gated series. This is the class for data repairs a NEW SCHEMA INVARIANT depends on —
+   * e.g. deduplicating rows before a unique index lands: schema sync's unique-index preflight
+   * fails loudly over violating data ({@link DuplicateValuesForUniqueIndexError}), and the
+   * ordinary series (deploy Job, after init) is too late by construction.
+   *
+   * Contract for this class (stricter than the ordinary automated class):
+   * - IDEMPOTENT and tolerant of CONCURRENT duplicate runs: every booting replica and the deploy
+   *   Job each run init — two actors can observe the row un-applied and both run the body.
+   * - TABLE-EXISTENCE tolerant: on a fresh database the body runs before ANY schema sync, so its
+   *   target tables may not exist yet (check and no-op — a fresh database has nothing to repair).
+   * - Never `manual` (a contradiction — the phase exists to run unattended before DDL; declaring
+   *   both fails init loudly).
+   * A failure fails `Db.init()` loudly (recorded on the ledger row, retried next boot) — exactly
+   * the failure the schema sync would otherwise hit, but named and retryable.
+   *
+   * The phase reads the SOURCE declaration (like {@link runPendingMigrations} reads
+   * `source.manual`); the column mirrors it into the ledger so the Migrations page shows why a
+   * row ran at boot.
+   */
+  preSchemaSync?: boolean;
+  /**
    * Ledger-owned state (like `status` — never declared on a source record): stamped `true` by the
    * deploy-gated series ({@link MigrationRunner.runPendingMigrations}) when the row's source class
    * no longer ships. A retired row is NEVER auto-run — even if its source class returns in a later
@@ -47,6 +70,7 @@ export class MigrationTable extends Table<Migration> {
   public columns = withSourceRecordColumns<Migration>({
     description: new StringColumn('description', {}, 4000),
     manual: new BooleanColumn('manual'),
+    preSchemaSync: new BooleanColumn('pre_schema_sync'),
     retired: new BooleanColumn('retired'),
     status: new StringColumn('status', { defaultValue: async () => 'proposed' }),
     failureMessage: new StringColumn('failure_message', {}, 4000),

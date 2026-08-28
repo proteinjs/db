@@ -3,6 +3,33 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.23.5](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.23.4...@proteinjs/db-driver-spanner@1.23.5) (2026-08-27)
+
+
+### Bug Fixes
+
+* FLOAT64 params bind from the column type — integral values (0, 7) no longer rejected with "Could not parse 0 as a FLOAT64" ([73026ee](https://github.com/proteinjs/db/commit/73026eeb3a5348ed9245032ab0767cefde883f11))
+
+
+
+
+
+## [1.23.4](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.23.3...@proteinjs/db-driver-spanner@1.23.4) (2026-08-26)
+
+**Note:** Version bump only for package @proteinjs/db-driver-spanner
+
+
+
+
+
+## [1.23.3](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.23.2...@proteinjs/db-driver-spanner@1.23.3) (2026-08-26)
+
+**Note:** Version bump only for package @proteinjs/db-driver-spanner
+
+
+
+
+
 ## [1.23.2](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.23.1...@proteinjs/db-driver-spanner@1.23.2) (2026-08-24)
 
 **Note:** Version bump only for package @proteinjs/db-driver-spanner

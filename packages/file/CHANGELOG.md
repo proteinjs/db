@@ -3,6 +3,33 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.7.2](https://github.com/proteinjs/db/compare/@proteinjs/db-file@1.7.1...@proteinjs/db-file@1.7.2) (2026-08-27)
+
+**Note:** Version bump only for package @proteinjs/db-file
+
+
+
+
+
+## [1.7.1](https://github.com/proteinjs/db/compare/@proteinjs/db-file@1.7.0...@proteinjs/db-file@1.7.1) (2026-08-26)
+
+**Note:** Version bump only for package @proteinjs/db-file
+
+
+
+
+
+# [1.7.0](https://github.com/proteinjs/db/compare/@proteinjs/db-file@1.6.1...@proteinjs/db-file@1.7.0) (2026-08-26)
+
+
+### Features
+
+* HTTP Range on the file proxy route — video seek parity with signed-URL serving ([0a95a3f](https://github.com/proteinjs/db/commit/0a95a3f355411b68a20b5cfbc7d7614962b3cd40))
+
+
+
+
+
 ## [1.6.1](https://github.com/proteinjs/db/compare/@proteinjs/db-file@1.6.0...@proteinjs/db-file@1.6.1) (2026-08-24)
 
 **Note:** Version bump only for package @proteinjs/db-file

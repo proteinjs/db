@@ -3,6 +3,28 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.35.1](https://github.com/proteinjs/db/compare/@proteinjs/db@1.35.0...@proteinjs/db@1.35.1) (2026-08-26)
+
+
+### Bug Fixes
+
+* exclude dist from tsc inputs in db + knex tsconfigs — the test-subpath exclude list (08d47040) replaced TS defaults and lost the automatic outDir exclusion, so any rebuild with an existing dist hit TS5055 (dist d.ts treated as input); spanner driver already carried the corrected pattern ([c8b08ba](https://github.com/proteinjs/db/commit/c8b08baea981ba2dd4bfbe1ba408a69625c6f31d))
+
+
+
+
+
+# [1.35.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.34.4...@proteinjs/db@1.35.0) (2026-08-26)
+
+
+### Features
+
+* pre-schema-sync migrations — data repairs run before the DDL that needs them ([a8bd6a0](https://github.com/proteinjs/db/commit/a8bd6a08544c743dfd5fe445836599322940bd65))
+
+
+
+
+
 ## [1.34.4](https://github.com/proteinjs/db/compare/@proteinjs/db@1.34.3...@proteinjs/db@1.34.4) (2026-08-24)
 
 

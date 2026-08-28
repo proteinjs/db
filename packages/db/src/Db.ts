@@ -147,8 +147,27 @@ export class Db<R extends Record = Record> implements DbService<R> {
     return defaultTransactionContextFactory;
   }
 
+  /**
+   * Boot-time reconciliation, in THE load-bearing order:
+   * 1. ensure the database exists;
+   * 2. pre-schema-sync migrations ({@link MigrationRunner.runPreSchemaSyncMigrations}) — data
+   *    repairs new schema invariants depend on (e.g. deduplicating rows before a unique-index
+   *    backfill, which fails loudly over violating data); an immediate no-op unless a migration
+   *    declares {@link Migration.preSchemaSync};
+   * 3. schema sync — create/alter every registered table (the DDL);
+   * 4. source-record sync.
+   */
   async init(): Promise<void> {
     await this.dbDriver.createDbIfNotExists();
+    // Resolved lazily, on purpose: Db sits at the BOTTOM of this package's module graph
+    // (Table -> Record -> Columns -> ReferenceArray -> Db), while MigrationRunner sits above it
+    // (it loads MigrationTable, whose class `extends Table`). A top-level import here closes
+    // that loop downward — an entry module that starts anywhere in the lower chain would then
+    // evaluate MigrationTable's `extends Table` while Table.ts is still mid-load (ES5
+    // downlevel: "Class extends value undefined is not a constructor"). A call-time import
+    // keeps the edge runtime-only, when the whole graph is complete.
+    const { MigrationRunner } = await import('./MigrationRunner');
+    await new MigrationRunner().runPreSchemaSyncMigrations(this.dbDriver.getTableManager());
     await this.dbDriver.getTableManager().loadTables();
     await new SourceRecordLoader().load();
   }

@@ -1,6 +1,7 @@
 import { Route } from '@proteinjs/server-api';
 import { getFileStorage } from '../FileStorage';
 import { UserAuth } from '@proteinjs/user';
+import { resolveByteRange } from './byteRange';
 
 /**
  * Serves a file's bytes. Auth first (logged-in + scoped row read), then one of two paths:
@@ -11,7 +12,9 @@ import { UserAuth } from '@proteinjs/user';
  *   seeking, real caching, bytes never transit the app server. The redirect itself is cached
  *   briefly (client-private, well under the signed TTL) so repeated loads reuse one URL.
  * - **Proxy** for drivers with no external URL space (`DbFileStorageDriver`): the interface's
- *   base64 is decoded so every mime — binary or text — serves its true bytes.
+ *   base64 is decoded so every mime — binary or text — serves its true bytes, and HTTP Range
+ *   is honored (206/416 via {@link resolveByteRange}) so a `<video>` can SEEK against a
+ *   proxy-served blob — streaming parity with the signed-URL path instead of download-then-watch.
  */
 export const getFile: Route = {
   path: '/file/:id',
@@ -40,10 +43,23 @@ export const getFile: Route = {
       }
 
       const fileDataBase64 = await fileStorage.getFileData(fileId);
+      const bytes = Buffer.from(fileDataBase64, 'base64');
       const safeFilename = encodeURIComponent(file.name);
       response.setHeader('Content-Disposition', `inline; filename="${safeFilename}"`);
       response.setHeader('Content-Type', file.type);
-      response.send(Buffer.from(fileDataBase64, 'base64'));
+      response.setHeader('Accept-Ranges', 'bytes');
+      const range = resolveByteRange(request.headers?.range, bytes.length);
+      if (range === 'unsatisfiable') {
+        response.setHeader('Content-Range', `bytes */${bytes.length}`);
+        response.status(416).send('Range Not Satisfiable');
+        return;
+      }
+      if (range) {
+        response.setHeader('Content-Range', `bytes ${range.start}-${range.end}/${bytes.length}`);
+        response.status(206).send(bytes.subarray(range.start, range.end + 1));
+        return;
+      }
+      response.send(bytes);
     } catch (error) {
       console.error(`Error fetching file (${fileId}):`, error);
       response.status(500).send('Internal Server Error');
