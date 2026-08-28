@@ -105,10 +105,25 @@ export class FileStorage implements FileStorageService {
 
   /**
    * Retrieves the data chunks associated with a given file.
+   *
+   * Gated on the {@link getFile} row read — the same two-legged access decision every serving
+   * path derives from (the caller's SCOPED read, else shared-content reachability), so bytes are
+   * exactly as reachable as the row that names them. The gate lives here because this is the
+   * browser-facing service boundary (`FileStorageService` is `allUsers`) and the driver byte ops
+   * below are deliberately unscoped. Server-side doors that make their OWN documented access
+   * decision (the avatar route, issue/ticket attachment doors) read bytes through
+   * `FileStorage.getDriver()` instead.
    * @param fileId - The `id` of the file.
    * @returns The file data as a single string.
+   * @throws When the file row does not exist or is not readable by the caller — the same named
+   *         miss either way, so existence is not leaked to unauthorized callers.
    */
   async getFileData(fileId: string): Promise<string> {
+    const file = await this.getFile(fileId);
+    if (!file) {
+      throw new Error(`File not found: ${fileId}`);
+    }
+
     return await FileStorage.getDriver().getFileData(fileId);
   }
 
@@ -139,10 +154,23 @@ export class FileStorage implements FileStorageService {
 
   /**
    * Updates the data chunks associated with a given file.
+   *
+   * Gated on the caller's SCOPED row read — owner scope is the write grant on ScopedRecords
+   * (the same authorization a scoped row update enforces). Deliberately STRICTER than
+   * {@link getFileData}: the {@link FileReachabilityResolver} leg widens READS only, so a
+   * share recipient who can read the bytes still cannot write them.
    * @param fileId - The `id` of the file.
    * @param data - The new data string to replace the existing data.
+   * @throws When the file row does not exist or is not writable by the caller — the same named
+   *         miss either way, so existence is not leaked to unauthorized callers.
    */
   async updateFileData(fileId: string, data: string): Promise<void> {
+    const db = getScopedDb();
+    const file = await db.get(tables.File, { id: fileId });
+    if (!file) {
+      throw new Error(`File not found: ${fileId}`);
+    }
+
     await FileStorage.getDriver().updateFileData(fileId, data);
   }
 
