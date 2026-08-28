@@ -191,7 +191,10 @@ export class SpannerSchemaOperations implements SchemaOperations {
       if (column.options?.unique?.unique) {
         indexes.push({
           name: column.options.unique.indexName,
-          columns: [table.columns[column.name]!.name],
+          // the column object in hand IS the unique column — indexing table.columns by
+          // column NAME assumed property name == column name (crashes for any column
+          // whose property differs, e.g. jobTitle -> job_title)
+          columns: [column.name],
           unique: true,
         });
         this.logger.info({ message: `[${table.name}.${column.name}] Adding unique constraint` });
