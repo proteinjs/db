@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.8.0](https://github.com/proteinjs/db/compare/@proteinjs/db-query@1.7.2...@proteinjs/db-query@1.8.0) (2026-08-28)
+
+
+### Features
+
+* column encryption as a first-class db-layer feature ([d57339d](https://github.com/proteinjs/db/commit/d57339d97bb00109b7db68ec76caad7be592d6e3))
+
+
+
+
+
 ## [1.7.2](https://github.com/proteinjs/db/compare/@proteinjs/db-query@1.7.1...@proteinjs/db-query@1.7.2) (2026-08-24)
 
 **Note:** Version bump only for package @proteinjs/db-query

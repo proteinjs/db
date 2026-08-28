@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/db-encryption-driver-gcp-kms",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Cloud KMS master-key provider for @proteinjs/db column encryption",
   "publishConfig": {
     "access": "public"
@@ -23,7 +23,7 @@
   },
   "dependencies": {
     "@google-cloud/kms": "6.0.0",
-    "@proteinjs/db": "^1.35.1",
+    "@proteinjs/db": "^1.36.0",
     "@proteinjs/logger": "^1.0.21",
     "@proteinjs/reflection": "^1.2.0"
   },

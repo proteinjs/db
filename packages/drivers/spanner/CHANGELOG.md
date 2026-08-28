@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.24.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.23.5...@proteinjs/db-driver-spanner@1.24.0) (2026-08-28)
+
+
+### Bug Fixes
+
+* unique-constraint index creation resolved the unique column by NAME through the property-keyed table.columns map — crashes at create-table time for any unique column whose property name differs from its column name (e.g. jobTitle -> job_title); the column object in hand IS the unique column, so index it directly ([81967c6](https://github.com/proteinjs/db/commit/81967c6c0522affe14ebbab9bcdbe0b80e786dfa))
+
+
+### Features
+
+* column encryption as a first-class db-layer feature ([d57339d](https://github.com/proteinjs/db/commit/d57339d97bb00109b7db68ec76caad7be592d6e3))
+
+
+
+
+
 ## [1.23.5](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.23.4...@proteinjs/db-driver-spanner@1.23.5) (2026-08-27)
 
 

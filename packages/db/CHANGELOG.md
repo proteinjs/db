@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.36.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.35.1...@proteinjs/db@1.36.0) (2026-08-28)
+
+
+### Features
+
+* column encryption as a first-class db-layer feature ([d57339d](https://github.com/proteinjs/db/commit/d57339d97bb00109b7db68ec76caad7be592d6e3))
+
+
+
+
+
 ## [1.35.1](https://github.com/proteinjs/db/compare/@proteinjs/db@1.35.0...@proteinjs/db@1.35.1) (2026-08-26)
 
 
