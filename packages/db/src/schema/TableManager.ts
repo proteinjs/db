@@ -6,6 +6,8 @@ import { SchemaMetadata } from './SchemaMetadata';
 import { DbDriver } from '../Db';
 import { DynamicReferenceColumn, DynamicReferenceTableNameColumn } from '../Columns';
 import { StatementConfigFactory } from '../StatementConfigFactory';
+import { EncryptedColumns } from '../encryption/EncryptedColumns';
+import { findDbEncryptionConfig } from '../encryption/DbEncryptionConfig';
 
 /**
  * Thrown by the pre-sync duplicate check when a unique index is about to be added to an existing
@@ -75,7 +77,7 @@ export class TableManager {
    * just-created table sees it live.
    */
   async loadTables(): Promise<void> {
-    const tables = getTables();
+    const tables = this.prepareTablesForLoad(getTables());
     const absentTables: Table<any>[] = [];
     const existingTables: Table<any>[] = [];
     for (const table of tables) {
@@ -103,6 +105,12 @@ export class TableManager {
   }
 
   async loadTable(table: Table<any>): Promise<void> {
+    for (const preparedTable of this.prepareTablesForLoad([table])) {
+      await this.loadSingleTable(preparedTable);
+    }
+  }
+
+  private async loadSingleTable(table: Table<any>): Promise<void> {
     this.validateDynamicReferenceColumns(table);
 
     if (await this.tableExists(table)) {
@@ -116,6 +124,40 @@ export class TableManager {
       }
       this.logger.info({ message: `Finished creating table: ${table.name}` });
     }
+  }
+
+  /**
+   * Column-encryption schema pass (`ColumnOptions.encrypted`): validate declarations,
+   * inject the derived companion columns, and append each table's derived search-token
+   * table so it is created/altered alongside its base table. When the deployment turns on
+   * `requireEncryptedDeclarations` (or `DB_REQUIRE_ENCRYPTED_DECLARATIONS=true`), every
+   * text-holding column must declare `encrypted` — registration fails loudly here otherwise.
+   */
+  private prepareTablesForLoad(tables: Table<any>[]): Table<any>[] {
+    const encryptedColumns = new EncryptedColumns();
+    const requireDeclarations = this.requireEncryptedDeclarations();
+    const prepared: Table<any>[] = [];
+    for (const table of tables) {
+      encryptedColumns.ensureSchema(table);
+      if (requireDeclarations) {
+        encryptedColumns.validateDeclarations(table);
+      }
+      prepared.push(table);
+      const tokenTable = encryptedColumns.tokenTableFor(table);
+      if (tokenTable) {
+        prepared.push(tokenTable);
+      }
+    }
+
+    return prepared;
+  }
+
+  private requireEncryptedDeclarations(): boolean {
+    if (getEnvVar('DB_REQUIRE_ENCRYPTED_DECLARATIONS') === 'true') {
+      return true;
+    }
+
+    return !!findDbEncryptionConfig()?.requireEncryptedDeclarations;
   }
 
   private async alterTableIfChanged(table: Table<any>): Promise<void> {

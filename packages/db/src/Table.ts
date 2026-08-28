@@ -2,9 +2,10 @@ import { Loadable, SourceRepository } from '@proteinjs/reflection';
 import { CustomSerializableObject } from '@proteinjs/serializer';
 import { isRecordColumn, Record } from './Record';
 import { TableSerializerId } from './serializers/TableSerializer';
-import { QueryBuilder } from '@proteinjs/db-query';
+import { ColumnQueryTransform, QueryBuilder } from '@proteinjs/db-query';
 import { Identity, TableOperationsAuth } from './auth/TableAuth';
 import { Db } from './Db';
+import { EncryptionDerivedTableRegistry } from './encryption/EncryptionDerivedTableRegistry';
 
 export const isTable = (obj: any) => obj.__serializerId === TableSerializerId;
 
@@ -14,11 +15,36 @@ export const tableByName = (name: string) => {
   const tables = getTables();
   for (const table of tables) {
     if (table.name == name) {
-      return table;
+      return ensureEncryptionSchema(table);
     }
   }
 
+  // Framework-DERIVED tables (search-token tables beside encrypted columns) are synthesized
+  // from column config rather than declared in source, so the reflection registry never
+  // sees them (see EncryptionDerivedTableRegistry — a runtime-cycle-free, type-only import).
+  const derivedTable = EncryptionDerivedTableRegistry.get(name);
+  if (derivedTable) {
+    return derivedTable;
+  }
+
   throw new Error(`Unable to find table: ${name}`);
+};
+
+/**
+ * Table instances are constructed ad hoc all over consumer code, and the encryption-derived
+ * physical schema (companion columns — see `EncryptedColumns.ensureSchema`) is injected
+ * per-instance at the seams that use an instance. Name-based resolution is one of those
+ * seams: statement generation and driver column-type lookups resolve the REGISTRY's
+ * instance through here, which must carry the same derived columns as the instance the
+ * caller handed the Db. Idempotent (marker-checked); a call-time require keeps the module
+ * graph acyclic at load time.
+ */
+const ensureEncryptionSchema = (table: Table<any>): Table<any> => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { EncryptedColumns } =
+    require('./encryption/EncryptedColumns') as typeof import('./encryption/EncryptedColumns');
+  new EncryptedColumns().ensureSchema(table);
+  return table;
 };
 
 export const getColumnPropertyName = (table: Table<any>, columnName: string) => {
@@ -126,6 +152,20 @@ export type Columns<T> = {
   [P in OptionalProps<T>]?: Column<T[P] | undefined, any>;
 };
 
+/**
+ * What a column's query transform runs WITH: the current operation's authority and its
+ * driver/transaction-riding query runners. Supplied by `Db` per operation
+ * (`Db.addColumnQueries`), so a transform's own reads behave like part of the query that
+ * carried them.
+ */
+export interface ColumnQueryRuntime {
+  runAsSystem: boolean;
+  /** Query with the CALLER's authority (auth + column queries apply). */
+  query: (table: Table<any>, qb: QueryBuilder<any>) => Promise<any[]>;
+  /** System-authority query — for framework-derived tables that are default-deny to callers. */
+  systemQuery: (table: Table<any>, qb: QueryBuilder<any>) => Promise<any[]>;
+}
+
 export type Column<T, Serialized> = {
   name: string;
   /**
@@ -137,6 +177,21 @@ export type Column<T, Serialized> = {
   options?: ColumnOptions;
   serialize?: (fieldValue: T | null | undefined) => Promise<Serialized | null | undefined>;
   deserialize?: (serializedFieldValue: Serialized | null, serializedRecord: any) => Promise<T | null | void>;
+  /**
+   * The column's QUERY-side contract, paralleling `serialize`/`deserialize` on the storage
+   * side: how uses of this column in a query (conditions, ORDER BY, aggregation, GROUP BY)
+   * translate into uses of what the database actually stores and indexes for it — see
+   * `ColumnQueryTransform` (@proteinjs/db-query). Applied by
+   * `QueryBuilder.applyColumnTransforms` on every query, through
+   * `TableQueryTransformProvider`.
+   *
+   * A factory rather than a bare transform: translation may consult derived index state
+   * (e.g. an encrypted column's token table), so a transform is built per operation with
+   * the operation's `ColumnQueryRuntime` — its driver-riding query runners and authority.
+   * Derived by the framework for encrypted columns (`EncryptedColumns.ensureSchema`);
+   * any column may supply one.
+   */
+  queryTransform?: (runtime: ColumnQueryRuntime) => ColumnQueryTransform;
   beforeDelete?: (
     table: Table<any>,
     columnPropertyName: string,
@@ -146,8 +201,60 @@ export type Column<T, Serialized> = {
   ) => Promise<void>;
 };
 
+/**
+ * Capabilities of an encrypted column. Nested INSIDE the `encrypted` declaration on purpose:
+ * `searchable` and `sortKey` only mean anything on an encrypted column (a plaintext column
+ * is inherently searchable and sortable through normal SQL), so the invalid state — a
+ * search/sort capability declared without encryption — is unrepresentable.
+ */
+export type EncryptedColumnConfig = {
+  /**
+   * Index the value for native querying over ciphertext (derived automatically at the
+   * database layer — see `EncryptedColumns`):
+   * - `'contains'` — word + trigram search tokens, keyed-fingerprinted per owner, serving
+   *   the LIKE contains/prefix family with exact results (candidate cover + decrypt-verify).
+   * - `'equality'` — one whole-value fingerprint companion column serving `=` / `IN` /
+   *   get-by-value as a single indexed lookup (and value uniqueness, per owner).
+   * Encrypted columns that are never queried by value declare neither and carry no
+   * derivatives — the default.
+   */
+  searchable?: 'contains' | 'equality';
+  /**
+   * Native ORDER BY at any scale through a DECLARED bounded reveal: an ordered
+   * representation of the value's first `revealPrefix` characters (normalized) is stored
+   * beside the ciphertext and the database sorts on it. The leak, stated plainly: raw
+   * database access can see each value's first `revealPrefix` characters — nothing else.
+   * A conscious, schema-author-declared tradeoff; never the default. Rows sharing a prefix
+   * tie-break app-side within the returned page.
+   */
+  sortKey?: { revealPrefix: number };
+};
+
 export type ColumnOptions = {
   unique?: { unique: boolean; indexName?: string };
+  /**
+   * Whether this column's values are stored encrypted (AES-256-GCM under per-owner data
+   * keys wrapped by the deployment's master key — see `DbEncryptionConfig`). The value is
+   * either `false` (plaintext — said out loud) or a config object:
+   *
+   * ```ts
+   * encrypted: false                             // plaintext (explicit)
+   * encrypted: {}                                // encrypted, never queried by value
+   * encrypted: { searchable: 'contains' }        // + indexed contains/prefix search
+   * encrypted: { searchable: 'equality' }        // + indexed exact-match lookup
+   * encrypted: { sortKey: { revealPrefix: 3 } }  // + native ORDER BY via a declared bounded reveal
+   * ```
+   *
+   * Everything downstream — the transparent encrypt/decrypt seam, companion index
+   * derivation, query translation, loud contract rejections, lifecycle backfills — is
+   * derived automatically at the database layer; callers never write an encrypt or decrypt
+   * call. Query shapes outside the contract are rejected at query-build time
+   * (`EncryptionQueryTranslator`).
+   *
+   * When `DbEncryptionConfig.requireEncryptedDeclarations` is on, every text-holding
+   * column MUST carry this declaration — registration fails loudly otherwise.
+   */
+  encrypted?: false | EncryptedColumnConfig;
   /**
    * The column in the reference table `table` is the primary key of the table (`id` unless otherwise specified in the Table definition)
    *

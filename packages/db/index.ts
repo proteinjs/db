@@ -29,6 +29,22 @@ export * from './src/schema/SchemaOperations';
 export * from './src/schema/SchemaMetadata';
 export * from './src/schema/TableManager';
 
+export * from './src/encryption/MasterKeyProvider';
+export * from './src/encryption/InMemoryMasterKeyProvider';
+export * from './src/encryption/DbEncryptionConfig';
+export * from './src/encryption/DataEncryptionKeyTable';
+export * from './src/encryption/DataKeyStore';
+export * from './src/encryption/EncryptionEnvelope';
+export * from './src/encryption/SearchTokenizer';
+export * from './src/encryption/EncryptedColumns';
+export * from './src/encryption/EncryptedColumnQueryError';
+export * from './src/encryption/EncryptedColumnQueryTransform';
+export * from './src/TableQueryTransformProvider';
+export * from './src/encryption/EncryptionRecordHooks';
+export * from './src/encryption/EncryptionTokenMaintenance';
+export * from './src/encryption/EncryptionLifecycleWalker';
+export * from './src/encryption/EncryptionDerivedTableRegistry';
+
 export * from './src/tables/tables';
 export * from './src/tables/MigrationTable';
 

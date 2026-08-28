@@ -47,12 +47,18 @@ export function withRecordColumns<T extends Record>(
 
 export type SerializedRecord = { [columnName: string]: any };
 
+/** Who a row being written belongs to — the data key its encrypted columns encrypt under
+ *  (see `EncryptionRecordHooks`). Resolved by `Db` for writes touching encrypted columns. */
+export type RecordEncryptionContext = { keyOwner: string };
+
 export class RecordSerializer<T extends Record> {
   private logger = new Logger({ name: this.constructor.name });
   private table: Table<T>;
+  private encryptionContext?: RecordEncryptionContext;
 
-  constructor(table: Table<T>) {
+  constructor(table: Table<T>, encryptionContext?: RecordEncryptionContext) {
     this.table = table;
+    this.encryptionContext = encryptionContext;
   }
 
   async serialize(record: any): Promise<SerializedRecord> {
@@ -82,20 +88,31 @@ export class RecordSerializer<T extends Record> {
       this.logger.warn({ message: `Fields were omitted during serialization`, obj: { omittedFields } });
     }
 
+    // The transparent encryption seam (`ColumnOptions.encrypted`): encrypted columns'
+    // serialized values become ciphertext envelopes, search/sort companions are derived
+    // beside them. Imported at call time — this module sits below the encryption machinery
+    // in the package's module graph.
+    const { EncryptionRecordHooks } = await import('./encryption/EncryptionRecordHooks');
+    await new EncryptionRecordHooks().onSerialize(this.table, serialized, this.encryptionContext);
     return serialized;
   }
 
   async deserialize(serializedRecord: SerializedRecord): Promise<T> {
+    // The transparent decryption seam: ciphertext envelopes decrypt (self-describing — the
+    // envelope names its key), framework companion columns drop out of the result.
+    const { EncryptionRecordHooks } = await import('./encryption/EncryptionRecordHooks');
+    const prepared = await new EncryptionRecordHooks().onDeserialize(this.table, serializedRecord);
+
     const deserialized: any = {};
     const fieldSerializer = new FieldSerializer(this.table);
     const omittedFields: string[] = [];
-    for (const columnName in serializedRecord) {
-      const serializedFieldValue = serializedRecord[columnName];
+    for (const columnName in prepared) {
+      const serializedFieldValue = prepared[columnName];
       try {
         const { fieldPropertyName, fieldValue } = await fieldSerializer.deserialize(
           columnName,
           serializedFieldValue,
-          serializedRecord
+          prepared
         );
         deserialized[fieldPropertyName] = fieldValue;
       } catch (MissingFieldError) {

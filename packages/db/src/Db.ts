@@ -189,7 +189,8 @@ export class Db<R extends Record = Record> implements DbService<R> {
     await addDefaultFieldValues(table, recordCopy, this.runAsSystem);
     recordCopy = await this.tableWatcherRunner.runBeforeInsertTableWatchers(table, recordCopy);
     await this.addColumnInsertHooks(table, recordCopy);
-    const recordSerializer = new RecordSerializer(table);
+    const encryptionContext = await this.encryptionWriteContext(table, recordCopy);
+    const recordSerializer = new RecordSerializer(table, encryptionContext);
     const serializedRecord = await recordSerializer.serialize(recordCopy);
     const generateInsert = (config: DbDriverDmlStatementConfig) =>
       new StatementFactory<T>().insert(
@@ -198,6 +199,17 @@ export class Db<R extends Record = Record> implements DbService<R> {
         this.statementConfigFactory.getStatementConfig(config)
       );
     await this.dbDriver.runDml(generateInsert, this.transactionForDriver());
+    if (encryptionContext) {
+      // The same write that stored the ciphertext maintains its search tokens (rides the
+      // ambient transaction when there is one).
+      const { EncryptionTokenMaintenance } = await import('./encryption/EncryptionTokenMaintenance');
+      await new EncryptionTokenMaintenance().afterInsert(
+        table,
+        recordCopy,
+        encryptionContext.keyOwner,
+        this.newSystemDb()
+      );
+    }
     await this.runColumnAfterInsertHooks(table, recordCopy);
     await this.tableWatcherRunner.runAfterInsertTableWatchers(table, recordCopy as T);
     return recordCopy as T;
@@ -231,17 +243,22 @@ export class Db<R extends Record = Record> implements DbService<R> {
     }
 
     recordCopy = await this.tableWatcherRunner.runBeforeUpdateTableWatchers(table, recordCopy, qb);
-    const recordSerializer = new RecordSerializer<T>(table);
-    const serializedRecord = await recordSerializer.serialize(recordCopy);
-    delete serializedRecord['id'];
-    const generateUpdate = (config: DbDriverDmlStatementConfig) =>
-      new StatementFactory<T>().update(
-        table.name,
-        serializedRecord as Partial<T>,
-        qb,
-        this.statementConfigFactory.getStatementConfig(config)
-      );
-    const recordUpdateCount = await this.dbDriver.runDml(generateUpdate, this.transactionForDriver());
+    let recordUpdateCount: number;
+    if (await this.updateTouchesEncryptedColumns(table, recordCopy)) {
+      recordUpdateCount = await this.updateEncrypted(table, recordCopy, qb);
+    } else {
+      const recordSerializer = new RecordSerializer<T>(table);
+      const serializedRecord = await recordSerializer.serialize(recordCopy);
+      delete serializedRecord['id'];
+      const generateUpdate = (config: DbDriverDmlStatementConfig) =>
+        new StatementFactory<T>().update(
+          table.name,
+          serializedRecord as Partial<T>,
+          qb,
+          this.statementConfigFactory.getStatementConfig(config)
+        );
+      recordUpdateCount = await this.dbDriver.runDml(generateUpdate, this.transactionForDriver());
+    }
     if (!this.runAsSystem && recordUpdateCount === 0) {
       const id = this.singleRowIdTarget(record, query);
       if (id !== undefined) {
@@ -382,6 +399,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     const recordDeleteCount = await this.dbDriver.runDml(generateDelete, this.transactionForDriver());
     await this.runCascadeDeletions(table, recordsToDelete);
     await this.runColumnReverseCascadeDeletions(table, recordsToDelete);
+    await this.deleteEncryptionTokenRows(table, recordsToDeleteIds as string[]);
     await this.tableWatcherRunner.runAfterDeleteTableWatchers(table, recordDeleteCount, recordsToDelete, qb, deleteQb);
     return recordDeleteCount;
   }
@@ -726,6 +744,21 @@ export class Db<R extends Record = Record> implements DbService<R> {
         await column.options.addToQuery(qb, this.runAsSystem, operation);
       }
     }
+
+    // The column-transform phase of the query model (`QueryBuilder.applyColumnTransforms`):
+    // each column's own query contract (`Column.queryTransform` — e.g. an encrypted
+    // column's condition/sort translation) is applied by the builder, with this
+    // operation's runtime — or rejected loudly at query-build time. Runs on every
+    // query/update/delete/count, so callers keep writing exactly what they write today.
+    // Imported at call time (module-graph discipline — see Db.init).
+    const { TableQueryTransformProvider } = await import('./TableQueryTransformProvider');
+    await qb.applyColumnTransforms(
+      new TableQueryTransformProvider(this.getTable, {
+        runAsSystem: this.runAsSystem,
+        query: (verifyTable, verifyQb) => this.query(verifyTable, verifyQb as any),
+        systemQuery: (derivedTable, derivedQb) => this.newSystemDb().query(derivedTable, derivedQb as any),
+      })
+    );
   }
 
   private async addColumnInsertHooks(table: Table<any>, record: any) {
@@ -875,6 +908,98 @@ export class Db<R extends Record = Record> implements DbService<R> {
     }
 
     await hook();
+  }
+
+  /**
+   * The encryption context of a write, when the payload touches encrypted columns: the key
+   * owner (the row's permission-source scope owner) whose data key the values encrypt
+   * under. Undefined for writes that touch no encrypted column — the serializer then runs
+   * exactly as before.
+   */
+  private async encryptionWriteContext(table: Table<any>, record: any): Promise<{ keyOwner: string } | undefined> {
+    const { EncryptedColumns } = await import('./encryption/EncryptedColumns');
+    const encryptedColumns = new EncryptedColumns();
+    encryptedColumns.ensureSchema(table);
+    if (!encryptedColumns.recordTouchesEncryptedColumns(table, record)) {
+      return undefined;
+    }
+
+    const { EncryptionRecordHooks } = await import('./encryption/EncryptionRecordHooks');
+    return { keyOwner: await new EncryptionRecordHooks().resolveKeyOwnerForWrite(table, record) };
+  }
+
+  private async updateTouchesEncryptedColumns(table: Table<any>, record: any): Promise<boolean> {
+    const { EncryptedColumns } = await import('./encryption/EncryptedColumns');
+    const encryptedColumns = new EncryptedColumns();
+    encryptedColumns.ensureSchema(table);
+    return encryptedColumns.recordTouchesEncryptedColumns(table, record);
+  }
+
+  /**
+   * Update path for payloads touching encrypted columns. Ciphertext is keyed per row OWNER
+   * (the row's scope owner), so one UPDATE statement cannot serve target rows of different
+   * owners: the target set is snapshotted (through the caller's own filtered query — the
+   * same query-then-act shape `delete` uses), grouped by owner, and updated one DML per
+   * owner group with that owner's ciphertext, companions, and search tokens.
+   */
+  private async updateEncrypted<T extends R>(
+    table: Table<T>,
+    recordCopy: Partial<T>,
+    qb: QueryBuilder<T>
+  ): Promise<number> {
+    const targetRows = await this._query(table, qb);
+    if (targetRows.length === 0) {
+      return 0;
+    }
+
+    const { EncryptionRecordHooks } = await import('./encryption/EncryptionRecordHooks');
+    const { EncryptionTokenMaintenance } = await import('./encryption/EncryptionTokenMaintenance');
+    const hooks = new EncryptionRecordHooks();
+    const idsByOwner = new Map<string, string[]>();
+    for (const row of targetRows) {
+      const owner = await hooks.resolveKeyOwnerForWrite(table, row);
+      const ids = idsByOwner.get(owner) ?? [];
+      ids.push(row.id);
+      idsByOwner.set(owner, ids);
+    }
+
+    let recordUpdateCount = 0;
+    const tokenMaintenance = new EncryptionTokenMaintenance();
+    for (const [owner, ids] of Array.from(idsByOwner.entries())) {
+      const recordSerializer = new RecordSerializer<T>(table, { keyOwner: owner });
+      const serializedRecord = await recordSerializer.serialize(recordCopy);
+      delete serializedRecord['id'];
+      const groupQb = new QueryBuilderFactory()
+        .getQueryBuilder(table)
+        .condition({ field: 'id', operator: 'IN', value: ids as T[keyof T][] });
+      const generateUpdate = (config: DbDriverDmlStatementConfig) =>
+        new StatementFactory<T>().update(
+          table.name,
+          serializedRecord as Partial<T>,
+          groupQb,
+          this.statementConfigFactory.getStatementConfig(config)
+        );
+      recordUpdateCount += await this.dbDriver.runDml(generateUpdate, this.transactionForDriver());
+      await tokenMaintenance.afterUpdate(table, ids, recordCopy, owner, this.newSystemDb());
+    }
+
+    return recordUpdateCount;
+  }
+
+  /** Deleted rows take their search-token rows with them (no-op for tables without contains columns). */
+  private async deleteEncryptionTokenRows(table: Table<any>, deletedIds: string[]): Promise<void> {
+    const { EncryptionTokenMaintenance } = await import('./encryption/EncryptionTokenMaintenance');
+    await new EncryptionTokenMaintenance().afterDelete(table, deletedIds, this.newSystemDb());
+  }
+
+  /**
+   * A system instance riding THIS instance's driver and transaction context — for framework
+   * machinery beside a caller's operation (search-token upkeep, token-table reads): the
+   * derived tables are default-deny for callers, and the ops must ride the caller's ambient
+   * transaction.
+   */
+  private newSystemDb(): Db<any> {
+    return new Db<any>(this.dbDriver, this.getTable, this.transactionContextFactory, true);
   }
 
   /**
