@@ -294,9 +294,13 @@ export class ReferenceColumn<T extends Record> extends StringColumn<Reference<T>
     name: string,
     public referenceTable: string,
     public cascadeDelete: boolean,
-    options?: ReferenceColumnOptions
+    options?: ReferenceColumnOptions & {
+      /** Id-column width (default 36, uuid). Pass the EXISTING width when adopting a column
+       *  that predates the reference type — Spanner cannot narrow a STRING in place. */
+      maxLength?: number;
+    }
   ) {
-    super(name, options, 36);
+    super(name, options, options?.maxLength ?? 36);
     this.reverseCascadeDelete = !!options?.reverseCascadeDelete;
   }
 
