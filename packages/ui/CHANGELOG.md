@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.13.0](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.12.2...@proteinjs/db-ui@1.13.0) (2026-08-28)
+
+
+### Features
+
+* record table + form polish on the shared cell grammar — tiered meaningful-data default columns (name → identity strings → status-like → booleans → references, long text demoted, hidden columns never picked), per-type default renderers (references as linked record names via ReferenceCellValue, check/dash booleans, humanized dates, mono JSON snippets, quiet status chips, right-aligned numerics), plain strings ride the base defaults (card identity emphasis + empty-field omission), long-text and JSON form fields render multiline (JSON parsed on save with a field-named error), readonly timestamps compact with a relative helper, multiline fields take solo full-width form rows ([609991d](https://github.com/proteinjs/db/commit/609991d8f4b2949520b67050502ed1b7459be0e1))
+
+
+
+
+
 ## [1.12.2](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.12.1...@proteinjs/db-ui@1.12.2) (2026-08-28)
 
 **Note:** Version bump only for package @proteinjs/db-ui
