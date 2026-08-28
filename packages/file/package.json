@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/db-file",
-  "version": "1.7.3",
+  "version": "1.7.4",
   "description": "File storage in the db",
   "publishConfig": {
     "access": "public"

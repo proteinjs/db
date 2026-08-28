@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.7.4](https://github.com/proteinjs/db/compare/@proteinjs/db-file@1.7.3...@proteinjs/db-file@1.7.4) (2026-08-28)
+
+
+### Bug Fixes
+
+* file access derives from content access — shared-content reachability leg on the file read ([0f9a480](https://github.com/proteinjs/db/commit/0f9a48047971ba4381692420bb69e834ffa1d8e7))
+
+
+
+
+
 ## [1.7.3](https://github.com/proteinjs/db/compare/@proteinjs/db-file@1.7.2...@proteinjs/db-file@1.7.3) (2026-08-28)
 
 **Note:** Version bump only for package @proteinjs/db-file
