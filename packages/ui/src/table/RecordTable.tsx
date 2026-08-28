@@ -1,7 +1,22 @@
 import React from 'react';
 import { Delete, Add } from '@mui/icons-material';
 import S from 'string';
-import { CustomRenderer, TableButton, Table as TableComponent, TableLoader, TableProps } from '@proteinjs/ui';
+import { Typography } from '@mui/material';
+import {
+  BooleanCellValue,
+  ClampedTextCellValue,
+  CustomRenderer,
+  DateCellValue,
+  DateTimeCellValue,
+  EmptyCellValue,
+  JsonSnippetCellValue,
+  StatusChipCellValue,
+  TableButton,
+  Table as TableComponent,
+  TableLoader,
+  TableProps,
+  isStatusLikeColumnName,
+} from '@proteinjs/ui';
 import {
   Column,
   QueryBuilderFactory,
@@ -15,6 +30,7 @@ import { QueryTableLoader } from './QueryTableLoader';
 import { newRecordFormLink, recordFormLink } from '../pages/RecordFormPage';
 import { recordTableLink } from '../pages/RecordTablePage';
 import { tableDisplayName } from '../tableDisplayName';
+import { ReferenceArrayCellValue, ReferenceCellValue } from './ReferenceCellValue';
 import { isInstanceOf } from '@proteinjs/util';
 import {
   IntegerColumn,
@@ -27,7 +43,6 @@ import {
   ObjectColumn,
   ArrayColumn,
 } from '@proteinjs/db';
-import moment from 'moment';
 
 type TablePropsToOmit = 'tableLoader' | 'columns';
 type SpecificTableProps<T> = Omit<TableProps<T>, TablePropsToOmit>;
@@ -78,76 +93,147 @@ function createButton<T extends Record>(table: Table<T>): TableButton<T> {
   };
 }
 
+/**
+ * The meaningful-data default column pick (the founder's ask — a record table should surface
+ * what a human scans for, not the schema's first columns). Deterministic tiers over the
+ * visible (non-`ui.hidden`) columns:
+ *   name → identity strings (email/title/description/…) → status-like short strings →
+ *   booleans → references (they render as linked names now) → the rest in schema order,
+ *   with long-text columns (maxLength ≥ 1000) demoted to the back.
+ * Capped at five + created/updated, exactly as before — the tiers change WHICH five.
+ */
+export function defaultRecordTableColumns<T extends Record>(table: Table<T>): (keyof T)[] {
+  function isIdentityName(name: string) {
+    // suffix match so compound names promote too (userEmail, jobTitle)
+    return name.endsWith('email') || name.endsWith('title') || ['description', 'label', 'subject'].includes(name);
+  }
+
+  function tier(columnPropertyName: string, column: Column<T, any>): number {
+    const name = columnPropertyName.toLowerCase();
+    if (isIdentityName(name)) {
+      return 1;
+    }
+    if (isStatusLikeColumnName(name) && isInstanceOf(column, StringColumn)) {
+      return 2;
+    }
+    if (isInstanceOf(column, BooleanColumn)) {
+      return 3;
+    }
+    if (isInstanceOf(column, ReferenceColumn)) {
+      return 4;
+    }
+    if (isInstanceOf(column, StringColumn)) {
+      const { maxLength } = column as unknown as StringColumn;
+      if (maxLength === 'MAX' || maxLength >= 1000) {
+        return 6;
+      }
+    }
+    return 5;
+  }
+
+  const candidates = Object.keys(table.columns)
+    .filter((columnPropertyName) => {
+      if (['name', 'id', 'created', 'updated'].includes(columnPropertyName)) {
+        return false;
+      }
+
+      const column: Column<T, any> = (table.columns as any)[columnPropertyName];
+      return !column.options?.ui?.hidden;
+    })
+    .map((columnPropertyName, index) => ({
+      columnPropertyName,
+      index,
+      tier: tier(columnPropertyName, (table.columns as any)[columnPropertyName]),
+    }))
+    .sort((a, b) => (a.tier !== b.tier ? a.tier - b.tier : a.index - b.index));
+
+  const columnProperties: (keyof T)[] = [];
+  if ((table.columns as any)['name']) {
+    columnProperties.push('name' as keyof T);
+  }
+
+  for (const candidate of candidates) {
+    if (columnProperties.length >= 5) {
+      break;
+    }
+
+    columnProperties.push(candidate.columnPropertyName as keyof T);
+  }
+
+  if ((table.columns as any)['created']) {
+    columnProperties.push('created' as keyof T);
+  }
+  if ((table.columns as any)['updated']) {
+    columnProperties.push('updated' as keyof T);
+  }
+
+  return columnProperties;
+}
+
 export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
   const { ...passthrough } = props;
   function defaultColumns() {
-    const columnProperties: (keyof T)[] = [];
-    if ((props.table.columns as any)['name']) {
-      columnProperties.push('name' as keyof T);
-    }
-
-    for (const columnProperty of Object.keys(props.table.columns)) {
-      if (columnProperties.length >= 5) {
-        break;
-      }
-
-      if (columnProperty == 'name' || columnProperty == 'created' || columnProperty == 'updated') {
-        continue;
-      }
-
-      const column: Column<T, any> = (props.table.columns as any)[columnProperty];
-      if (column.options?.ui?.hidden) {
-        continue;
-      }
-
-      columnProperties.push(columnProperty as keyof T);
-    }
-
-    columnProperties.push('created');
-    columnProperties.push('updated');
-
-    return columnProperties;
+    return defaultRecordTableColumns(props.table);
   }
 
-  function getDefaultRenderer(column: Column<any, any>): CustomRenderer<T, any> {
+  /**
+   * The per-COLUMN-TYPE default presentations, on the base table's shared cell grammar
+   * (@proteinjs/ui cellValues): references as linked names, booleans as check/dash, dates
+   * humanized, blobs as mono snippets, status-like strings as quiet chips. A consumer's
+   * `columnConfig.renderer` replaces any of these per column.
+   */
+  function getDefaultRenderer(column: Column<any, any>, columnPropertyName: string): CustomRenderer<T, any> {
     return (value: any) => {
+      if (value == null || value === '') {
+        return <EmptyCellValue />;
+      }
       if (isInstanceOf(column, ReferenceColumn)) {
-        return value?._id || '';
+        const { referenceTable } = column as unknown as ReferenceColumn<any>;
+        return <ReferenceCellValue tableName={value?._table || referenceTable} id={value?._id} />;
       }
       if (isInstanceOf(column, ReferenceArrayColumn)) {
-        return value?._ids?.join(', ') || '';
+        const { referenceTable } = column as unknown as ReferenceArrayColumn<any>;
+        return <ReferenceArrayCellValue tableName={value?._table || referenceTable} ids={value?._ids} />;
       }
-      if (value && typeof value === 'object') {
-        if ('_id' in value && typeof value._id === 'string') {
-          return value._id;
-        }
-        if ('_ids' in value && Array.isArray(value._ids)) {
-          return value._ids.join(', ');
-        }
+      // Reference-shaped values on columns the registry didn't type (defensive: pre-rev rows)
+      if (value && typeof value === 'object' && '_id' in value && typeof value._id === 'string') {
+        return <ReferenceCellValue tableName={value._table} id={value._id} />;
+      }
+      if (value && typeof value === 'object' && '_ids' in value && Array.isArray(value._ids)) {
+        return <ReferenceArrayCellValue tableName={value._table} ids={value._ids} />;
       }
       if (isInstanceOf(column, ObjectColumn) || isInstanceOf(column, ArrayColumn)) {
-        return JSON.stringify(value);
+        return <JsonSnippetCellValue value={value} />;
       }
       if (
         isInstanceOf(column, IntegerColumn) ||
         isInstanceOf(column, FloatColumn) ||
         isInstanceOf(column, DecimalColumn)
       ) {
-        return value != null ? value.toString() : '';
-      }
-      if (isInstanceOf(column, StringColumn)) {
-        return value != null ? String(value) : '';
+        return (
+          <Typography variant='body2' component='span' sx={{ fontVariantNumeric: 'tabular-nums' }}>
+            {value.toString()}
+          </Typography>
+        );
       }
       if (isInstanceOf(column, BooleanColumn)) {
-        return value ? '✅' : '❌';
+        return <BooleanCellValue value={value} />;
       }
       if (isInstanceOf(column, DateColumn)) {
-        return value ? moment(value).format('YYYY-MM-DD') : '';
+        return <DateCellValue value={value} />;
       }
       if (isInstanceOf(column, DateTimeColumn)) {
-        return value ? moment(value).format('YYYY-MM-DD HH:mm:ss') : '';
+        return <DateTimeCellValue value={value} />;
       }
-      return value != null ? value.toString() : '';
+      if (isInstanceOf(column, StringColumn)) {
+        const text = String(value);
+        // Status-like short values scan as chips; anything longer stays clamped text.
+        if (isStatusLikeColumnName(columnPropertyName) && text.length <= 24) {
+          return <StatusChipCellValue value={text} />;
+        }
+        return <ClampedTextCellValue>{text}</ClampedTextCellValue>;
+      }
+      return <ClampedTextCellValue>{value.toString()}</ClampedTextCellValue>;
     };
   }
 
@@ -157,20 +243,39 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
 
     for (const columnName of columns) {
       const column = (props.table.columns as any)[columnName];
+      const isNumeric =
+        isInstanceOf(column, IntegerColumn) || isInstanceOf(column, FloatColumn) || isInstanceOf(column, DecimalColumn);
+      // Plain strings ride the base Table's own default path (body2 + three-line clamp, quiet
+      // dash for empties, and the phone card's identity emphasis + empty-field omission) —
+      // a renderer here would just re-implement that and lose the card behaviors.
+      const isPlainString =
+        isInstanceOf(column, StringColumn) &&
+        !isStatusLikeColumnName(columnName as string) &&
+        !isInstanceOf(column, ReferenceColumn) &&
+        !isInstanceOf(column, ObjectColumn) &&
+        !isInstanceOf(column, DateColumn) &&
+        !isInstanceOf(column, DateTimeColumn);
+      if (isPlainString) {
+        continue;
+      }
+
       defaultConfig[columnName] = {
-        renderer: getDefaultRenderer(column),
+        renderer: getDefaultRenderer(column, columnName as string),
+        // The type renderers are value-driven: an empty value means an empty card field.
+        omitEmptyOnCard: true,
+        // Numbers right-align (they compare by magnitude); a consumer's cellProps replaces this.
+        ...(isNumeric ? { cellProps: { align: 'right' as const } } : {}),
       };
     }
 
-    // Merge with provided columnConfig, if any
+    // Merge with provided columnConfig, if any — including columns with no default entry
+    // (plain strings ride the base default, but a consumer's config must still land).
     if (props.columnConfig) {
       for (const columnName in props.columnConfig) {
-        if (defaultConfig[columnName]) {
-          defaultConfig[columnName] = {
-            ...defaultConfig[columnName],
-            ...props.columnConfig[columnName],
-          };
-        }
+        defaultConfig[columnName] = {
+          ...defaultConfig[columnName],
+          ...props.columnConfig[columnName],
+        };
       }
     }
 

@@ -15,6 +15,9 @@ import {
   ReferenceArray,
   ReferenceColumn,
   ReferenceArrayColumn,
+  StringColumn,
+  ObjectColumn,
+  ArrayColumn,
 } from '@proteinjs/db';
 import { recordTableLink } from '../pages/RecordTablePage';
 import { recordFormLink } from '../pages/RecordFormPage';
@@ -206,6 +209,20 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
     return recordFormCustomization.getFieldRenderer(columnPropertyName, record);
   }
 
+  /**
+   * A long-text column (maxLength past the 255 default) gets a multiline input — a
+   * single-line input truncates exactly the values (descriptions, failure messages,
+   * serialized payloads) an admin opens the form to read.
+   */
+  function isLongTextColumn(column: Column<T, any>) {
+    if (!isInstanceOf(column, StringColumn)) {
+      return false;
+    }
+
+    const { maxLength } = column as unknown as StringColumn;
+    return maxLength === 'MAX' || maxLength > 255;
+  }
+
   /** Pick the field control that tells the truth about the column's type. */
   function createField(columnPropertyName: string, column: Column<T, any>) {
     const name = columnPropertyName;
@@ -235,6 +252,8 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
       return dateField({ name, label, includeTime: true });
     }
 
+    // Reference columns keep their id controls — they must sit BEFORE the structured/long-text
+    // branches (ReferenceArrayColumn descends from ObjectColumn, whose storage is a MAX string).
     if (isInstanceOf(column, ReferenceColumn)) {
       const { referenceTable } = column as unknown as ReferenceColumn<any>;
       return textField({
@@ -256,6 +275,16 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
         label,
         description: `Comma-separated ${referenceTable} record ids`,
       });
+    }
+
+    // Structured values edit as pretty-printed JSON in a mono multiline (loaded/saved through
+    // onLoad/getFieldValue).
+    if (isInstanceOf(column, ObjectColumn) || isInstanceOf(column, ArrayColumn)) {
+      return textField({ name, label, description: 'JSON', multiline: true, monospace: true });
+    }
+
+    if (isLongTextColumn(column)) {
+      return textField({ name, label, multiline: true });
     }
 
     return textField({ name, label });
@@ -298,9 +327,26 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
     const layoutColumns = Object.entries(columns).length > 6 ? 2 : 1;
     if (layoutColumns > 1) {
       const layout: (keyof T)[][] = [];
+      let lastRowIsSolo = false;
       for (const columnPropertyName in columns) {
-        if (layout.length == 0 || layout[layout.length - 1].length >= layoutColumns) {
+        const column = columns[columnPropertyName];
+        // Multiline fields (long text / JSON) take a full-width row of their own — half a
+        // two-column row squeezes exactly the fields that hold the most text.
+        const isMultiline =
+          !isReadonlyField(columnPropertyName, column) &&
+          !getFieldRenderer(columnPropertyName) &&
+          (isLongTextColumn(column) ||
+            ((isInstanceOf(column, ObjectColumn) || isInstanceOf(column, ArrayColumn)) &&
+              !isInstanceOf(column, ReferenceArrayColumn)));
+        if (isMultiline) {
+          layout.push([columnPropertyName as keyof T]);
+          lastRowIsSolo = true;
+          continue;
+        }
+
+        if (layout.length == 0 || lastRowIsSolo || layout[layout.length - 1].length >= layoutColumns) {
           layout.push([]);
+          lastRowIsSolo = false;
         }
 
         layout[layout.length - 1].push(columnPropertyName as keyof T);
@@ -344,6 +390,23 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
 
     if (isInstanceOf(column, DateTimeColumn)) {
       return parseDateInputValue(fieldValue);
+    }
+
+    // Structured columns round-trip through the JSON the multiline field presents; a paste
+    // that isn't JSON fails the save with a message naming the field, not a driver error.
+    if (
+      (isInstanceOf(column, ObjectColumn) || isInstanceOf(column, ArrayColumn)) &&
+      !isInstanceOf(column, ReferenceArrayColumn)
+    ) {
+      if (typeof fieldValue !== 'string' || !fieldValue.trim()) {
+        return null;
+      }
+
+      try {
+        return JSON.parse(fieldValue);
+      } catch {
+        throw new Error(`${StringUtil.humanizeCamel(columnPropertyName)} must be valid JSON`);
+      }
     }
 
     return fieldValue;
@@ -490,8 +553,18 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
         // The native date input takes its own value format
         fieldValue = moment(fieldValue).format('YYYY-MM-DD');
       } else if (moment.isMoment(fieldValue)) {
-        // Readonly timestamps (created/updated/DateTimeColumn) display human-formatted, copyable
-        fieldValue = fieldValue.format('ddd, MMM Do YY, h:mm:ss a');
+        // Readonly timestamps (created/updated/DateTimeColumn) display compact and copyable,
+        // with the relative read ('2 hours ago') as the field's helper line.
+        field.description = fieldValue.fromNow();
+        fieldValue = fieldValue.format('MMM D, YYYY, h:mm A');
+      } else if (
+        (isInstanceOf(column, ObjectColumn) || isInstanceOf(column, ArrayColumn)) &&
+        !isInstanceOf(column, ReferenceArrayColumn) &&
+        fieldValue != null &&
+        typeof fieldValue !== 'string'
+      ) {
+        // Structured values present as pretty-printed JSON in their multiline field
+        fieldValue = JSON.stringify(fieldValue, null, 2);
       }
 
       field.value = fieldValue;

@@ -1,4 +1,5 @@
 export * from './src/table/RecordTable';
+export * from './src/table/ReferenceCellValue';
 export * from './src/table/QueryTableLoader';
 export * from './src/table/QueryCursorLoader';
 export * from './src/form/RecordForm';
