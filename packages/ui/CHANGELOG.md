@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.15.0](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.14.0...@proteinjs/db-ui@1.15.0) (2026-08-29)
+
+
+### Features
+
+* unbounded text on record forms + admin scroll affordances (founder rulings, admin round 3) — AR-1: StringColumn drops the MAX-implies-ui.hidden default (the form renders any length safely now: multiline field, bounded preview + expand past the inline bound — a migration's failure stack is what the form gets opened to read); the record TABLE's default pick excludes unbounded plain text at the pick itself (explicit columns still honored, Object columns exempt), and an author's explicit ui.hidden still hides everywhere (data_encryption_key.wrapped_key declares it — key material, not prose). AR-2: the admin record scrollers adopt the house scroll-container behavior — TopScrollFade + ScrollTopButton on the record table page and the Tables browser via one adminScrollAffordances owner, with the back-to-top button reading the consumer theme's customShadows tokens (framework default when absent); db-ui floors @proteinjs/ui ^4.14.0 (topScrollFade). Red-before-green: StringColumnUiDefaults (2 red pre-fix), recordFormUnboundedText form legs (2 red pre-fix), table-pick exclusion verified red at the mid-state ([15b5419](https://github.com/proteinjs/db/commit/15b5419880f098a3b671c617a79466f1febd5c02))
+
+
+
+
+
 # [1.14.0](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.13.1...@proteinjs/db-ui@1.14.0) (2026-08-29)
 
 
