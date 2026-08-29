@@ -2,7 +2,16 @@ import React from 'react';
 import S from 'string';
 import moment from 'moment';
 import { StringUtil, isInstanceOf } from '@proteinjs/util';
-import { Form, Fields, FieldComponentProps, textField, checkboxField, dateField, FormButtons } from '@proteinjs/ui';
+import {
+  Form,
+  Fields,
+  FieldComponentProps,
+  FormFieldSection,
+  textField,
+  checkboxField,
+  dateField,
+  FormButtons,
+} from '@proteinjs/ui';
 import {
   Table,
   Record,
@@ -115,16 +124,17 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
   const recordFormCustomization = getRecordFormCustomization(table.name);
   const defaultFieldLayout = fieldLayout();
   const defaultFormButtons = buttons();
+  // The customization contract stays FLAT rows (string[] | string[][]) — customizations
+  // narrow/reorder without knowing about sections; the final layout is sectioned afterwards.
+  const customizedFieldLayout = recordFormCustomization
+    ? recordFormCustomization.getFieldLayout(record, defaultFieldLayout)
+    : defaultFieldLayout;
 
   return (
     <Form
       name={S(table.name).humanize().s}
       createFields={createFields()}
-      fieldLayout={
-        recordFormCustomization
-          ? recordFormCustomization.getFieldLayout(record, defaultFieldLayout)
-          : defaultFieldLayout
-      }
+      fieldLayout={sectionizeFieldLayout(customizedFieldLayout)}
       buttons={
         recordFormCustomization
           ? recordFormCustomization.getFormButtons(record, defaultFormButtons)
@@ -148,7 +158,12 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
 
     for (const columnPropertyName in table.columns) {
       const column = getColumn(columnPropertyName);
-      if (columnPropertyName == 'name' || columnPropertyName == 'created' || columnPropertyName == 'updated') {
+      if (
+        columnPropertyName == 'name' ||
+        columnPropertyName == 'id' ||
+        columnPropertyName == 'created' ||
+        columnPropertyName == 'updated'
+      ) {
         continue;
       }
 
@@ -161,6 +176,12 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
     }
 
     if (!isNewRecord) {
+      // The System section: id (schema-hidden as a DATA column, but the record's address is
+      // exactly what an admin copies off a record form — it renders as a readonly mono row),
+      // then the stored timestamps.
+      if ((table.columns as any)['id']) {
+        columns['id'] = getColumn('id');
+      }
       columns['created'] = getColumn('created');
       columns['updated'] = getColumn('updated');
     }
@@ -233,10 +254,10 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
       return customField(name, label, column, fieldRenderer);
     }
 
-    // Readonly values render as text (a native date input isn't text-selectable): copyable
-    // ids/timestamps beat a type-specific control the user can't interact with anyway.
+    // Readonly values render as text ROWS (no input chrome — @proteinjs/ui's ReadonlyValueRow):
+    // copyable ids/timestamps beat a type-specific control the user can't interact with anyway.
     if (isReadonlyField(columnPropertyName, column)) {
-      return textField({ name, label, accessibility: { readonly: true } });
+      return textField({ name, label, accessibility: { readonly: true }, monospace: columnPropertyName === 'id' });
     }
 
     if (isInstanceOf(column, BooleanColumn)) {
@@ -322,14 +343,75 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
     };
   }
 
+  /**
+   * Which form section a column belongs to (the founder's grouping order: identity → content
+   * → details/config → system meta last). `column.options.ui.formGroup` overrides the
+   * derivation; unknown hint strings become their own titled sections after Details.
+   */
+  function sectionForColumn(columnPropertyName: string, column: Column<T, any> | undefined): string {
+    if (['id', 'created', 'updated'].includes(columnPropertyName)) {
+      return 'system';
+    }
+
+    const hint = column?.options?.ui?.formGroup;
+    if (hint) {
+      return hint;
+    }
+
+    // Custom-rendered fields (service-owned state like user.roles) are config their component
+    // presents — Details unless the column hints otherwise, never Content by storage shape.
+    if (getFieldRenderer(columnPropertyName)) {
+      return 'details';
+    }
+
+    if (columnPropertyName === 'name' || isIdentityColumnName(columnPropertyName)) {
+      return 'identity';
+    }
+
+    if (
+      column &&
+      (isLongTextColumn(column) ||
+        ((isInstanceOf(column, ObjectColumn) || isInstanceOf(column, ArrayColumn)) &&
+          !isInstanceOf(column, ReferenceArrayColumn)))
+    ) {
+      return 'content';
+    }
+
+    return 'details';
+  }
+
+  /** Identity-named strings promote to the top (same suffix grammar as the table's column pick). */
+  function isIdentityColumnName(columnPropertyName: string) {
+    const name = columnPropertyName.toLowerCase();
+    return name.endsWith('email') || name.endsWith('title') || ['label', 'subject'].includes(name);
+  }
+
+  /** The default flat layout, ordered by section; the customization contract stays flat rows. */
   function fieldLayout(): any {
     const columns = getColumns();
     const layoutColumns = Object.entries(columns).length > 6 ? 2 : 1;
+
+    // Stable order: identity → content → details → custom-hint sections → system.
+    const sectionRank = (section: string) => ({ identity: 0, content: 1, details: 2, system: 4 })[section] ?? 3;
+    const ordered = Object.keys(columns).sort((a, b) => {
+      const rankDelta = sectionRank(sectionForColumn(a, columns[a])) - sectionRank(sectionForColumn(b, columns[b]));
+      if (rankDelta !== 0) {
+        return rankDelta;
+      }
+      // Within a section, keep getColumns() order (name first, then schema order).
+      return Object.keys(columns).indexOf(a) - Object.keys(columns).indexOf(b);
+    });
+
     if (layoutColumns > 1) {
       const layout: (keyof T)[][] = [];
       let lastRowIsSolo = false;
-      for (const columnPropertyName in columns) {
+      let lastSection: string | undefined;
+      for (const columnPropertyName of ordered) {
         const column = columns[columnPropertyName];
+        const section = sectionForColumn(columnPropertyName, column);
+        // Rows never straddle sections — a section boundary always starts a fresh row.
+        const sectionChanged = section !== lastSection;
+        lastSection = section;
         // Multiline fields (long text / JSON) take a full-width row of their own — half a
         // two-column row squeezes exactly the fields that hold the most text.
         const isMultiline =
@@ -338,13 +420,20 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
           (isLongTextColumn(column) ||
             ((isInstanceOf(column, ObjectColumn) || isInstanceOf(column, ArrayColumn)) &&
               !isInstanceOf(column, ReferenceArrayColumn)));
-        if (isMultiline) {
+        // The record's address wants its own line — a uuid halved into a two-column row wraps.
+        const isSoloValue = isMultiline || columnPropertyName === 'id';
+        if (isSoloValue) {
           layout.push([columnPropertyName as keyof T]);
           lastRowIsSolo = true;
           continue;
         }
 
-        if (layout.length == 0 || lastRowIsSolo || layout[layout.length - 1].length >= layoutColumns) {
+        if (
+          layout.length == 0 ||
+          lastRowIsSolo ||
+          sectionChanged ||
+          layout[layout.length - 1].length >= layoutColumns
+        ) {
           layout.push([]);
           lastRowIsSolo = false;
         }
@@ -355,7 +444,47 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
       return layout;
     }
 
-    return Object.keys(columns) as (keyof T)[];
+    return ordered as (keyof T)[];
+  }
+
+  /**
+   * Wrap a FLAT layout (default or customization-returned) into the quiet form sections the
+   * base Form renders. Each row maps to its first field's section; contiguous runs merge, so a
+   * customization's reordering stays honest (an interleaved order yields repeated sections
+   * rather than silently re-sorting the fields it chose). A single-section result stays
+   * unlabeled — one group needs no header.
+   */
+  function sectionizeFieldLayout(layout: string[] | string[][]): FormFieldSection<Fields>[] {
+    const sectionLabels: { [section: string]: string | undefined } = {
+      identity: undefined,
+      content: 'Content',
+      details: 'Details',
+      system: 'System',
+    };
+    const rows = (layout as (string | string[])[]).map((entry) => (Array.isArray(entry) ? entry : [entry]));
+    const sections: { section: string; fields: string[][] }[] = [];
+    for (const row of rows) {
+      if (row.length === 0) {
+        continue;
+      }
+
+      const section = sectionForColumn(row[0], getColumn(row[0]));
+      const last = sections[sections.length - 1];
+      if (last && last.section === section) {
+        last.fields.push(row);
+      } else {
+        sections.push({ section, fields: [row] });
+      }
+    }
+
+    if (sections.length <= 1) {
+      return sections.map(({ fields }) => ({ fields }) as FormFieldSection<Fields>);
+    }
+
+    return sections.map(({ section, fields }) => ({
+      label: section in sectionLabels ? sectionLabels[section] : StringUtil.humanizeCamel(section),
+      fields,
+    })) as FormFieldSection<Fields>[];
   }
 
   function getFieldValue(columnPropertyName: string, fieldValue: unknown) {

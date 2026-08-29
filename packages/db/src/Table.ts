@@ -311,6 +311,15 @@ export type ColumnOptions = {
   ) => Promise<void>;
   ui?: {
     hidden?: boolean;
+    /**
+     * Which section of the record form this column belongs to. The form derives a sane
+     * section from the column's type and name (identity strings up top, long text and
+     * structured values under Content, everything else under Details, server-managed meta
+     * under System); this hint overrides the derivation. Known values map to the canonical
+     * sections ('identity' | 'content' | 'details' | 'system'); any other string becomes its
+     * own titled section, ordered after Details.
+     */
+    formGroup?: 'identity' | 'content' | 'details' | 'system' | (string & {});
   };
 };
 

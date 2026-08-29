@@ -170,13 +170,15 @@ describe('RecordForm', () => {
       expect(dueDate.type).toBe('date');
       expect(dueDate.value).toBe('2026-08-10');
 
-      // Readonly fields render as text, readOnly-not-disabled (item 3): copyable
-      // (`id` itself is ui.hidden at the column layer and never renders)
+      // Readonly fields render as value ROWS (round 2): selectable text with a copy control
+      // and no input chrome at all.
       for (const labelText of ['Created', 'Updated', 'Archived at']) {
-        const input = inputByLabel(labelText);
-        expect(input.type).toBe('text');
-        expect(input.readOnly).toBe(true);
-        expect(input.disabled).toBe(false);
+        const label = Array.from(document.querySelectorAll('label')).find((l) => l.textContent?.startsWith(labelText))!;
+        expect(label).toBeDefined();
+        // Scope to the field's own shell: two readonly fields can share one two-column row.
+        const row = label.parentElement!.parentElement!.querySelector('[data-readonly-value-row]')!;
+        expect(row).not.toBeNull();
+        expect(row.querySelector(`button[aria-label="Copy ${labelText}"]`)).not.toBeNull();
       }
     });
 

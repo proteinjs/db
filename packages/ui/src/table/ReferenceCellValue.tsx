@@ -94,7 +94,9 @@ export function ReferenceCellValue({ tableName, id }: { tableName?: string; id?:
         event.preventDefault();
         navigate(url);
       }}
-      sx={{ whiteSpace: 'nowrap' }}
+      // Data ink, link affordance: a table of primary-colored names competes with the row's
+      // identity (round 2's fewer-competing-inks pass) — the hover underline still says door.
+      sx={{ whiteSpace: 'nowrap', color: 'text.primary' }}
     >
       {name !== null ? (
         <Typography variant='body2' component='span'>

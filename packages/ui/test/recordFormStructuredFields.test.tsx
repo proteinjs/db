@@ -160,10 +160,18 @@ describe('RecordForm structured fields', () => {
     expect(document.body.textContent).toContain('Payload must be valid JSON');
   });
 
-  it('readonly timestamps display compact with the relative read as the helper line', async () => {
+  it('readonly timestamps render as a value ROW (no input chrome) — compact stamp with the relative read inline', async () => {
     await mount(loadedRecord());
-    const createdControl = controlByLabel('Created') as HTMLInputElement;
-    expect(createdControl.value).toBe(created.format('MMM D, YYYY, h:mm A'));
-    expect(document.body.textContent).toContain(created.fromNow());
+
+    const labels = Array.from(document.body.querySelectorAll('label'));
+    const createdLabel = labels.find((candidate) => candidate.textContent?.startsWith('Created'))!;
+    expect(createdLabel).toBeDefined();
+    // No control is wired to it: a readonly timestamp is text, not an input.
+    expect(createdLabel.htmlFor).toBeFalsy();
+
+    const row = createdLabel.closest('[data-form-field-row]')!.querySelector('[data-readonly-value-row]')!;
+    expect(row).not.toBeNull();
+    expect(row.textContent).toContain(created.format('MMM D, YYYY, h:mm A'));
+    expect(row.textContent).toContain(created.fromNow());
   });
 });
