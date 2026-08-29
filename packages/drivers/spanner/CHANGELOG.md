@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.25.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.24.0...@proteinjs/db-driver-spanner@1.25.0) (2026-08-29)
+
+
+### Features
+
+* ReferenceColumn width adoption — optional maxLength (the documented DynamicReferenceColumn affordance, mirrored) so an existing string-uuid column retypes to a reference IN PLACE: such columns predate the reference type at StringColumn's 255 default, the stock 36 is a narrowing Spanner refuses (the sync would throw at boot), and a reference stores the same id bytes — adopting the width makes the retype invisible to the schema sync (zero DDL); emulator suite pins the zero-changes sync, byte-identity in both directions over a string-era row, and the refused narrowing ([03ae826](https://github.com/proteinjs/db/commit/03ae8267a2eaba2a252e36c53f785b708c68b4ee))
+
+
+
+
+
 # [1.24.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.23.5...@proteinjs/db-driver-spanner@1.24.0) (2026-08-28)
 
 
