@@ -2,6 +2,7 @@ import React from 'react';
 import { Page, PageComponentProps, useFormFactor } from '@proteinjs/ui';
 import { tableByName, Table } from '@proteinjs/db';
 import { RecordTable } from '../table/RecordTable';
+import { adminScrollAffordances } from './adminScrollAffordances';
 import { Box, Paper, SxProps, Theme, Typography } from '@mui/material';
 
 export const recordTablePage: Page = {
@@ -56,7 +57,7 @@ const DynamicRecordTable = ({ urlParams }: PageComponentProps) => {
     return (
       <Box sx={{ display: 'flex', flexGrow: 1, justifyContent: 'center', padding: isPhone ? 2 : 4, minWidth: 0 }}>
         <Paper sx={{ maxHeight: '80vh', ...(isPhone ? { width: '100%', minWidth: 0 } : {}) }}>
-          <RecordTable table={table} />
+          <RecordTable table={table} {...adminScrollAffordances} />
         </Paper>
       </Box>
     );

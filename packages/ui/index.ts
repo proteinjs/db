@@ -8,3 +8,4 @@ export * from './src/pages/RecordTablePage';
 export * from './src/pages/RecordFormPage';
 export * from './src/pages/TablesPage';
 export * from './src/tableDisplayName';
+export * from './src/pages/adminScrollAffordances';

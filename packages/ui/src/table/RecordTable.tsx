@@ -101,6 +101,12 @@ function createButton<T extends Record>(table: Table<T>): TableButton<T> {
  *   booleans → references (they render as linked names now) → the rest in schema order,
  *   with long-text columns (maxLength ≥ 1000) demoted to the back.
  * Capped at five + created/updated, exactly as before — the tiers change WHICH five.
+ *
+ * Unbounded ('MAX') plain-text columns never join the default pick: a table row can't afford
+ * a value with no length cap (the record FORM is where those surface now — founder ruling,
+ * admin round 3). This is the table layer's own rule, not a `ui.hidden` default — an explicit
+ * `columns` prop can still request such a column (the cell grammar clamps it to three lines).
+ * Object/Array columns are exempt (their storage is MAX but they render as mono JSON snippets).
  */
 export function defaultRecordTableColumns<T extends Record>(table: Table<T>): (keyof T)[] {
   function isIdentityName(name: string) {
@@ -138,7 +144,19 @@ export function defaultRecordTableColumns<T extends Record>(table: Table<T>): (k
       }
 
       const column: Column<T, any> = (table.columns as any)[columnPropertyName];
-      return !column.options?.ui?.hidden;
+      if (column.options?.ui?.hidden) {
+        return false;
+      }
+
+      // Unbounded plain text stays out of the default pick (see the doc above).
+      if (isInstanceOf(column, StringColumn) && !isInstanceOf(column, ObjectColumn)) {
+        const { maxLength } = column as unknown as StringColumn;
+        if (maxLength === 'MAX') {
+          return false;
+        }
+      }
+
+      return true;
     })
     .map((columnPropertyName, index) => ({
       columnPropertyName,

@@ -27,7 +27,9 @@ export class DataEncryptionKeyTable extends Table<DataEncryptionKey> {
   public columns: Table<DataEncryptionKey>['columns'] = withRecordColumns<DataEncryptionKey>({
     owner: new StringColumn('owner', { nullable: false }, 36),
     version: new IntegerColumn('version', { nullable: false }),
-    wrappedKey: new StringColumn('wrapped_key', { nullable: false }, 'MAX'),
+    // Explicitly ui-hidden: unbounded TEXT columns render on record forms now (admin round 3),
+    // but this is wrapped key MATERIAL, not prose — it never renders in any UI.
+    wrappedKey: new StringColumn('wrapped_key', { nullable: false, ui: { hidden: true } }, 'MAX'),
     status: new StringColumn('status', { nullable: false }, 16),
   });
   /** (owner, version) is the identity an envelope names — the race loser on concurrent

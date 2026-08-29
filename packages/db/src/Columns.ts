@@ -27,14 +27,17 @@ export class StringColumn<T = string> implements Column<T, string> {
     public options?: ColumnOptions,
     public maxLength: number | 'MAX' = 255
   ) {
-    this.options = Object.assign(
-      {
-        ui: {
-          hidden: maxLength === 'MAX',
-        },
-      },
-      options
-    );
+    /**
+     * Unbounded ('MAX') text columns are NOT default-hidden (founder ruling, admin round 3):
+     * the record FORM renders any length safely now (multiline field with the bounded preview
+     * + expand dialog past the inline bound), and a value like a migration's failure stack is
+     * exactly what the form gets opened to read. The record TABLE's default column pick still
+     * excludes unbounded text (a row can't afford one) — that exclusion lives with the pick
+     * (db-ui `defaultRecordTableColumns`), keyed on `maxLength`, not here. `ui.hidden` remains
+     * the author's explicit hide-everywhere; subclasses whose storage happens to be MAX but
+     * whose values aren't prose (Object/Array/Password/Uuid) declare their own ui defaults.
+     */
+    this.options = Object.assign({ ui: {} }, options);
   }
 }
 

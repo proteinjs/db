@@ -2,6 +2,7 @@ import React from 'react';
 import { FormPage, Page, TableLoader, Table as TableComponent, RowWindow, BaseTableLoader } from '@proteinjs/ui';
 import { getTables, getDbService, Table } from '@proteinjs/db';
 import { recordTableLinkByName } from './RecordTablePage';
+import { adminScrollAffordances } from './adminScrollAffordances';
 import { Box, SxProps, Theme } from '@mui/material';
 
 export const tablesPage: Page = {
@@ -60,6 +61,7 @@ const Tables = () => {
           rowOnClick={async (row: TableSummary) => {
             return recordTableLinkByName(row.name);
           }}
+          {...adminScrollAffordances}
         />
       </Box>
     </Box>
