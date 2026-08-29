@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.9.0](https://github.com/proteinjs/db/compare/@proteinjs/db-query@1.8.0...@proteinjs/db-query@1.9.0) (2026-08-29)
+
+
+### Features
+
+* grouped-aggregation reads — Db.queryAggregates + QueryBuilder.timeBucket ([f94e564](https://github.com/proteinjs/db/commit/f94e564e6312f4c224d500e3d5fb0d53e3d9b59f))
+* timeBucket hour grain — widen the unit union to day|hour across query + drivers ([153e3d0](https://github.com/proteinjs/db/commit/153e3d09c6c56d7746f9071e1f57ac527b07dc55))
+
+
+
+
+
 # [1.8.0](https://github.com/proteinjs/db/compare/@proteinjs/db-query@1.7.2...@proteinjs/db-query@1.8.0) (2026-08-28)
 
 

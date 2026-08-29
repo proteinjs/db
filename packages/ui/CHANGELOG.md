@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.14.0](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.13.1...@proteinjs/db-ui@1.14.0) (2026-08-29)
+
+
+### Bug Fixes
+
+* db-ui declares the @proteinjs/ui range it actually needs (^4.12.0) ([2f8773d](https://github.com/proteinjs/db/commit/2f8773d865f2b949fe3958a218a8c095cb477acf))
+
+
+### Features
+
+* record forms group their fields — derived sections (identity, content, details, system), a formGroup column hint, the record id back on the form, references as data ink ([8db7e79](https://github.com/proteinjs/db/commit/8db7e79facfc9899dcca018be561a2edda7fc404))
+
+
+
+
+
 ## [1.13.1](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.13.0...@proteinjs/db-ui@1.13.1) (2026-08-29)
 
 **Note:** Version bump only for package @proteinjs/db-ui
