@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.13.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.12.1...@proteinjs/db-driver-knex@1.13.0) (2026-08-31)
+
+
+### Features
+
+* timeBucket minute grain — widen the unit union to day|hour|minute across query + drivers (USAGE_ATTRIBUTION §5) ([fe25c4b](https://github.com/proteinjs/db/commit/fe25c4b9fbeae3be1ec18f9ff4e1fac4998a9e5e))
+
+
+
+
+
 ## [1.12.1](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.12.0...@proteinjs/db-driver-knex@1.12.1) (2026-08-29)
 
 **Note:** Version bump only for package @proteinjs/db-driver-knex
