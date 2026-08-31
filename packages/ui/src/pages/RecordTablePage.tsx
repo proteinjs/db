@@ -30,8 +30,9 @@ export const recordTableLinkByName = (tableName: string) => {
 };
 
 const DynamicRecordTable = ({ urlParams }: PageComponentProps) => {
-  // Phone (MOBILE_SUPPORT §4.5): the floating fit-content card becomes a full-width card with
-  // page gutters — the table inside presents its phone card face (rows as stacked cards).
+  // Phone (founder ruling 2026-08-31): the table takes the FULL mobile view under the shell's
+  // chrome — no card, no gutters; rows present as the table's phone card face. Desktop keeps
+  // the deliberate house card (admin round 3).
   const { isPhone } = useFormFactor();
 
   function Table() {
@@ -54,9 +55,23 @@ const DynamicRecordTable = ({ urlParams }: PageComponentProps) => {
       return <Typography sx={{ p: 3, color: 'text.secondary' }}>{errorMessage}</Typography>;
     }
 
+    if (isPhone) {
+      // Full-bleed: the table IS the page below the shell chrome. flex-grow 1 + min-height 0
+      // against the shell's flex page column hand the table the rest of the viewport; its own
+      // scroll container carries the height (the desktop card's 80vh cap has no place here).
+      return (
+        <Box
+          data-phone-fullbleed
+          sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: 0, minWidth: 0, width: '100%' }}
+        >
+          <RecordTable table={table} {...adminScrollAffordances} />
+        </Box>
+      );
+    }
+
     return (
-      <Box sx={{ display: 'flex', flexGrow: 1, justifyContent: 'center', padding: isPhone ? 2 : 4, minWidth: 0 }}>
-        <Paper sx={{ maxHeight: '80vh', ...(isPhone ? { width: '100%', minWidth: 0 } : {}) }}>
+      <Box sx={{ display: 'flex', flexGrow: 1, justifyContent: 'center', padding: 4, minWidth: 0 }}>
+        <Paper sx={{ maxHeight: '80vh' }}>
           <RecordTable table={table} {...adminScrollAffordances} />
         </Paper>
       </Box>

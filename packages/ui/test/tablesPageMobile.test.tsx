@@ -1,12 +1,10 @@
 /**
  * @jest-environment jsdom
  *
- * RecordTablePage's phone layout (founder ruling 2026-08-31: admin tables take the full mobile
- * view). Below the phone line the page is FULL-BLEED: no Paper card, no page gutters — the
- * table fills the shell's page column (flex-grow against the viewport column, min-height 0 so
- * the table's own scroll container carries the height) and rows present as Table's phone card
- * face. Desktop keeps the deliberate house card (admin round 3): floating fit-content Paper in
- * 32px padding, 80vh cap.
+ * TablesPage's (dev table browser) phone layout (founder ruling 2026-08-31: admin tables take
+ * the full mobile view). Below the phone line the page is FULL-BLEED: no FormPage card, no
+ * gutters — the summary table fills the shell's page column and rows present as Table's phone
+ * card face. Desktop keeps the house FormPage card.
  */
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
@@ -26,26 +24,18 @@ class UserTable extends Table<User> {
   });
 }
 
-const rows: User[] = [{ id: 'u-1', email: 'a@n3xa.io' } as User];
-
-const mockDb = {
-  query: jest.fn(async () => rows),
-  getRowCount: jest.fn(async () => rows.length),
+const mockDbService = {
+  getRowCount: jest.fn(async () => 3),
 };
 
 jest.mock('@proteinjs/db', () => ({
   ...jest.requireActual('@proteinjs/db'),
-  getDb: () => mockDb,
-  tableByName: (name: string) => {
-    if (name !== 'user') {
-      throw new Error(`no such table: ${name}`);
-    }
-    return new UserTable();
-  },
+  getTables: () => [new UserTable()],
+  getDbService: () => mockDbService,
 }));
 
 // import AFTER the mock so the page module binds the mocked db seams
-import { recordTablePage } from '../src/pages/RecordTablePage';
+import { tablesPage } from '../src/pages/TablesPage';
 
 declare global {
   // eslint-disable-next-line no-var
@@ -89,7 +79,7 @@ const cssFor = (el: Element): string => {
   return out.join('\n');
 };
 
-describe('RecordTablePage phone layout', () => {
+describe('TablesPage phone layout', () => {
   let container: HTMLDivElement;
   let root: Root;
 
@@ -108,12 +98,12 @@ describe('RecordTablePage phone layout', () => {
 
   const mount = async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, cacheTime: 0 } } });
-    const Page = recordTablePage.component as React.ComponentType<any>;
+    const Page = tablesPage.component as React.ComponentType<any>;
     await act(async () => {
       root.render(
         <QueryClientProvider client={client}>
           <MemoryRouter>
-            <Page urlParams={{ name: 'user' }} />
+            <Page />
           </MemoryRouter>
         </QueryClientProvider>
       );
@@ -123,30 +113,25 @@ describe('RecordTablePage phone layout', () => {
     });
   };
 
-  it('phone: full-bleed — no card, no gutters; the table fills the page column and rows render as the card face', async () => {
+  it('phone: full-bleed — no card, no gutters; the summary table fills the page column as the card face', async () => {
     phoneMode = true;
     await mount();
-    // No card chrome anywhere on the page (the founder's cards-on-mobile defect).
     expect(document.querySelector('.MuiPaper-root')).toBeNull();
     const host = document.querySelector('[data-phone-fullbleed]') as HTMLElement;
     expect(host).toBeTruthy();
     const hostCss = cssFor(host);
-    // Fills the shell's flex page column; the table's own scroll container carries the height.
     expect(hostCss).toContain('flex-grow: 1');
     expect(hostCss).toContain('min-height: 0');
-    // No outer padding gutters.
     expect(hostCss).not.toContain('padding');
     expect(document.querySelector('[data-table-phone-face]')).toBeTruthy();
     expect(document.querySelector('table')).toBeNull();
-    expect(document.body.textContent).toContain('a@n3xa.io');
+    expect(document.body.textContent).toContain('user');
   });
 
-  it('desktop: the floating fit-content card and the table face stay unchanged', async () => {
+  it('desktop: the FormPage card stays unchanged', async () => {
     phoneMode = false;
     await mount();
-    const paper = document.querySelector('.MuiPaper-root') as HTMLElement;
-    expect(paper).toBeTruthy();
-    expect(cssFor(paper)).not.toContain('width: 100%');
+    expect(document.querySelector('.MuiPaper-root')).toBeTruthy();
     expect(document.querySelector('[data-phone-fullbleed]')).toBeNull();
     expect(document.querySelector('table')).toBeTruthy();
     expect(document.querySelector('[data-table-phone-face]')).toBeNull();

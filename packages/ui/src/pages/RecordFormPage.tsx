@@ -1,8 +1,8 @@
 import React from 'react';
-import { FormPage, Page, PageComponentProps } from '@proteinjs/ui';
+import { FormPage, Page, PageComponentProps, useFormFactor } from '@proteinjs/ui';
 import { getDbService, tableByName } from '@proteinjs/db';
 import { RecordForm } from '../form/RecordForm';
-import { Theme, SxProps, Typography } from '@mui/material';
+import { Box, Theme, SxProps, Typography } from '@mui/material';
 
 export const recordFormPage: Page = {
   name: 'Record Form',
@@ -17,11 +17,31 @@ export const recordFormPage: Page = {
       backgroundColor: theme.palette.background.default,
     };
   },
-  component: ({ ...props }) => (
+  component: ({ ...props }) => <RecordFormPageLayout {...props} />,
+};
+
+/**
+ * Phone (founder ruling 2026-08-31): the form takes the FULL mobile view under the shell's
+ * chrome — no FormPage card, no page gutters; the page column scrolls the form itself. The
+ * form keeps its own content inset (the card's inset was the only thing keeping fields off
+ * the glass). Desktop keeps the house FormPage card.
+ */
+const RecordFormPageLayout = ({ ...props }: PageComponentProps) => {
+  const { isPhone } = useFormFactor();
+
+  if (isPhone) {
+    return (
+      <Box data-phone-fullbleed sx={{ flexGrow: 1, minHeight: 0, width: '100%', overflow: 'auto', padding: 2 }}>
+        <DynamicRecordForm {...props} />
+      </Box>
+    );
+  }
+
+  return (
     <FormPage>
       <DynamicRecordForm {...props} />
     </FormPage>
-  ),
+  );
 };
 
 export const recordFormLink = (tableName: string, recordId: string) => {
