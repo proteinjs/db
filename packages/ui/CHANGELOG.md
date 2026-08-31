@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.15.2](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.15.1...@proteinjs/db-ui@1.15.2) (2026-08-31)
+
+
+### Bug Fixes
+
+* admin record surfaces take the full mobile view (founder finding 2026-08-31: the record table, record form, and tables browser rendered as floating cards on phones) — below the phone line RecordTablePage, RecordFormPage, and TablesPage drop the Paper/FormPage card and the page gutters: the surface fills the shell's page column under the default back-to-home chrome row (flex-grow 1 + min-height 0; the table's own scroll container carries the height, the form page scrolls itself and keeps a 16px content inset — the card's inset was all that kept fields off the glass). Desktop keeps the deliberate admin-round-3 house card unchanged. Red-before-green: the three phone-layout suites assert the full-bleed grammar (no MuiPaper, no gutter padding, flex-grow/min-height 0, phone card face) and FAILED at the pre-fix pages (Paper present, exact defect shape); 5 bite mutations (phone branch disabled on each page, gutter padding reintroduced, form overflow dropped) each failed exactly the guarding leg, restored green. db-ui 15 suites / 58 tests green (13/54 pre-existing; tablesPageMobile + recordFormPageMobile new, recordTablePageMobile rewritten to the ruling). Live proof at 375x812 both themes on an isolated estate (v1.20.1 shell + dedicated emulator): all three surfaces full-bleed under the back-to-home row with real rows; desktop cards byte-identical. ([f7b9c8f](https://github.com/proteinjs/db/commit/f7b9c8f83b0650173d285c16af423055e0291d0e))
+
+
+
+
+
 ## [1.15.1](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.15.0...@proteinjs/db-ui@1.15.1) (2026-08-31)
 
 **Note:** Version bump only for package @proteinjs/db-ui
