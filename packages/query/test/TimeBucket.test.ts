@@ -18,7 +18,7 @@ describe('QueryBuilder - grouped aggregation select list + time buckets', () => 
   const tableName = 'usage_event';
   const dbName = 'test';
   // A driver-style day-truncation expression (the Spanner shape).
-  const dateTruncExpression = (col: string, _unit: 'day' | 'hour') => `TIMESTAMP_TRUNC(${col}, DAY, 'UTC')`;
+  const dateTruncExpression = (col: string, _unit: 'day' | 'hour' | 'minute') => `TIMESTAMP_TRUNC(${col}, DAY, 'UTC')`;
 
   test('select fields and aggregates compose in one select list', () => {
     const qb = new QueryBuilder<UsageRow>(tableName)
@@ -51,7 +51,7 @@ describe('QueryBuilder - grouped aggregation select list + time buckets', () => 
   test('timeBucket(hour) threads unit through to the driver truncation expression (V2.3)', () => {
     // The driver expression receives node.unit — a driver that varies its SQL by unit (Spanner:
     // DAY vs HOUR) is what makes hour grain a real SQL bucket, not a day-row fold.
-    const unitAwareTrunc = (col: string, unit: 'day' | 'hour') =>
+    const unitAwareTrunc = (col: string, unit: 'day' | 'hour' | 'minute') =>
       `TIMESTAMP_TRUNC(${col}, ${unit === 'hour' ? 'HOUR' : 'DAY'}, 'UTC')`;
     const qb = new QueryBuilder<UsageRow>(tableName)
       .select({ fields: ['model'] })
@@ -63,6 +63,24 @@ describe('QueryBuilder - grouped aggregation select list + time buckets', () => 
     expect(result.sql).toBe(
       "SELECT `model`, TIMESTAMP_TRUNC(`created`, HOUR, 'UTC') as hour, SUM(`totalTokens`) as totalTokens " +
         "FROM `test`.`usage_event` GROUP BY `model`, TIMESTAMP_TRUNC(`created`, HOUR, 'UTC');"
+    );
+  });
+
+  test('timeBucket(minute) threads unit through to the driver truncation expression (USAGE_ATTRIBUTION §5)', () => {
+    // 'minute' completes the "Last hour" lens with real buckets (60–180 one-minute buckets);
+    // the driver varies its SQL by unit exactly as hour grain does (Spanner: MINUTE).
+    const unitAwareTrunc = (col: string, unit: 'day' | 'hour' | 'minute') =>
+      `TIMESTAMP_TRUNC(${col}, ${unit === 'minute' ? 'MINUTE' : unit === 'hour' ? 'HOUR' : 'DAY'}, 'UTC')`;
+    const qb = new QueryBuilder<UsageRow>(tableName)
+      .select({ fields: ['model'] })
+      .groupBy(['model'])
+      .timeBucket({ field: 'created', unit: 'minute', resultProp: 'minute' })
+      .aggregate({ function: 'SUM', field: 'totalTokens', resultProp: 'totalTokens' });
+
+    const result = qb.toSql({ dbName, dateTruncExpression: unitAwareTrunc });
+    expect(result.sql).toBe(
+      "SELECT `model`, TIMESTAMP_TRUNC(`created`, MINUTE, 'UTC') as minute, SUM(`totalTokens`) as totalTokens " +
+        "FROM `test`.`usage_event` GROUP BY `model`, TIMESTAMP_TRUNC(`created`, MINUTE, 'UTC');"
     );
   });
 

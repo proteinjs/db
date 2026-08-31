@@ -178,7 +178,7 @@ describe('Db.queryAggregates (grouped aggregation + UTC day buckets)', () => {
     expect(Number(byKey.get('model-a/chat_turn/2026-08-10')!.requests)).toBe(1);
   }, 60000);
 
-  // LAST test: it seeds an extra same-hour row; afterAll drops the table so no cleanup needed.
+  // This test seeds an extra same-hour row; the minute test below accounts for it.
   test('timeBucket(hour) buckets by UTC hour — cross-hour rows split, same-hour rows merge (V2.3)', async () => {
     const hourQb = () =>
       new QueryBuilderFactory()
@@ -211,5 +211,42 @@ describe('Db.queryAggregates (grouped aggregation + UTC day buckets)', () => {
     expect(byHour2.size).toBe(3); // still three hours — 10:00Z absorbed the 10:45Z row
     expect(Number(byHour2.get('2026-08-10T10:00:00.000Z')!.totalTokens)).toBe(1007); // 1000 + 7
     expect(Number(byHour2.get('2026-08-10T10:00:00.000Z')!.requests)).toBe(2);
+  }, 60000);
+
+  // LAST test: it seeds an extra same-minute row; afterAll drops the table so no cleanup needed.
+  test('timeBucket(minute) buckets by UTC minute — same-hour rows split by minute, same-minute rows merge (USAGE_ATTRIBUTION §5)', async () => {
+    const minuteQb = () =>
+      new QueryBuilderFactory()
+        .createQueryBuilder<UsageShape>(table)
+        .timeBucket({ field: 'created', unit: 'minute', resultProp: 'minute' })
+        .aggregate({ function: 'SUM', field: 'totalTokens', resultProp: 'totalTokens' })
+        .aggregate({ function: 'COUNT', resultProp: 'requests' });
+
+    // Rows now: 10:00Z (1000), 23:30Z (200), next-day 00:30Z (40), 10:45Z (7 — seeded by the hour
+    // test). 10:00Z and 10:45Z share an HOUR but not a MINUTE — the load-bearing split that makes
+    // minute a real grain rather than an hour-row fold.
+    const byMinute = new Map(
+      (await db.queryAggregates(table, minuteQb())).map((row) => [
+        new Date(String(row.minute)).toISOString(),
+        Number(row.totalTokens),
+      ])
+    );
+    expect(byMinute.size).toBe(4);
+    expect(byMinute.get('2026-08-10T10:00:00.000Z')).toBe(1000);
+    expect(byMinute.get('2026-08-10T10:45:00.000Z')).toBe(7); // same hour as 10:00Z, its OWN minute
+    expect(byMinute.get('2026-08-10T23:30:00.000Z')).toBe(200);
+    expect(byMinute.get('2026-08-11T00:30:00.000Z')).toBe(40);
+
+    // A second row INSIDE an existing minute must MERGE (seconds floor away: 10:45:40Z → 10:45Z).
+    await db.insert(
+      table,
+      seedRow({ model: 'model-d', totalTokens: 3, created: moment.utc('2026-08-10T10:45:40Z') }) as any
+    );
+    const byMinute2 = new Map(
+      (await db.queryAggregates(table, minuteQb())).map((row) => [new Date(String(row.minute)).toISOString(), row])
+    );
+    expect(byMinute2.size).toBe(4); // still four minutes — 10:45Z absorbed the 10:45:40Z row
+    expect(Number(byMinute2.get('2026-08-10T10:45:00.000Z')!.totalTokens)).toBe(10); // 7 + 3
+    expect(Number(byMinute2.get('2026-08-10T10:45:00.000Z')!.requests)).toBe(2);
   }, 60000);
 });

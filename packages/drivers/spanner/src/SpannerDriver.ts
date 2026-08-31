@@ -237,11 +237,11 @@ export class SpannerDriver implements DbDriver {
       prefixTablesWithDb: false,
       getDriverColumnType: this.getColumnType.bind(this),
       handleCaseSensitivity: this.handleCaseSensitivity.bind(this),
-      // GoogleSQL day/hour truncation for QueryBuilder.timeBucket. UTC deliberately: bucket
-      // boundaries must be stable regardless of the serving process's TZ (hour-grain callers
-      // render the UTC buckets in the operator's local time).
-      dateTruncExpression: (resolvedColumnName: string, unit: 'day' | 'hour') =>
-        `TIMESTAMP_TRUNC(${resolvedColumnName}, ${unit === 'hour' ? 'HOUR' : 'DAY'}, 'UTC')`,
+      // GoogleSQL day/hour/minute truncation for QueryBuilder.timeBucket. UTC deliberately:
+      // bucket boundaries must be stable regardless of the serving process's TZ (hour/minute-grain
+      // callers render the UTC buckets in the operator's local time).
+      dateTruncExpression: (resolvedColumnName: string, unit: 'day' | 'hour' | 'minute') =>
+        `TIMESTAMP_TRUNC(${resolvedColumnName}, ${unit === 'minute' ? 'MINUTE' : unit === 'hour' ? 'HOUR' : 'DAY'}, 'UTC')`,
     });
 
     const startTime = process.hrtime.bigint();

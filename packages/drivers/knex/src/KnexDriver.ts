@@ -145,12 +145,16 @@ export class KnexDriver implements DbDriver {
       useParams: true,
       prefixTablesWithDb: true,
       handleCaseSensitivity: this.handleCaseSensitivity.bind(this),
-      // MySQL day/hour truncation for QueryBuilder.timeBucket. These bucket in the SESSION time
-      // zone; deployments needing strict UTC buckets should run the connection with time_zone
-      // = '+00:00' (the Spanner driver truncates in UTC unconditionally). Hour truncation floors
-      // to the top of the hour via DATE_FORMAT (a stable, groupable bucket key).
-      dateTruncExpression: (resolvedColumnName: string, unit: 'day' | 'hour') =>
-        unit === 'hour' ? `DATE_FORMAT(${resolvedColumnName}, '%Y-%m-%d %H:00:00')` : `DATE(${resolvedColumnName})`,
+      // MySQL day/hour/minute truncation for QueryBuilder.timeBucket. These bucket in the SESSION
+      // time zone; deployments needing strict UTC buckets should run the connection with time_zone
+      // = '+00:00' (the Spanner driver truncates in UTC unconditionally). Hour/minute truncation
+      // floors via DATE_FORMAT (a stable, groupable bucket key).
+      dateTruncExpression: (resolvedColumnName: string, unit: 'day' | 'hour' | 'minute') =>
+        unit === 'minute'
+          ? `DATE_FORMAT(${resolvedColumnName}, '%Y-%m-%d %H:%i:00')`
+          : unit === 'hour'
+            ? `DATE_FORMAT(${resolvedColumnName}, '%Y-%m-%d %H:00:00')`
+            : `DATE(${resolvedColumnName})`,
     });
 
     try {
