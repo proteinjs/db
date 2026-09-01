@@ -1,4 +1,4 @@
-import { Database, Instance, Spanner, Transaction } from '@google-cloud/spanner';
+import { Database, Instance, Spanner, SpannerOptions, Transaction } from '@google-cloud/spanner';
 import {
   DbDriver,
   DbDriverQueryStatementConfig,
@@ -8,6 +8,7 @@ import {
   tableByName,
 } from '@proteinjs/db';
 import { SpannerConfig } from './SpannerConfig';
+import { SpannerEnvTokenAuth, SpannerEnvTokenAuthError, SPANNER_ENV_TOKEN_VAR } from './SpannerEnvTokenAuth';
 import { SpannerLivenessMonitor, type SpannerSessionPoolStats } from './SpannerLivenessMonitor';
 import { Logger } from '@proteinjs/logger';
 import { Statement } from '@proteinjs/db-query';
@@ -20,6 +21,8 @@ import { SpannerSchemaMetadata } from './SpannerSchemaMetadata';
  */
 export class SpannerDriver implements DbDriver {
   private static SPANNER?: Spanner;
+  /** Set iff the process-wide client was built on an env-delivered token (see envTokenAuthOverride). */
+  private static ENV_TOKEN_AUTH?: SpannerEnvTokenAuth;
   private static SPANNER_INSTANCE?: Instance;
   private static SPANNER_DB?: Database;
   private static LIVENESS_MONITOR: SpannerLivenessMonitor;
@@ -74,11 +77,17 @@ export class SpannerDriver implements DbDriver {
             }
           : {};
       if (this.config.spannerOptions) {
+        // Env-delivered token auth (the sandbox dev-server leg): with CLOUDSDK_AUTH_ACCESS_TOKEN
+        // present, the client is built on that bearer token via the vendor's auth override —
+        // see envTokenAuthOverride(). Absent, the merge below is exactly the ADC construction it
+        // always was; explicit spannerOptions still win the merge, unchanged.
         SpannerDriver.SPANNER = new Spanner(
-          Object.assign({ projectId: this.config.projectId }, keepalive, this.config.spannerOptions)
+          Object.assign({ projectId: this.config.projectId }, keepalive, this.envTokenAuthOverride(), this.config.spannerOptions)
         );
       } else {
-        SpannerDriver.SPANNER = new Spanner({ projectId: this.config.projectId, ...keepalive });
+        SpannerDriver.SPANNER = new Spanner(
+          Object.assign({ projectId: this.config.projectId }, keepalive, this.envTokenAuthOverride())
+        );
       }
     }
 
@@ -507,7 +516,9 @@ export class SpannerDriver implements DbDriver {
           if (error?.code === 4) {
             this.recordDeadlineFailure(generation);
           }
-          reject(error);
+          // Every query/dml/transaction op rejects through here, so this is the one place
+          // env-token auth failures (UNAUTHENTICATED) become the typed rotation error.
+          reject(this.translateAuthFailure(error));
         }
       );
     });
@@ -537,6 +548,63 @@ export class SpannerDriver implements DbDriver {
   }
 
   /**
+   * Auth selection for the process-wide client, evaluated once per client construction:
+   *
+   * - `SPANNER_EMULATOR_HOST` set → no override. The vendor short-circuits auth ENTIRELY on
+   *   the emulator path: it swaps in insecure channel credentials, and google-gax returns
+   *   those before ever consulting auth (`GrpcClient._getCredentials`: `if (opts.sslCreds)
+   *   return opts.sslCreds`) — so emulator construction stays byte-identical to before.
+   * - `CLOUDSDK_AUTH_ACCESS_TOKEN` set → the env-token auth client (see SpannerEnvTokenAuth):
+   *   the control-plane-minted bearer token authenticates every RPC; expiry re-reads the env /
+   *   invokes `SpannerConfig.envTokenRefreshHook`; a dead token is a loud
+   *   `SpannerEnvTokenAuthError`, never a silent fall-back to ADC.
+   * - neither → no override; the client resolves application-default credentials exactly as it
+   *   always has.
+   *
+   * The selection never changes mid-client: recycleClient() clears ENV_TOKEN_AUTH so only a
+   * FRESH client re-selects.
+   */
+  private envTokenAuthOverride(): { authClient?: NonNullable<SpannerOptions['authClient']> } {
+    SpannerDriver.ENV_TOKEN_AUTH = undefined;
+    if (process.env.SPANNER_EMULATOR_HOST || !SpannerEnvTokenAuth.envTokenPresent()) {
+      return {};
+    }
+    this.logger.info({
+      message: `Spanner auth: env-delivered access token (${SPANNER_ENV_TOKEN_VAR}) — application-default credentials are not consulted`,
+    });
+    SpannerDriver.ENV_TOKEN_AUTH = new SpannerEnvTokenAuth(this.config.envTokenRefreshHook);
+    // GoogleAuth caches any AuthClient verbatim (`cachedCredential = opts.authClient`) and
+    // google-gax only ever duck-types it (createFromGoogleCredential → getRequestHeaders); the
+    // TS surface narrows `authClient` to JSONClient, hence the one cast at this boundary.
+    return {
+      authClient: SpannerDriver.ENV_TOKEN_AUTH.authClient as unknown as NonNullable<SpannerOptions['authClient']>,
+    };
+  }
+
+  /**
+   * The env-token auth failure grammar: a grpc UNAUTHENTICATED (code 16) while the client runs
+   * on an env-delivered token means the token died before its rotation reached us. The cached
+   * token is dropped so the NEXT op re-mints (re-reads the env / re-invokes the refresh hook),
+   * and the failure surfaces as a typed error naming the rotation path. Deliberately NO
+   * fallback to application-default credentials: silently switching identities would hide that
+   * rotation is due and change what the process can reach. ADC mode is untouched — without an
+   * active env-token auth, every error passes through unchanged.
+   */
+  private translateAuthFailure(error: any): any {
+    if (error?.code !== 16 || !SpannerDriver.ENV_TOKEN_AUTH) {
+      return error;
+    }
+    SpannerDriver.ENV_TOKEN_AUTH.invalidate();
+    return new SpannerEnvTokenAuthError(
+      `Spanner rejected the env-delivered access token (${SPANNER_ENV_TOKEN_VAR}): ${error.message}. The token has ` +
+        `likely expired; the driver dropped it and will re-read the env / re-invoke SpannerConfig.envTokenRefreshHook ` +
+        `on the next op. Rotate the token (re-configure the runtime env and restart, or provide envTokenRefreshHook); ` +
+        `the driver never falls back to application-default credentials.`,
+      error
+    );
+  }
+
+  /**
    * Drop the process-wide Spanner client so the next op builds a fresh client/channel — the
    * categorical cure for a dead gRPC channel (Mac sleep, NAT drop) that deadlines every op.
    * The old liveness monitor is stopped so its probe/exit escalation can't kill the process
@@ -545,6 +613,7 @@ export class SpannerDriver implements DbDriver {
    * paths callable.
    */
   private recycleClient(): void {
+    SpannerDriver.ENV_TOKEN_AUTH = undefined; // the fresh client re-runs auth selection
     this.logger.error({
       message: `Recycling Spanner client after ${this.deadlineFailuresBeforeRecycle()} consecutive op-deadline failures (dead gRPC channel suspected) — a fresh client/channel will be created on the next op`,
     });
@@ -670,7 +739,8 @@ export class SpannerDriver implements DbDriver {
         // undefined there); validation-phase gRPC errors carry both.
         obj: { statements: statementList, errorDetails: error.details ?? String(error), durationMs },
       });
-      throw error;
+      // DDL is exempt from withDeadline, so it carries its own env-token auth translation.
+      throw this.translateAuthFailure(error);
     }
   }
 }
