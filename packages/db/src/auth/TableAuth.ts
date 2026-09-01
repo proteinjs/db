@@ -45,6 +45,28 @@ export class TableAuthError extends Error {
  * Util to check which table operations a user can perform
  */
 export class TableAuth {
+  /**
+   * Non-throwing capability read: whether the CURRENT user clears this operation's declared
+   * door on this api. The seam UI derivation rides (db-ui's record-table affordances render
+   * only the operations the declaration actually opens — a table with no insert door draws no
+   * create button); the throwing guards below stay the enforcement path.
+   *
+   * Answers false — never throws — when the auth machinery itself cannot resolve a user (e.g.
+   * a context whose source graph never loaded `AuthenticatedUserRepo`): the same fail-closed
+   * reading UserAuth documents for a missing repo, applied to a capability READ.
+   */
+  canPerform(
+    table: Table<any>,
+    operation: 'query' | 'insert' | 'update' | 'delete',
+    api: 'db' | 'service' = 'db'
+  ): boolean {
+    try {
+      return this.canAccess(table, api, operation);
+    } catch {
+      return false;
+    }
+  }
+
   private canAccess(
     table: Table<any>,
     api: 'db' | 'service',

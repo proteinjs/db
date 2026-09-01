@@ -84,4 +84,29 @@ describe('migrations ride the dev permission', () => {
       expect(() => auth.canUpdate(table, api)).not.toThrow();
     }
   });
+
+  it('insert has no door — for anyone, break-glass included: ledger rows are born from source declarations only', () => {
+    const auth = new TableAuth();
+    const table = new MigrationTable();
+    for (const roles of [['dev-crew'], ['admin']]) {
+      setUser(roles);
+      for (const api of ['db', 'service'] as const) {
+        expect(() => auth.canInsert(table, api)).toThrow(
+          'User is not authorized to insert records into table: migration'
+        );
+        // The capability read the record surfaces derive affordances from agrees with the gate.
+        expect(auth.canPerform(table, 'insert', api)).toBe(false);
+      }
+    }
+  });
+
+  it('delete keeps its dev door (ledger hygiene stays possible)', () => {
+    setUser(['dev-crew']);
+    const auth = new TableAuth();
+    const table = new MigrationTable();
+    for (const api of ['db', 'service'] as const) {
+      expect(() => auth.canDelete(table, api)).not.toThrow();
+      expect(auth.canPerform(table, 'delete', api)).toBe(true);
+    }
+  });
 });

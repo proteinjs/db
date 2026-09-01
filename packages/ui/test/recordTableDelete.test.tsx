@@ -39,6 +39,15 @@ class StubIntersectionObserver {
 }
 (globalThis as any).IntersectionObserver = StubIntersectionObserver;
 
+// The delete affordance now DERIVES from the table's auth doors (recordTableDerivedAffordances
+// suite); this no-auth-block table defaults admin-only, so these dialog-semantics tests run as
+// an admin. Resolve the exact UserAuth instance TableAuth consults — through db's own graph.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { UserAuth } = require(
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  require.resolve('@proteinjs/user-auth', { paths: [require('path').dirname(require.resolve('@proteinjs/db'))] })
+);
+
 interface User extends Record {
   email: string;
 }
@@ -58,6 +67,7 @@ describe('RecordTable', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (UserAuth as any).userRepo = { getUser: () => ({ email: 'admin@test.local', roles: ['admin'] }) };
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
@@ -68,6 +78,7 @@ describe('RecordTable', () => {
       root.unmount();
     });
     container.remove();
+    (UserAuth as any).userRepo = undefined;
   });
 
   const mount = async () => {

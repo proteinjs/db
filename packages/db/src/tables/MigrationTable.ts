@@ -58,14 +58,28 @@ export interface Migration extends SourceRecord {
 export class MigrationTable extends Table<Migration> {
   public name = 'migration';
   /**
-   * Both doors ride the 'dev' permission (consumer-mapped; admin passes as break-glass),
+   * The doors ride the 'dev' permission (consumer-mapped; admin passes as break-glass),
    * matching MigrationRunner's serviceMetadata: the Migrations record table reads/edits via
    * the service api, and the runner writes run state via the db api as the calling user.
-   * Boot-time source-record loading is a system path (getDbAsSystem) and bypasses doors.
+   * INSERT deliberately has no door — for anyone, break-glass included: ledger rows are born
+   * from source declarations only (boot-time loading rides getDbAsSystem, which bypasses
+   * doors), so a caller-path insert could only mint a row no source owns. The generic record
+   * surfaces derive their affordances from these doors (db-ui renders no create button here).
    */
   public auth: Table<Migration>['auth'] = {
-    db: { all: { permission: 'dev' } },
-    service: { all: { permission: 'dev' } },
+    db: { query: { permission: 'dev' }, update: { permission: 'dev' }, delete: { permission: 'dev' } },
+    service: { query: { permission: 'dev' }, update: { permission: 'dev' }, delete: { permission: 'dev' } },
+  };
+  /**
+   * The row scan the founder actually reads: what ran, how it went, HOW LONG it took
+   * (duration — stamped by the runner at completion; the default pick's five-column cap
+   * dropped it), then the declaration flags. Failure detail and timestamps stay on the
+   * record form.
+   */
+  public ui: Table<Migration>['ui'] = {
+    recordTable: {
+      columns: ['description', 'status', 'duration', 'manual', 'preSchemaSync', 'retired'],
+    },
   };
   public columns = withSourceRecordColumns<Migration>({
     description: new StringColumn('description', {}, 4000),
