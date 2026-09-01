@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.41.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.40.0...@proteinjs/db@1.41.0) (2026-09-01)
+
+
+### Features
+
+* record surfaces render what tables declare — declared row columns + auth-derived affordances ([cf5a62e](https://github.com/proteinjs/db/commit/cf5a62e73283720e40bae95e5957e282ffbf25b3))
+
+
+
+
+
 # [1.40.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.39.0...@proteinjs/db@1.40.0) (2026-08-31)
 
 
