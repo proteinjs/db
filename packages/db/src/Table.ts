@@ -336,6 +336,19 @@ export type SourceRecordOptions<T = any> = {
    *   `Db.update`, so table watchers observe the write. Re-declaring the record reverts the
    *   patch via normal drift reversion — removal is reversible in source.
    *
+   * THE SOFT-REMOVAL CONTRACT: a source-record table that soft-removes (keeps rows on removal —
+   * the `{ update }` policy) must adopt its soft-removed rows on re-declaration and re-derive
+   * their state from the declaration. Under the default (delete) lifecycle, re-declaration is a
+   * plain re-insert and naturally idempotent; a kept row instead still holds the declared id, so
+   * a re-declaration whose natural key no longer matches it (renamed while removed) would INSERT
+   * into a primary-key collision and fail the boot. The sync therefore widens adoption for these
+   * tables: a declaration whose natural key matches nothing re-claims the soft-removed row
+   * holding its declared id (same owning package only), reactivating it by re-deriving every
+   * declared field — declaration is the source of truth, so no removed-era state (grants,
+   * status, natural key) survives re-adoption, while runtime-owned fields the declaration never
+   * emits are preserved. Any future soft-removal table inherits this requirement; machine
+   * accounts (the `@proteinjs/user` user table) are the first implementer.
+   *
    * Rows never loaded from source are structurally untouchable by every policy: the removed
    * reconcile only ever matches `is_loaded_from_source = true`.
    */

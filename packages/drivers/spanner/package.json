@@ -48,7 +48,8 @@
     "@proteinjs/db-transaction-context": "^0.5.24",
     "@proteinjs/logger": "^1.0.21",
     "@proteinjs/reflection": "^1.2.0",
-    "@proteinjs/util": "^1.6.1"
+    "@proteinjs/util": "^1.6.1",
+    "google-auth-library": "^9.15.1"
   },
   "devDependencies": {
     "@proteinjs/reflection-build": "^2.0.1",
