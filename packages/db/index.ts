@@ -36,6 +36,7 @@ export * from './src/encryption/DbEncryptionConfig';
 export * from './src/encryption/DataEncryptionKeyTable';
 export * from './src/encryption/DataKeyStore';
 export * from './src/encryption/EncryptionEnvelope';
+export * from './src/StatementConfigFactory';
 export * from './src/encryption/SearchTokenizer';
 export * from './src/encryption/EncryptedColumns';
 export * from './src/encryption/EncryptedColumnQueryError';
