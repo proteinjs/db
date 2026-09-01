@@ -76,6 +76,33 @@ export class StatementFactory<T> {
     return { sql, ...paramManager.getParams() };
   }
 
+  /**
+   * One INSERT statement carrying many rows (multi-VALUES). Every row must share the same
+   * property set (the first row's keys define the column list) — the batch grammar for
+   * framework-maintained side tables (e.g. encrypted-search token rows), where per-row
+   * statements would multiply round trips by the row count.
+   */
+  insertAll(tableName: string, rows: Partial<T>[], config: StatementConfig): Statement {
+    if (rows.length === 0) {
+      throw new Error(`insertAll requires at least one row`);
+    }
+    const paramManager = new StatementParamManager(config);
+    const props = Object.keys(rows[0]);
+    const valuesTuples = rows.map(
+      (row) =>
+        `(${props
+          .map((prop) =>
+            paramManager.parameterize(
+              row[prop as keyof T],
+              config.getDriverColumnType ? config.getDriverColumnType(tableName, prop) : typeof row[prop as keyof T]
+            )
+          )
+          .join(', ')})`
+    );
+    const sql = `INSERT INTO ${config.dbName ? `\`${config.dbName}\`.` : ''}\`${tableName}\` (\`${props.join('\`, \`')}\`) VALUES ${valuesTuples.join(', ')};`;
+    return { sql, ...paramManager.getParams() };
+  }
+
   update(tableName: string, data: Partial<T>, queryBuilder: QueryBuilder<T>, config: StatementConfig): Statement {
     const paramManager = new StatementParamManager(config);
     const props = Object.keys(data);

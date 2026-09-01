@@ -2,8 +2,15 @@ import { isInstanceOf } from '@proteinjs/util';
 import { Column, EncryptedColumnConfig, Table } from '../Table';
 import { Record, withRecordColumns } from '../Record';
 import {
+  BinaryColumn,
+  BooleanColumn,
+  DateColumn,
+  DateTimeColumn,
+  DecimalColumn,
   DynamicReferenceColumn,
   DynamicReferenceTableNameColumn,
+  FloatColumn,
+  IntegerColumn,
   ObjectColumn,
   ReferenceArrayColumn,
   ReferenceColumn,
@@ -97,14 +104,20 @@ export class EncryptedColumns {
    * The mandatory-declaration gate (`DbEncryptionConfig.requireEncryptedDeclarations`):
    * every text-holding column must declare `encrypted` (`false` or a config object), so no
    * column can be added without deciding, and the encrypted set can never silently drift.
-   * Identifier-bearing column classes (uuids, references) are metadata by construction and
-   * are exempt.
+   *
+   * The gate is DEFAULT-SUSPECT (the classification principle: ambiguity resolves to the
+   * declared side): only column classes that are provably non-text — numbers, booleans,
+   * dates, binary, and the identifier/reference family — are exempt. Everything else,
+   * including driver-specific classes the core cannot see (e.g. spanner-common's
+   * `JsonColumn`, which holds serialized documents), must say `encrypted: false` out loud
+   * or be moved to a string-serialized column class to encrypt. Without this inversion a
+   * JSON-typed free-text payload would slip past the gate unclassified.
    */
   validateDeclarations(table: Table<any>): void {
     const undeclared: string[] = [];
     for (const prop of Object.keys(table.columns)) {
       const column = (table.columns as any)[prop] as Column<any, any>;
-      if (!this.isTextColumn(column) || this.isInternalColumn(column)) {
+      if (!this.requiresDeclaration(column) || this.isInternalColumn(column)) {
         continue;
       }
 
@@ -116,7 +129,10 @@ export class EncryptedColumns {
     if (undeclared.length > 0) {
       throw new EncryptedColumnConfigError(
         `(${table.name}) Every text-holding column must declare 'encrypted' (false, or a config ` +
-          `object such as {} or { searchable: 'contains' }). Missing declarations: ${undeclared.join(', ')}`
+          `object such as {} or { searchable: 'contains' }). JSON and other non-string column ` +
+          `classes cannot encrypt — declare 'encrypted: false' on them, or move the payload to a ` +
+          `string-serialized column class (ObjectColumn) to encrypt. ` +
+          `Missing declarations: ${undeclared.join(', ')}`
       );
     }
   }
@@ -288,9 +304,9 @@ export class EncryptedColumns {
     const tokenTable = new (class extends Table<EncryptionSearchToken> {
       public name = tokenTableName;
       public columns: Table<EncryptionSearchToken>['columns'] = withRecordColumns<EncryptionSearchToken>({
-        recordId: new StringColumn('record_id', { nullable: false }, 36),
-        columnName: new StringColumn('column_name', { nullable: false }, 128),
-        token: new StringColumn('token', { nullable: false }, 64),
+        recordId: new StringColumn('record_id', { nullable: false, encrypted: false }, 36),
+        columnName: new StringColumn('column_name', { nullable: false, encrypted: false }, 128),
+        token: new StringColumn('token', { nullable: false, encrypted: false }, 64), // keyed fingerprints — irreversible without the index key
       });
       public indexes: { columns: (keyof EncryptionSearchToken)[]; name?: string; unique?: boolean }[] = [
         { columns: ['token', 'columnName'], name: `${tokenTableName}_cover_idx` },
@@ -307,7 +323,34 @@ export class EncryptedColumns {
       return false;
     }
 
-    return !(
+    return !this.isIdentifierColumn(column);
+  }
+
+  /**
+   * Whether the declaration gate applies (see `validateDeclarations`): every column that is
+   * not provably non-text. Encryptability stays narrower — only the StringColumn family
+   * encrypts (`isTextColumn`) — but the GATE must also see JSON/custom classes, or their
+   * free text would never have to declare a side.
+   */
+  private requiresDeclaration(column: Column<any, any>): boolean {
+    if (this.isTextColumn(column)) {
+      return true;
+    }
+
+    const exempt =
+      isInstanceOf(column, IntegerColumn) ||
+      isInstanceOf(column, FloatColumn) ||
+      isInstanceOf(column, DecimalColumn) ||
+      isInstanceOf(column, BooleanColumn) ||
+      isInstanceOf(column, DateColumn) ||
+      isInstanceOf(column, DateTimeColumn) ||
+      isInstanceOf(column, BinaryColumn) ||
+      this.isIdentifierColumn(column);
+    return !exempt;
+  }
+
+  private isIdentifierColumn(column: Column<any, any>): boolean {
+    return (
       isInstanceOf(column, UuidColumn) ||
       isInstanceOf(column, ReferenceColumn) ||
       isInstanceOf(column, ReferenceArrayColumn) ||

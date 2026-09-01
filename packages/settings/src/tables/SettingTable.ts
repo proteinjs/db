@@ -17,7 +17,7 @@ export class SettingTable extends Table<Setting> {
     },
   };
   public columns = withScopedRecordColumns<Setting>({
-    name: new StringColumn('name'),
-    value: new ObjectColumn('value'),
+    name: new StringColumn('name', { encrypted: false }), // machine setting keys
+    value: new ObjectColumn('value', { encrypted: false }), // encryption wave-B residue: per-user view/config state — metadata by ruling today; revisit if settings ever carry words
   });
 }

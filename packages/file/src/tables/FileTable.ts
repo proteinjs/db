@@ -51,8 +51,8 @@ export class FileTable extends Table<File> {
     },
   };
   public columns = withScopedRecordColumns<File>({
-    name: new StringColumn('name'),
-    type: new StringColumn('type'),
+    name: new StringColumn('name', { encrypted: {} }), // user-supplied filenames are titles — content (TRUST_AND_COMPLIANCE §1)
+    type: new StringColumn('type', { encrypted: false }), // MIME vocabulary
     size: new IntegerColumn('size'),
     // Self-reference (the preview is itself a File). cascadeDelete: removing a file removes its preview.
     preview: new ReferenceColumn<File>('preview', FILE_TABLE_NAME, true),
@@ -60,10 +60,10 @@ export class FileTable extends Table<File> {
     height: new IntegerColumn('height'),
     durationMs: new IntegerColumn('duration_ms'),
     // Web provenance (see the interface docs). URLs can be long — MAX, like any URL storage.
-    sourceUrl: new StringColumn('source_url', {}, 'MAX'),
-    sourcePageUrl: new StringColumn('source_page_url', {}, 'MAX'),
+    sourceUrl: new StringColumn('source_url', { encrypted: false }, 'MAX'), // encryption wave-B residue: capture-source URLs reveal reading habits; unaudited consumers keep this plaintext this wave
+    sourcePageUrl: new StringColumn('source_page_url', { encrypted: false }, 'MAX'), // encryption wave-B residue: same as sourceUrl
     retrievedAt: new DateColumn('retrieved_at'),
-    contentHash: new StringColumn('content_hash', {}, 64),
+    contentHash: new StringColumn('content_hash', { encrypted: false }, 64), // named plaintext exemption: opaque dedupe fingerprint, indexed (TRUST_AND_COMPLIANCE §1)
   });
   // Dedup lookup path: find the caller's existing copy of these bytes (content_hash is only
   // ever queried per-user — createScopedIndex prefixes the scope column).

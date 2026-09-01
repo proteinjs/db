@@ -215,6 +215,58 @@ export class Db<R extends Record = Record> implements DbService<R> {
     return recordCopy as T;
   }
 
+  /**
+   * Chunked multi-row insert for FRAMEWORK side tables (encrypted-search token rows):
+   * column defaults and serialization run per record, then each chunk lands as ONE
+   * multi-VALUES DML — per-row statements would multiply round trips by the row count
+   * (a single 4000-char searchable value derives hundreds of token rows).
+   *
+   * Deliberately narrow: no table watchers run, and tables with encrypted columns are
+   * refused loudly (per-row encryption contexts belong to the ordinary insert path) —
+   * the token table's rows are keyed fingerprints, plain by construction.
+   */
+  async insertAll<T extends R>(table: Table<T>, records: Omit<T, keyof R>[]): Promise<number> {
+    if (records.length === 0) {
+      return 0;
+    }
+    if (!this.runAsSystem) {
+      this.auth.canInsert(table);
+    }
+    {
+      const { EncryptedColumns } = await import('./encryption/EncryptedColumns');
+      const encryptedColumns = new EncryptedColumns();
+      encryptedColumns.ensureSchema(table);
+      if (records.some((record) => encryptedColumns.recordTouchesEncryptedColumns(table, record))) {
+        throw new Error(
+          `insertAll does not serve encrypted columns (per-row key contexts belong to insert); table: ${table.name}`
+        );
+      }
+    }
+
+    const CHUNK = 100; // 6 params/row on the token table; stays far under Spanner's statement param cap
+    const recordSerializer = new RecordSerializer<T>(table);
+    let inserted = 0;
+    for (let start = 0; start < records.length; start += CHUNK) {
+      const chunk = records.slice(start, start + CHUNK);
+      const serializedRows: Partial<T>[] = [];
+      for (const record of chunk) {
+        const recordCopy = Object.assign({}, record) as any;
+        await addDefaultFieldValues(table, recordCopy, this.runAsSystem);
+        serializedRows.push((await recordSerializer.serialize(recordCopy)) as Partial<T>);
+      }
+      const generateInsert = (config: DbDriverDmlStatementConfig) =>
+        new StatementFactory<T>().insertAll(
+          table.name,
+          serializedRows,
+          this.statementConfigFactory.getStatementConfig(config)
+        );
+      await this.dbDriver.runDml(generateInsert, this.transactionForDriver());
+      inserted += chunk.length;
+    }
+
+    return inserted;
+  }
+
   async update<T extends R>(table: Table<T>, record: Partial<T>, query?: Query<T>): Promise<number> {
     if (!this.runAsSystem) {
       this.auth.canUpdate(table);

@@ -82,17 +82,17 @@ export class MigrationTable extends Table<Migration> {
     },
   };
   public columns = withSourceRecordColumns<Migration>({
-    description: new StringColumn('description', {}, 4000),
+    description: new StringColumn('description', { encrypted: false }, 4000), // dev-authored system prose
     manual: new BooleanColumn('manual'),
     preSchemaSync: new BooleanColumn('pre_schema_sync'),
     retired: new BooleanColumn('retired'),
-    status: new StringColumn('status', { defaultValue: async () => 'proposed' }),
-    failureMessage: new StringColumn('failure_message', {}, 4000),
-    failureStack: new StringColumn('failure_stack', {}, 'MAX'),
+    status: new StringColumn('status', { encrypted: false, defaultValue: async () => 'proposed' }),
+    failureMessage: new StringColumn('failure_message', { encrypted: false }, 4000),
+    failureStack: new StringColumn('failure_stack', { encrypted: false }, 'MAX'),
     startTime: new DateTimeColumn('start_time'),
     endTime: new DateTimeColumn('end_time'),
-    duration: new StringColumn('duration'),
-    output: new ObjectColumn('output'),
+    duration: new StringColumn('duration', { encrypted: false }),
+    output: new ObjectColumn('output', { encrypted: false }),
   });
   public sourceRecordOptions: Table<Migration>['sourceRecordOptions'] = {
     // The ledger outlives the migration class: run history stays when the source is deleted.

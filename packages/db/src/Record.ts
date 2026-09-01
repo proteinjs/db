@@ -150,7 +150,16 @@ export class FieldSerializer<T extends Record> {
   async deserialize(columnName: string, serializedFieldValue: any, serializedRecord: SerializedRecord) {
     const columns: { [prop: string]: Column<any, any> } = this.table.columns;
     let fieldPropertyName = columnName;
-    let column = columns[columnName]; // the scenario that the column name is the same as the property name
+    let column: Column<any, any> | undefined = columns[columnName]; // the scenario that the column name is the same as the property name
+    if (column && column.name !== columnName) {
+      // The row key matches a PROPERTY whose physical column is named differently — e.g. a
+      // retired physical column still present in the database next to its renamed successor
+      // (the encryption rollout's `object` JSON → `object_enc` move). The value under this
+      // key belongs to whichever declared column actually CARRIES this name (the scan
+      // below), never to the same-named property — claiming it there would clobber the real
+      // column's value with the retired column's stale bytes.
+      column = undefined;
+    }
     if (!column) {
       for (const columnPropertyName in columns) {
         const checkColumn = (this.table.columns as any)[columnPropertyName];

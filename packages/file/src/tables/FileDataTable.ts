@@ -21,6 +21,13 @@ export class FileDataTable extends Table<FileData> {
   public columns = withScopedRecordColumns<FileData>({
     file: new ReferenceColumn<File>('file', new FileTable().name, false),
     order: new IntegerColumn('order'),
-    data: new StringColumn('data', {}, 'MAX'),
+    /**
+     * The chunked file BYTES (base64) — encryptable, but deliberately NOT encrypted by
+     * default (founder ruling 2026-08-31): n3xa stores file bytes in GCS, not here, and a
+     * framework-level default would force the cost on every consumer. If a consumer wants
+     * its in-database file bytes encrypted, that becomes an OPT-IN flag at the consumer's
+     * deployment (a named wave-B framework feature), never a default.
+     */
+    data: new StringColumn('data', { encrypted: false }, 'MAX'),
   });
 }

@@ -91,14 +91,16 @@ export class EncryptionTokenMaintenance {
 
       const columnName = ((table.columns as any)[prop] as { name: string }).name;
       const fingerprints = this.tokenizer.fingerprints(this.tokenizer.tokensForValue(String(value)), writeKey.indexKey);
+      // One batched DML per chunk (Db.insertAll) — a long searchable value derives hundreds
+      // of fingerprints, and per-token statements would pay one round trip each (the class
+      // that blew Spanner's transaction deadline on bulk tree writes).
+      const tokenRows: Omit<EncryptionSearchToken, keyof Record>[] = [];
       for (const recordId of recordIds) {
         for (const token of fingerprints) {
-          await systemDb.insert(tokenTable, { recordId, columnName, token } as Omit<
-            EncryptionSearchToken,
-            keyof Record
-          >);
+          tokenRows.push({ recordId, columnName, token });
         }
       }
+      await systemDb.insertAll(tokenTable, tokenRows);
     }
   }
 
@@ -118,6 +120,6 @@ export class EncryptionTokenMaintenance {
 
 /** The Db surface token maintenance needs (a system Db instance — see class doc). */
 export interface TokenMaintenanceDb {
-  insert<T extends Record>(table: Table<T>, record: Omit<T, keyof Record>): Promise<T>;
+  insertAll<T extends Record>(table: Table<T>, records: Omit<T, keyof Record>[]): Promise<number>;
   delete<T extends Record>(table: Table<T>, query: QueryBuilder<T>): Promise<number>;
 }

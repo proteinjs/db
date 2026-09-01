@@ -17,6 +17,13 @@ export class EncryptionEnvelope {
   private static readonly ENVELOPE_PATTERN = /^pjenc:1:([^:]+):(\d+):([A-Za-z0-9_-]+)$/;
 
   encrypt(plaintext: string, key: DataKeyMaterial): string {
+    if (key.owner.includes(':')) {
+      // ':' is the envelope's field delimiter — an owner carrying one would serialize into
+      // an unparseable (hence undecryptable) envelope. Refuse loudly at write time.
+      throw new Error(
+        `Encryption key owner ids must not contain ':' (the envelope delimiter); got: ${key.owner}`
+      );
+    }
     const iv = randomBytes(12);
     const cipher = createCipheriv('aes-256-gcm', key.cipherKey, iv);
     const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
@@ -56,5 +63,21 @@ export class EncryptionEnvelope {
 
   isEnvelope(value: unknown): boolean {
     return this.parse(value) !== undefined;
+  }
+
+  /**
+   * The log marker an envelope value logs as (TRUST_AND_COMPLIANCE Firmed-up §2.0):
+   * `[encrypted len=N]` with **N = the plaintext byte length**, computable key-free because
+   * AES-GCM preserves length — decode the base64url payload (×3/4) and subtract the IV (12)
+   * plus auth tag (16). Bytes, deliberately: it matches the service seam's byte sizes
+   * (#119's metadata-only logging), and a char count would require decrypting. Publishing
+   * the exact plaintext byte length is a small, ACCEPTED metadata disclosure — a decision,
+   * not an accident (sizes are worth tracking; values are not).
+   */
+  static logMarker(envelope: string): string {
+    const payloadStart = envelope.lastIndexOf(':') + 1;
+    const payloadLength = envelope.length - payloadStart;
+    const plaintextBytes = Math.max(0, Math.floor((payloadLength * 3) / 4) - 28);
+    return `[encrypted len=${plaintextBytes}]`;
   }
 }

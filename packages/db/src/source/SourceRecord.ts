@@ -68,8 +68,8 @@ export interface SourceRecord extends DbRecord {
 const getSourceRecordColumns = (hideFromUi = true) => {
   return {
     isLoadedFromSource: new BooleanColumn('is_loaded_from_source', { ui: { hidden: hideFromUi } }),
-    sourcePackage: new StringColumn('source_package', { ui: { hidden: hideFromUi } }),
-    sourcePackageVersion: new StringColumn('source_package_version', { ui: { hidden: hideFromUi } }),
+    sourcePackage: new StringColumn('source_package', { encrypted: false, ui: { hidden: hideFromUi } }), // system package vocabulary
+    sourcePackageVersion: new StringColumn('source_package_version', { encrypted: false, ui: { hidden: hideFromUi } }),
   };
 };
 

@@ -3,6 +3,7 @@ import {
   DbDriver,
   DbDriverQueryStatementConfig,
   DbDriverDmlStatementConfig,
+  EncryptionEnvelope,
   Table,
   TableManager,
   tableByName,
@@ -35,6 +36,34 @@ export class SpannerDriver implements DbDriver {
   private static CLIENT_GENERATION = 0;
   private static CONSECUTIVE_DEADLINE_FAILURES = 0;
   private logger = new Logger({ name: this.constructor.name });
+
+  /**
+   * Bound statement params, made log-safe (TRUST_AND_COMPLIANCE Firmed-up §2.0 — "don't log
+   * the ciphertext either"): encrypted-column values reach this driver as self-identifying
+   * envelopes (`pjenc:1:...`), and logging them would be pure log-volume waste that still
+   * couples logs to ciphertext. Each envelope value logs as its size marker
+   * (`[encrypted len=N]`, N = plaintext BYTES — `EncryptionEnvelope.logMarker`) — size
+   * metadata is kept deliberately (an accepted disclosure, one unit with the service seam's
+   * byte sizes); the value is not. Non-envelope
+   * params pass through: after the app-wide declaration sweep, every content column is
+   * encrypted, so what remains here is metadata by construction.
+   */
+  private paramsForLog(namedParams: { [key: string]: any } | undefined): { [key: string]: any } | undefined {
+    if (!namedParams) {
+      return namedParams;
+    }
+
+    const safe: { [key: string]: any } = {};
+    for (const key of Object.keys(namedParams)) {
+      const value = namedParams[key];
+      safe[key] =
+        typeof value === 'string' && value.startsWith(EncryptionEnvelope.PREFIX)
+          ? EncryptionEnvelope.logMarker(value)
+          : value;
+    }
+
+    return safe;
+  }
   private config: SpannerConfig;
   public getTable: ((name: string) => Table<any>) | undefined;
 
@@ -263,7 +292,7 @@ export class SpannerDriver implements DbDriver {
     const startTime = process.hrtime.bigint();
 
     try {
-      this.logger.debug({ message: `Executing query`, obj: { sql, params: namedParams } });
+      this.logger.debug({ message: `Executing query`, obj: { sql, params: this.paramsForLog(namedParams) } });
       const [rows] = await this.withDeadline(
         'spanner query',
         sql,
@@ -287,7 +316,7 @@ export class SpannerDriver implements DbDriver {
       const durationMs = Number(process.hrtime.bigint() - startTime) / 1_000_000;
       this.logger.error({
         message: `Failed when executing query`,
-        obj: { sql, params: namedParams, errorDetails: error.details, durationMs },
+        obj: { sql, params: this.paramsForLog(namedParams), errorDetails: error.details, durationMs },
       });
       SpannerDriver.LIVENESS_MONITOR.reportError(error);
       throw error;
@@ -342,7 +371,7 @@ export class SpannerDriver implements DbDriver {
     const startTime = process.hrtime.bigint();
 
     try {
-      this.logger.debug({ message: `Executing dml`, obj: { sql, params: namedParams } });
+      this.logger.debug({ message: `Executing dml`, obj: { sql, params: this.paramsForLog(namedParams) } });
       // DML rides the unary ExecuteBatchDml RPC (`batchUpdate`), never streaming `runUpdate`
       // (ExecuteStreamingSql). The client's streaming transport TRANSPARENTLY RE-SENDS a DML
       // whose response was lost: gax wraps every server-streaming call in retry-request, which
@@ -372,7 +401,7 @@ export class SpannerDriver implements DbDriver {
       const durationMs = Number(process.hrtime.bigint() - startTime) / 1_000_000;
       this.logger.error({
         message: `Failed when executing dml`,
-        obj: { sql, params: namedParams, errorDetails: error.details, durationMs },
+        obj: { sql, params: this.paramsForLog(namedParams), errorDetails: error.details, durationMs },
       });
       SpannerDriver.LIVENESS_MONITOR.reportError(error);
       throw error;
