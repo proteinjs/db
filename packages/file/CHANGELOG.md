@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.7.11](https://github.com/proteinjs/db/compare/@proteinjs/db-file@1.7.10...@proteinjs/db-file@1.7.11) (2026-09-02)
+
+**Note:** Version bump only for package @proteinjs/db-file
+
+
+
+
+
 ## [1.7.10](https://github.com/proteinjs/db/compare/@proteinjs/db-file@1.7.9...@proteinjs/db-file@1.7.10) (2026-09-01)
 
 **Note:** Version bump only for package @proteinjs/db-file
