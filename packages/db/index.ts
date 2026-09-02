@@ -1,4 +1,5 @@
 export * from './src/Db';
+export * from './src/DetachedDbOps';
 export * from './src/Table';
 export * from './src/RecordAccessError';
 export * from './src/auth/TableAuth';
