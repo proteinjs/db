@@ -115,6 +115,25 @@ export abstract class Table<T extends Record> implements Loadable, CustomSeriali
   public cascadeDeleteReferences: () => { table: string; referenceColumn: string }[] = () => [];
   /** Options for configuring SourceRecords (see {@link SourceRecordOptions}) */
   public sourceRecordOptions: SourceRecordOptions<T> = {};
+  /**
+   * Presentation the table declares for the GENERIC record surfaces (@proteinjs/db-ui) — the
+   * framework renders what tables declare; per-table display choices never hard-code into the
+   * generic components. Distinct from `auth.ui`, which gates WHO may see those surfaces.
+   */
+  public ui?: {
+    recordTable?: {
+      /**
+       * The columns rendered as the record table's row columns, in this order. `created` and
+       * `updated` are appended automatically (the record family's shared face) unless already
+       * listed. Undeclared tables get the meaningful-data default pick
+       * (db-ui `defaultRecordTableColumns`). Declare when the default pick misses a column a
+       * human scans for (e.g. the migration ledger's `duration`) or surfaces one that has no
+       * business in a row scan (e.g. an invite's redeemable `token` — row hygiene; the record
+       * form still carries the full record).
+       */
+      columns?: (keyof T & string)[];
+    };
+  };
   public auth?: {
     db?: TableOperationsAuth;
     service?: TableOperationsAuth;

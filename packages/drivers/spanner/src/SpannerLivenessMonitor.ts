@@ -1,4 +1,5 @@
 import { Database, SessionPool } from '@google-cloud/spanner';
+import { DetachedDbOps } from '@proteinjs/db';
 import { Logger } from '@proteinjs/logger';
 
 /** grpc status codes that indicate connectivity trouble rather than an application error */
@@ -46,7 +47,11 @@ export class SpannerLivenessMonitor {
         message: `Spanner session pool emitted a background error; verifying db connectivity`,
         obj: { code: error?.code, errorDetails: error?.details ?? String(error), pool: this.poolStats() },
       });
-      void this.verifyLiveness();
+      // Deliberately detached (the pool's error listener must return immediately) — routed
+      // through the one detachment owner so a rejection can never become process death.
+      DetachedDbOps.run('spanner liveness verification (pool error)', () => this.verifyLiveness(), {
+        code: error?.code,
+      });
     });
     return this;
   }
@@ -65,7 +70,11 @@ export class SpannerLivenessMonitor {
     if (this.stopped || !CONNECTIVITY_GRPC_CODES.includes(error?.code)) {
       return;
     }
-    void this.verifyLiveness();
+    // Deliberately detached (the driver's catch block must not await the probe cycle) — routed
+    // through the one detachment owner so a rejection can never become process death.
+    DetachedDbOps.run('spanner liveness verification (driver-reported error)', () => this.verifyLiveness(), {
+      code: error?.code,
+    });
   }
 
   poolStats(): SpannerSessionPoolStats {

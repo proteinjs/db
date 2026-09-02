@@ -24,6 +24,7 @@ import {
   ReferenceArrayColumn,
   ReferenceColumn,
   Table,
+  TableAuth,
   getDb,
 } from '@proteinjs/db';
 import { QueryTableLoader } from './QueryTableLoader';
@@ -109,6 +110,20 @@ function createButton<T extends Record>(table: Table<T>): TableButton<T> {
  * Object/Array columns are exempt (their storage is MAX but they render as mono JSON snippets).
  */
 export function defaultRecordTableColumns<T extends Record>(table: Table<T>): (keyof T)[] {
+  // A table that declares its row columns owns the pick outright (Table.ui.recordTable.columns
+  // — the framework renders what tables declare); created/updated still join at the end, the
+  // record family's shared face, unless the declaration already seats them.
+  const declaredColumns = table.ui?.recordTable?.columns;
+  if (declaredColumns) {
+    const columnProperties = [...declaredColumns] as (keyof T)[];
+    for (const recordColumn of ['created', 'updated'] as (keyof T)[]) {
+      if ((table.columns as any)[recordColumn] && !columnProperties.includes(recordColumn)) {
+        columnProperties.push(recordColumn);
+      }
+    }
+    return columnProperties;
+  }
+
   function isIdentityName(name: string) {
     // suffix match so compound names promote too (userEmail, jobTitle)
     return name.endsWith('email') || name.endsWith('title') || ['description', 'label', 'subject'].includes(name);
@@ -308,6 +323,13 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
     return recordFormLink(props.table.name, row.id);
   }
 
+  /**
+   * The default affordances DERIVE from the table's declared auth doors — an operation the
+   * declaration doesn't open for the current user draws no button (a create button on the
+   * session table, whose rows are system-written, could only lead to a refused save). A UI act
+   * rides the service RPC and DbService's inner Db re-checks the db api as the calling user,
+   * so an affordance requires BOTH doors. Explicit `buttons` props pass through untouched.
+   */
   function buttons() {
     if (props.hideButtons) {
       return [];
@@ -317,7 +339,18 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
       return props.buttons;
     }
 
-    return [deleteButton(props.table), createButton(props.table)];
+    const tableAuth = new TableAuth();
+    const canPerform = (operation: 'insert' | 'delete') =>
+      tableAuth.canPerform(props.table, operation, 'service') && tableAuth.canPerform(props.table, operation, 'db');
+
+    const derivedButtons: TableButton<T>[] = [];
+    if (canPerform('delete')) {
+      derivedButtons.push(deleteButton(props.table));
+    }
+    if (canPerform('insert')) {
+      derivedButtons.push(createButton(props.table));
+    }
+    return derivedButtons;
   }
 
   return (

@@ -3,6 +3,28 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.42.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.41.0...@proteinjs/db@1.42.0) (2026-09-02)
+
+
+### Features
+
+* **db:** DetachedDbOps — THE named detachment idiom for deliberately fire-and-forget db work (one owner). Under node's default unhandled-rejection policy (node 24 in production) a detached db operation that rejects — e.g. a write tripping the driver's 60s op deadline — killed the whole process (observed live: a detached write past the deadline aborted the server). DetachedDbOps.run(description, work, context?) invokes the work, terminally catches (synchronous throws included), and logs the failure WITH the caller's context — never process death, never a silent swallow; returns void by design so a detached outcome cannot be accidentally consumed. Exported from the package root for every consumer's deliberate detached DML. The repo's own deliberate detached call sites route through it: SpannerLivenessMonitor's two detached verifyLiveness dispatches (pool-error listener + driver-reported error); the client-recycle oldDb.close stays on its existing terminal catch (its silent swallow is a named decision — the channel is believed dead). No half-existing db-layer idiom found to extend: the service layer's doNotAwait observer (ServiceExecutor) covers only service-dispatched work. RED RUN stated: DetachedDbOps.test red at the absent module (the simulated 60s-deadline driver rejection is the suite's first pin); green wired 4/4. Bites verified: terminal catch dropped -> the 2 rejection pins red; sync containment dropped -> the sync-throw pin red alone; restored green. Suites: packages/db 16 suites / 134 tests green (130 pre-existing + 4 new); drivers/spanner Liveness 1/1 green on a dedicated emulator (:9040) — the routed pool-error path exercised live; driver tsc clean (the one build red was the cloned stale db-query dist, cleared by rebuilding query from main source). ([3b92847](https://github.com/proteinjs/db/commit/3b92847355b23db7013fb9bf11fd1b6e7e879b72))
+
+
+
+
+
+# [1.41.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.40.0...@proteinjs/db@1.41.0) (2026-09-01)
+
+
+### Features
+
+* record surfaces render what tables declare — declared row columns + auth-derived affordances ([cf5a62e](https://github.com/proteinjs/db/commit/cf5a62e73283720e40bae95e5957e282ffbf25b3))
+
+
+
+
+
 # [1.40.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.39.0...@proteinjs/db@1.40.0) (2026-08-31)
 
 
