@@ -3,6 +3,24 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.43.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.42.0...@proteinjs/db@1.43.0) (2026-09-02)
+
+
+### Bug Fixes
+
+* r5asm2 composition repairs — the env-token auth wiring rides the composed SpannerDriver (my re-merge resolution had taken main's side of the conflicted construction sites; EnvTokenAuth suite caught it red — envTokenAuthOverride at both constructions, withDeadline + DDL translateAuthFailure, recycleClient clears the selection; suite red->green 212/212); db jest singleton pins (reflection + user-auth — the §6.15 second-copy class, ServiceAuth's UserAuth must be the suites', CI-inert) ([76fea0d](https://github.com/proteinjs/db/commit/76fea0ddaca69856aa55fea61b3a4deae020053f))
+* soft-removal re-adoption — a re-declaration whose natural key misses re-claims the kept row by its declared id (same-owner, non-declared-key only) and reactivates it from the declaration, instead of INSERTing into a PK collision; hook-shaped private unit on the sync class (softRemovedRecordHoldingDeclaredId — the future generic softRemoval hook lifts it, not rewrites); THE SOFT-REMOVAL CONTRACT documented on SourceRecordOptions.onSourceRemoved (machine accounts = first implementer); reusable-suite pins: the renamed-natural-key re-adopt (red pre-fix at the exact machine-account collision) + the free default-lifecycle rollback-idempotence pin (declare -> prune -> re-declare = clean re-insert, green pre-fix) ([ba9f4ba](https://github.com/proteinjs/db/commit/ba9f4ba761c253c45c1b6b1aa131a18db2274635))
+
+
+### Features
+
+* grouped-aggregation reads — Db.queryAggregates + QueryBuilder.timeBucket ([1d553a4](https://github.com/proteinjs/db/commit/1d553a45d93040b560c9f08b4376b875250877c9))
+* timeBucket hour grain — widen the unit union to day|hour across query + drivers ([3ccd736](https://github.com/proteinjs/db/commit/3ccd736138c646454015d46274a2491edcfd90dd))
+
+
+
+
+
 # [1.42.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.41.0...@proteinjs/db@1.42.0) (2026-09-02)
 
 

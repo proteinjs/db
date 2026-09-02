@@ -3,6 +3,25 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.29.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.28.0...@proteinjs/db-driver-spanner@1.29.0) (2026-09-02)
+
+
+### Bug Fixes
+
+* FLOAT64 params bind from the column type — integral values (0, 7) no longer rejected with "Could not parse 0 as a FLOAT64" ([76a746e](https://github.com/proteinjs/db/commit/76a746ece27c87ebfab678473da4d75c714db8e8))
+* r5asm2 composition repairs — the env-token auth wiring rides the composed SpannerDriver (my re-merge resolution had taken main's side of the conflicted construction sites; EnvTokenAuth suite caught it red — envTokenAuthOverride at both constructions, withDeadline + DDL translateAuthFailure, recycleClient clears the selection; suite red->green 212/212); db jest singleton pins (reflection + user-auth — the §6.15 second-copy class, ServiceAuth's UserAuth must be the suites', CI-inert) ([76fea0d](https://github.com/proteinjs/db/commit/76fea0ddaca69856aa55fea61b3a4deae020053f))
+
+
+### Features
+
+* grouped-aggregation reads — Db.queryAggregates + QueryBuilder.timeBucket ([1d553a4](https://github.com/proteinjs/db/commit/1d553a45d93040b560c9f08b4376b875250877c9))
+* SpannerDriver env-token auth — the client builds on an env-delivered bearer token when CLOUDSDK_AUTH_ACCESS_TOKEN is present ([06b01c1](https://github.com/proteinjs/db/commit/06b01c16dad4c981b2006770b21366cd7165c379))
+* timeBucket hour grain — widen the unit union to day|hour across query + drivers ([3ccd736](https://github.com/proteinjs/db/commit/3ccd736138c646454015d46274a2491edcfd90dd))
+
+
+
+
+
 # [1.28.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.27.1...@proteinjs/db-driver-spanner@1.28.0) (2026-09-02)
 
 
