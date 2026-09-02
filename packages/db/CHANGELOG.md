@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.44.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.43.0...@proteinjs/db@1.44.0) (2026-09-02)
+
+
+### Features
+
+* **db, db-ui:** the Migrations ops table — name column, declared sort + labels, and the every-release `updated` re-stamp fixed at the source-record sync ([a961c6f](https://github.com/proteinjs/db/commit/a961c6f81710e3c03ab6ba0f2840a7c3f3d77d46))
+
+
+
+
+
 # [1.43.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.42.0...@proteinjs/db@1.43.0) (2026-09-02)
 
 
