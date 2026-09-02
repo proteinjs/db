@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.29.1](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.29.0...@proteinjs/db-driver-spanner@1.29.1) (2026-09-02)
+
+
+### Bug Fixes
+
+* **db-driver-spanner): honest session-pool gauge + pool-less provisioner handles. poolStats reused the vendor pool's 'borrowed' getter, which folds IN-FLIGHT CREATIONS (_pending) into borrowed — a freshly-constructed pool mid-fill read as 'borrowed 25 / available 0', and logPoolPressure's waiters>0 trigger fired on every pool construction's fill window: 136-156 false 'session pool under pressure' warnings per thought CI sweep, which sent the 2026-09-02 diagnosis down a session-leak hunt (instrumented sweeps show borrowed returning to 0 at every suite end; the reds were emulator-process degradation, fixed repo-side). borrowed now excludes pending (reported separately as the fifth gauge number) and the warning fires only when waiters EXCEED in-flight creations — a pool at max or with failing creations still warns. SpannerEmulatorProvisioner handles go pool-less (min 0, the SpannerDriver.createDb pattern:** the createDatabase handle's default pool close() raced its own 25-session constructor batch fill and orphaned 25 emulator sessions per provisioning pass (the emulator never reaps them). The retention pin rides the create handle before its close, and the already-exists path constructs its handle DIRECTLY — Database.close() evicts the instance handle cache under the bare name key only, so re-asking instance.database(name, sameOptions) returned the CLOSED cached handle ('Database is closed.', caught red by the re-ensure test). Red-first: 3 new/updated gauge tests fail pre-fix (fill window warns; no pending field). Bite: pressure guard reverted to waiters>0 -> fill-window test red; restored -> green. Tallies: SpannerLivenessMonitor 12/12 (3 new), full driver suite on a fresh dedicated emulator 32/32 suites / 214/214 tests, 0 sessions left after a consumer (thought-server) slice. ([5e1d8c8](https://github.com/proteinjs/db/commit/5e1d8c8cae2a3b5325c8ff17603b898fac49b5d6))
+
+
+
+
+
 # [1.29.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.28.0...@proteinjs/db-driver-spanner@1.29.0) (2026-09-02)
 
 
