@@ -2,7 +2,7 @@ import { Loadable, SourceRepository } from '@proteinjs/reflection';
 import { CustomSerializableObject } from '@proteinjs/serializer';
 import { isRecordColumn, Record } from './Record';
 import { TableSerializerId } from './serializers/TableSerializer';
-import { ColumnQueryTransform, QueryBuilder } from '@proteinjs/db-query';
+import { ColumnQueryTransform, QueryBuilder, SortCriteria } from '@proteinjs/db-query';
 import { Identity, TableOperationsAuth } from './auth/TableAuth';
 import { Db } from './Db';
 import { EncryptionDerivedTableRegistry } from './encryption/EncryptionDerivedTableRegistry';
@@ -132,6 +132,13 @@ export abstract class Table<T extends Record> implements Loadable, CustomSeriali
        * form still carries the full record).
        */
       columns?: (keyof T & string)[];
+      /**
+       * The record table's default ordering (the sort its default loader applies before any
+       * user interaction). Undeclared tables keep the generic `updated` descending. Declare
+       * when the rows have a natural reading order the shared face can't know — e.g. the
+       * migration ledger reads most-recently-run first, never-run rows last.
+       */
+      sort?: SortCriteria<T>[];
     };
   };
   public auth?: {
@@ -331,6 +338,14 @@ export type ColumnOptions = {
   ui?: {
     hidden?: boolean;
     /**
+     * The column's display label on the generic record surfaces (table header, form field,
+     * phone card label). Undeclared, the surfaces humanize the property name (`startTime` →
+     * "Start time"); declare when the property name is not how a human reads the value
+     * (the migration ledger's `startTime` reads as "Ran at"). One owner: both surfaces derive
+     * from it, so a label can never differ between the table and the form.
+     */
+    label?: string;
+    /**
      * Which section of the record form this column belongs to. The form derives a sane
      * section from the column's type and name (identity strings up top, long text and
      * structured values under Content, everything else under Details, server-managed meta
@@ -342,7 +357,29 @@ export type ColumnOptions = {
   };
 };
 
+/**
+ * The identity of one source-record declaration (a `SourceRecordLoader` in a build): the
+ * package that owns it, the reflection qualified name, and the declaration's own name — the
+ * loader's class name (or variable name), the part of the qualified name after the package.
+ * See `SourceRecordLoaderDeclaration` for the identity paired with the loader itself.
+ */
+export type SourceRecordDeclarationIdentity = {
+  source: string;
+  qualifiedName: string;
+  name: string;
+};
+
 export type SourceRecordOptions<T = any> = {
+  /**
+   * Fields the sync derives from the DECLARATION ITSELF rather than from its record — for
+   * tables whose rows carry facts about their declaration: the migration ledger's `name` is
+   * the declaring loader's class name, which no migration author should have to type twice.
+   * Called once per declaration per boot; the result is merged over the declared record
+   * BEFORE the drift comparison, so the derivation owns those fields (a value typed into the
+   * record does not survive it), an existing row missing a derived field is backfilled by the
+   * next boot exactly once, and an unchanged derivation never rewrites a row.
+   */
+  fromDeclaration?: (declaration: SourceRecordDeclarationIdentity) => Partial<T>;
   /**
    * What the source-record sync does with rows it previously loaded from source
    * (`is_loaded_from_source = true`) whose declaration no longer exists:

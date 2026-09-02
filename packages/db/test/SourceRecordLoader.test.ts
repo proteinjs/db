@@ -152,3 +152,93 @@ describe('SourceRecordLoader.findMismatchPath', () => {
     });
   });
 });
+
+/**
+ * Stamp hygiene on the real migration-ledger shape: `hasChanges` decides whether a boot
+ * rewrites a row (bumping `updated`). The ownership stamps ride the declared record, so the
+ * comparison must know which of them mean "the definition changed" and which are bookkeeping.
+ */
+describe('SourceRecordLoader.hasChanges — stamp hygiene on the migration ledger', () => {
+  type HasChangesInternals = { hasChanges: (table: any, source: any, existing: any) => Promise<boolean> };
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { MigrationTable } = require('../src/tables/MigrationTable');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const moment = require('moment');
+  const loader = () => new SourceRecordLoader() as unknown as HasChangesInternals;
+  const table = new MigrationTable();
+
+  /** What a build declares for a migration (the run function rides along, as it does at boot). */
+  const declared = (overrides: Record<string, unknown> = {}) => ({
+    id: 'bee7a15c-369f-4e77-abf7-ccd5dc3ae60c',
+    description: 'Marks every existing account onboarded',
+    run: async () => undefined,
+    isLoadedFromSource: true,
+    sourcePackage: '@n3xa/app-server',
+    sourcePackageVersion: '1.24.0',
+    ...overrides,
+  });
+
+  /** The ledger row a previous release wrote and later ran. */
+  const stored = (overrides: Record<string, unknown> = {}) => ({
+    id: 'bee7a15c-369f-4e77-abf7-ccd5dc3ae60c',
+    description: 'Marks every existing account onboarded',
+    isLoadedFromSource: true,
+    sourcePackage: '@n3xa/app-server',
+    sourcePackageVersion: '1.23.0',
+    status: 'success',
+    startTime: moment('2026-08-30T10:00:00Z'),
+    endTime: moment('2026-08-30T10:00:02Z'),
+    duration: '2 secs',
+    output: { rowsInserted: 12 },
+    created: moment('2026-08-30T09:00:00Z'),
+    updated: moment('2026-08-30T10:00:02Z'),
+    ...overrides,
+  });
+
+  it('a newer package version alone is NOT a change — the every-release re-stamp', async () => {
+    expect(await loader().hasChanges(table, declared(), stored())).toBe(false);
+  });
+
+  it('a row with no version stamp gets one (once)', async () => {
+    const unstamped = stored();
+    delete (unstamped as Partial<typeof unstamped>).sourcePackageVersion;
+    expect(await loader().hasChanges(table, declared(), unstamped)).toBe(true);
+  });
+
+  it('a redefined description is still a change', async () => {
+    expect(await loader().hasChanges(table, declared({ description: 'Reworded' }), stored())).toBe(true);
+  });
+
+  it('ledger-owned run state (status, times, output) never reads as drift', async () => {
+    expect(await loader().hasChanges(table, declared({ sourcePackageVersion: '1.23.0' }), stored())).toBe(false);
+  });
+});
+
+describe('getSourceRecordLoaders — declaration identity', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { SourceRepository } = require('@proteinjs/reflection');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { getSourceRecordLoaders } = require('../src/source/SourceRecord');
+  const namedObjectCache = () => (SourceRepository.get() as any).namedObjectCache;
+
+  afterEach(() => {
+    delete namedObjectCache()['@proteinjs/db/SourceRecordLoader'];
+  });
+
+  it("carries the declaration's own name (the loader class) beside its package and qualified name", () => {
+    namedObjectCache()['@proteinjs/db/SourceRecordLoader'] = [
+      {
+        qualifiedName: '@n3xa/app-server/BackfillOnboardingStateForExistingAccounts',
+        packageName: '@n3xa/app-server',
+        object: { table: {}, record: {} },
+      },
+    ];
+
+    const [declaration] = getSourceRecordLoaders() as any[];
+    expect(declaration).toMatchObject({
+      source: '@n3xa/app-server',
+      qualifiedName: '@n3xa/app-server/BackfillOnboardingStateForExistingAccounts',
+      name: 'BackfillOnboardingStateForExistingAccounts',
+    });
+  });
+});

@@ -1,5 +1,5 @@
 import { Loadable, SourceRepository } from '@proteinjs/reflection';
-import { Columns, Table, getTables } from '../Table';
+import { Columns, SourceRecordDeclarationIdentity, Table, getTables } from '../Table';
 import { Record as DbRecord, withRecordColumns } from '../Record';
 import { BooleanColumn, StringColumn } from '../Columns';
 
@@ -10,15 +10,28 @@ import { BooleanColumn, StringColumn } from '../Columns';
  * and prunes only within it, so servers running different builds against one shared database
  * never delete each other's rows.
  */
-export type SourceRecordLoaderDeclaration<T extends SourceRecord = SourceRecord> = {
-  source: string;
+export type SourceRecordLoaderDeclaration<T extends SourceRecord = SourceRecord> = SourceRecordDeclarationIdentity & {
   loader: SourceRecordLoader<T>;
 };
 
 export const getSourceRecordLoaders = <T extends SourceRecord = SourceRecord>(): SourceRecordLoaderDeclaration<T>[] =>
   SourceRepository.get()
     .objectsWithNames<SourceRecordLoader<T>>('@proteinjs/db/SourceRecordLoader')
-    .map(({ packageName, object }) => ({ source: packageName, loader: object }));
+    .map(({ packageName, qualifiedName, object }) => ({
+      source: packageName,
+      qualifiedName,
+      name: declarationName(qualifiedName, packageName),
+      loader: object,
+    }));
+
+/**
+ * The declaration's own name from its reflection qualified name (`<package>/<name>`): the
+ * loader's class name for a class declaration, the variable name for a variable one.
+ */
+const declarationName = (qualifiedName: string, packageName: string) =>
+  qualifiedName.startsWith(`${packageName}/`)
+    ? qualifiedName.slice(packageName.length + 1)
+    : qualifiedName.slice(qualifiedName.lastIndexOf('/') + 1);
 
 export function getSourceRecordTables() {
   const tables = getTables();

@@ -149,6 +149,7 @@ export const sourceRecordSyncTests = (
       await db.delete(machineTable, {});
       await db.delete(defaultPolicyTable, {});
       await db.delete(sourceRecordSyncTestTables.InheritedStamp, {});
+      await db.delete(sourceRecordSyncTestTables.SyncDerivedName, {});
       RecordingMachineAccountWatcher.updates = [];
     });
 
@@ -726,6 +727,77 @@ export const sourceRecordSyncTests = (
         expect(internals.resolveSourceVersion('@proteinjs/db-query')).toMatch(/^\d+\.\d+\.\d+/);
         // Resolution failure degrades to versionless, never throws.
         expect(internals.resolveSourceVersion('@test/no-such-package')).toBeUndefined();
+      });
+    });
+
+    describe('stamp hygiene: an unchanged declaration is never rewritten', () => {
+      const versioned = (displayName: string) => ({
+        table: defaultPolicyTable,
+        record: { id: 'v-1', email: 'v1@test.local', displayName },
+      });
+
+      test('a version bump alone re-stamps nothing: the next release leaves unchanged rows (and their updated stamp) alone', async () => {
+        const db = getDbAsSystem();
+        await bootAsSource('@test/pkg-a', [versioned('same')], '1.23.0');
+        const stamped = await db.get(defaultPolicyTable, { id: 'v-1' });
+        expect(stamped.sourcePackageVersion).toBe('1.23.0');
+
+        // The next release: the SAME declaration under a newer package version (every release
+        // bumps the declaring package). Pre-fix this counted the version stamp as drift and
+        // rewrote every row on every boot — `updated` churned on rows nobody changed.
+        const summary = await bootAsSource('@test/pkg-a', [versioned('same')], '1.24.0');
+        expect(summary[defaultPolicyTable.name]).toMatchObject({ updates: 0, unchanged: 1 });
+        const idle = await db.get(defaultPolicyTable, { id: 'v-1' });
+        expect(idle.updated.valueOf()).toBe(stamped.updated.valueOf());
+        // The stamp records the version that last WROTE the row's definition.
+        expect(idle.sourcePackageVersion).toBe('1.23.0');
+
+        // A genuine redefinition still lands, and moves the stamp with it.
+        const redefined = await bootAsSource('@test/pkg-a', [versioned('changed')], '1.24.0');
+        expect(redefined[defaultPolicyTable.name].updates).toBe(1);
+        const rewritten = await db.get(defaultPolicyTable, { id: 'v-1' });
+        expect(rewritten).toMatchObject({ displayName: 'changed', sourcePackageVersion: '1.24.0' });
+      });
+
+      test('a row with no version stamp is stamped exactly once', async () => {
+        const db = getDbAsSystem();
+        // Written before versions existed (or by a build that could not resolve its version).
+        await bootAsSource('@test/pkg-a', [versioned('same')]);
+        expect((await db.get(defaultPolicyTable, { id: 'v-1' })).sourcePackageVersion).toBeFalsy();
+
+        const first = await bootAsSource('@test/pkg-a', [versioned('same')], '2.0.0');
+        expect(first[defaultPolicyTable.name].updates).toBe(1);
+        expect((await db.get(defaultPolicyTable, { id: 'v-1' })).sourcePackageVersion).toBe('2.0.0');
+
+        const second = await bootAsSource('@test/pkg-a', [versioned('same')], '2.0.0');
+        expect(second[defaultPolicyTable.name]).toMatchObject({ updates: 0, unchanged: 1 });
+      });
+
+      test('fromDeclaration: derived fields land on insert, backfill existing rows exactly once, and never re-stamp', async () => {
+        const db = getDbAsSystem();
+        const derivedTable = sourceRecordSyncTestTables.SyncDerivedName;
+        // bootBuild names each seeded loader `${source}/SeededLoader${i}` — the declaration's
+        // own name is the part after the package, exactly what a migration's class name is.
+        const declaration = { table: derivedTable, record: { id: 'd-1', email: 'd1@test.local' } };
+
+        await boot([declaration]);
+        expect(await db.get(derivedTable, { id: 'd-1' })).toMatchObject({ name: 'SeededLoader0' });
+
+        // A row written before the derived field existed: backfilled ONCE by the next boot…
+        await db.update(derivedTable, { id: 'd-1', name: null });
+        const backfill = await boot([declaration]);
+        expect(backfill[derivedTable.name].updates).toBe(1);
+        const backfilled = await db.get(derivedTable, { id: 'd-1' });
+        expect(backfilled.name).toBe('SeededLoader0');
+
+        // …and never again: the derived value is part of the drift comparison like any field.
+        const idle = await boot([declaration]);
+        expect(idle[derivedTable.name]).toMatchObject({ updates: 0, unchanged: 1 });
+        expect((await db.get(derivedTable, { id: 'd-1' })).updated.valueOf()).toBe(backfilled.updated.valueOf());
+
+        // The derivation owns the field: a value typed into the record does not survive it.
+        await boot([{ table: derivedTable, record: { id: 'd-1', email: 'd1@test.local', name: 'typed-by-hand' } }]);
+        expect((await db.get(derivedTable, { id: 'd-1' })).name).toBe('SeededLoader0');
       });
     });
 

@@ -97,8 +97,33 @@ export class InheritedStampTable extends Table<InheritedStampRecord> {
   });
 }
 
+export interface SyncDerivedNameRecord extends SourceRecord {
+  /** Derived by the sync from the DECLARATION (its loader's name) — never typed into the record. */
+  name?: string | null;
+  email: string;
+}
+
+/**
+ * The migration-ledger shape: a `name` column the sync fills from the declaration itself
+ * (`sourceRecordOptions.fromDeclaration` — the declaring loader's class name), kept on removal
+ * like the ledger. The options literal is cast so the suite compiles red-first against a
+ * loader that does not yet know the option.
+ */
+export class SyncDerivedNameTable extends Table<SyncDerivedNameRecord> {
+  name = 'db_test_sync_derived_name';
+  columns: Table<SyncDerivedNameRecord>['columns'] = withSourceRecordColumns<SyncDerivedNameRecord>({
+    name: new StringColumn('name'),
+    email: new StringColumn('email'),
+  });
+  sourceRecordOptions = {
+    onSourceRemoved: 'keep',
+    fromDeclaration: (declaration: { name: string }) => ({ name: declaration.name }),
+  } as Table<SyncDerivedNameRecord>['sourceRecordOptions'];
+}
+
 export const sourceRecordSyncTestTables = {
   SyncMachineAccount: new SyncMachineAccountTable() as Table<SyncMachineAccount>,
   SyncDefaultPolicy: new SyncDefaultPolicyTable() as Table<SyncDefaultPolicyRecord>,
   InheritedStamp: new InheritedStampTable() as Table<InheritedStampRecord>,
+  SyncDerivedName: new SyncDerivedNameTable() as Table<SyncDerivedNameRecord>,
 };

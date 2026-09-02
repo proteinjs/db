@@ -69,9 +69,16 @@ const DynamicRecordTable = ({ urlParams }: PageComponentProps) => {
       );
     }
 
+    // The card OWNS its overflow (founder finding 2026-09-02: the Migrations header row painted
+    // past the card's rounded edges). A flex item's automatic minimum width is its content's
+    // min-content — a table wider than the page (narrow window, zoom, a wide column declaration)
+    // grew the card past its container, and nothing clipped at the radius. Capped at the
+    // container's width and free to shrink below its table, the table's own scroller absorbs the
+    // width instead (horizontal scroll inside the card, the sticky header staying with it), and
+    // the clip keeps every painted edge inside the rounded box.
     return (
       <Box sx={{ display: 'flex', flexGrow: 1, justifyContent: 'center', padding: 4, minWidth: 0 }}>
-        <Paper sx={{ maxHeight: '80vh' }}>
+        <Paper sx={{ maxHeight: '80vh', maxWidth: '100%', minWidth: 0, overflow: 'hidden' }}>
           <RecordTable table={table} {...adminScrollAffordances} />
         </Paper>
       </Box>
