@@ -1,4 +1,4 @@
-import { Spanner } from '@google-cloud/spanner';
+import { Database, Spanner } from '@google-cloud/spanner';
 
 /**
  * Shared test-harness provisioning for the Spanner emulator.
@@ -66,21 +66,47 @@ export class SpannerEmulatorProvisioner {
       SpannerEmulatorProvisioner.swallowAlreadyExists(error);
     }
     try {
-      const [database, operation] = await instance.createDatabase(config.databaseName);
-      await operation.promise();
       // createDatabase constructs a Database handle whose session pool OPENS in its constructor
       // (database.js: pool_.open()). Ignored, it becomes an orphan: its fill/keepalive machinery
       // outlives release(), and once the admin client closes, every subsequent pool op emits an
       // unlistened 'error' on this handle — crashing whichever jest suite happens to be active
       // (only fresh-emulator runs hit this; ALREADY_EXISTS constructs no handle). Own it through
-      // its death: the listener covers session creates that settle after close, and the close
-      // runs while the admin client can still delete the pool's sessions cleanly.
+      // its death: the listener covers session creates that settle after close. poolOptions
+      // min 0 keeps the handle POOL-LESS (the SpannerDriver.createDb pattern) — with the default
+      // pool, close() RACED the constructor's in-flight 25-session batch fill and the fill's
+      // sessions landed after close's inventory sweep, orphaning 25 emulator sessions per
+      // provisioning pass (measured 2026-09-02; the emulator never reaps them). The retention
+      // pin rides THIS handle before the close: `Database.close()` evicts the instance's handle
+      // cache under the BARE name key while options-keyed entries stay cached, so asking
+      // `instance.database(name, sameOptions)` after the close returns the CLOSED handle
+      // ("Database is closed." on the pin's read) — one handle, used then closed, sidesteps
+      // the cache entirely.
+      const [database, operation] = await instance.createDatabase(config.databaseName, {
+        poolOptions: { min: 0 },
+      });
+      await operation.promise();
       database.on('error', () => undefined);
-      await database.close().catch(() => undefined);
+      try {
+        await SpannerEmulatorProvisioner.pinVersionRetention(database, config.databaseName);
+      } finally {
+        await database.close().catch(() => undefined);
+      }
+      return;
     } catch (error) {
       SpannerEmulatorProvisioner.swallowAlreadyExists(error);
     }
-    await SpannerEmulatorProvisioner.pinVersionRetention(instance, config.databaseName);
+    // ALREADY_EXISTS path (and any re-ensure): no handle from createDatabase — own a pool-less
+    // one for the pin. Constructed DIRECTLY, never via instance.database(): that cache keys
+    // entries by name+options but close() evicts only the bare-name key, so a previously closed
+    // {min:0} handle (the create path's, in a re-ensure) would come back out of the cache dead
+    // ("Database is closed." — the provisioner re-ensure test caught exactly this).
+    const database = new Database(instance, config.databaseName, { min: 0 });
+    database.on('error', () => undefined);
+    try {
+      await SpannerEmulatorProvisioner.pinVersionRetention(database, config.databaseName);
+    } finally {
+      await database.close().catch(() => undefined);
+    }
   }
 
   /**
@@ -93,30 +119,21 @@ export class SpannerEmulatorProvisioner {
    * INFORMATION_SCHEMA.DATABASE_OPTIONS — the admin API's `getMetadata()` does not surface the
    * option on the emulator (returns '' pinned or not; verified against emulator image 2026-08).
    */
-  private static async pinVersionRetention(
-    instance: ReturnType<Spanner['instance']>,
-    databaseName: string
-  ): Promise<void> {
-    // A Database handle's session pool opens in its constructor (same hazard as the
-    // createDatabase handle above) — own it through its death: error listener + close.
-    const database = instance.database(databaseName);
-    database.on('error', () => undefined);
-    try {
-      const [rows] = await database.run({
-        sql: `SELECT s.OPTION_VALUE FROM INFORMATION_SCHEMA.DATABASE_OPTIONS s WHERE s.OPTION_NAME = 'version_retention_period'`,
-        json: true,
-      });
-      const currentRetention = (rows[0] as { OPTION_VALUE?: string } | undefined)?.OPTION_VALUE;
-      if (currentRetention === SpannerEmulatorProvisioner.VERSION_RETENTION_PERIOD) {
-        return;
-      }
-      const [operation] = await database.updateSchema(
-        `ALTER DATABASE \`${databaseName}\` SET OPTIONS (version_retention_period = '${SpannerEmulatorProvisioner.VERSION_RETENTION_PERIOD}')`
-      );
-      await operation.promise();
-    } finally {
-      await database.close().catch(() => undefined);
+  private static async pinVersionRetention(database: Database, databaseName: string): Promise<void> {
+    // The handle is CALLER-OWNED (constructed pool-less and closed by ensureProvisioned) — see
+    // the caller for the handle-cache and fill-race hazards that shaped that ownership.
+    const [rows] = await database.run({
+      sql: `SELECT s.OPTION_VALUE FROM INFORMATION_SCHEMA.DATABASE_OPTIONS s WHERE s.OPTION_NAME = 'version_retention_period'`,
+      json: true,
+    });
+    const currentRetention = (rows[0] as { OPTION_VALUE?: string } | undefined)?.OPTION_VALUE;
+    if (currentRetention === SpannerEmulatorProvisioner.VERSION_RETENTION_PERIOD) {
+      return;
     }
+    const [operation] = await database.updateSchema(
+      `ALTER DATABASE \`${databaseName}\` SET OPTIONS (version_retention_period = '${SpannerEmulatorProvisioner.VERSION_RETENTION_PERIOD}')`
+    );
+    await operation.promise();
   }
 
   /** Close the admin client — call from afterAll so jest's event loop can drain. */

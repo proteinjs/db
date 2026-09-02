@@ -44,9 +44,11 @@ export class SpannerDriver implements DbDriver {
   }
 
   /**
-   * The session-pool gauge (P4a), read-only — the four numbers that make pool exhaustion
-   * observable, for external observers (the ops monitors platform). Undefined until the process
-   * has connected a Database (no pool exists to gauge yet).
+   * The session-pool gauge (P4a), read-only — the five numbers that make pool exhaustion
+   * observable, for external observers (the ops monitors platform). `borrowed` counts sessions
+   * genuinely checked out; in-flight creations are reported separately as `pending` (see
+   * SpannerSessionPoolStats). Undefined until the process has connected a Database (no pool
+   * exists to gauge yet).
    */
   static getSessionPoolStats(): SpannerSessionPoolStats | undefined {
     if (!SpannerDriver.SPANNER_DB) {

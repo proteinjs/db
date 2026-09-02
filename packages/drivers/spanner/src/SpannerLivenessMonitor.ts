@@ -15,11 +15,18 @@ const CONNECTIVITY_GRPC_CODES = [4 /* DEADLINE_EXCEEDED */, 14 /* UNAVAILABLE */
  */
 const RESTART_REQUEST_EXIT_CODE = 86;
 
-/** Session pool gauge (P4a): the four numbers that make pool exhaustion observable. */
+/** Session pool gauge (P4a): the five numbers that make pool exhaustion observable.
+ *  `borrowed` is sessions genuinely checked out by operations; `pending` is sessions the pool
+ *  is currently CREATING (in-flight BatchCreateSessions — the initial min-fill and on-demand
+ *  growth). The library's own `pool.borrowed` getter folds pending into borrowed, which made a
+ *  freshly-constructed pool mid-fill read as "borrowed 25 / available 0" — exhaustion-shaped
+ *  numbers for perfectly healthy growth (the 2026-09-02 CI leak-hunt false lead). This gauge
+ *  reports the two honestly and separately. */
 export type SpannerSessionPoolStats = {
   size: number;
   available: number;
   borrowed: number;
+  pending: number;
   totalWaiters: number;
 };
 
@@ -28,7 +35,8 @@ export class SpannerLivenessMonitor {
   private static readonly PROBE_TIMEOUT_MS = 10_000;
   /** delay before each attempt; 5 attempts spanning ~2 min (fast failures) to ~4.5 min (30s-deadline failures) */
   private static readonly PROBE_DELAYS_MS = [0, 5_000, 15_000, 30_000, 60_000];
-  /** waiters > 0 is the wedge signature — warn on sight, but at most once per interval per process */
+  /** waiters beyond in-flight creations is the wedge signature — warn on sight, but at most
+   *  once per interval per process */
   private static readonly POOL_PRESSURE_WARN_INTERVAL_MS = 10_000;
   private logger = new Logger({ name: this.constructor.name });
   private checkInFlight = false;
@@ -79,18 +87,32 @@ export class SpannerLivenessMonitor {
 
   poolStats(): SpannerSessionPoolStats {
     const pool = (this.db as unknown as { pool_: SessionPool }).pool_;
-    return { size: pool.size, available: pool.available, borrowed: pool.borrowed, totalWaiters: pool.totalWaiters };
+    // The library's `borrowed` getter is `_inventory.borrowed.size + _pending`; subtracting
+    // `totalPending` recovers the genuinely-checked-out count (see SpannerSessionPoolStats).
+    const pending = pool.totalPending;
+    return {
+      size: pool.size,
+      available: pool.available,
+      borrowed: pool.borrowed - pending,
+      pending,
+      totalWaiters: pool.totalWaiters,
+    };
   }
 
   /**
-   * Warn whenever operations are queued waiting on the session pool (the silent-wedge
-   * signature — with an infinite acquireTimeout a wedged pool otherwise produces no signal at
-   * all). Called by the driver as ops are issued; throttled so a contended burst emits one
-   * line per interval, not one per queued op.
+   * Warn when operations are queued waiting on the session pool AND the pool's growth is not
+   * covering them (the silent-wedge signature — with an infinite acquireTimeout a wedged pool
+   * otherwise produces no signal at all). Waiters already covered by in-flight session
+   * creations (`totalWaiters <= pending`) are normal operation — every fresh pool's first ops
+   * briefly queue behind the initial fill, and warning there buried the real signal under one
+   * false "borrowed 25 / available 0" line per pool construction (136+ per CI sweep). A pool
+   * that is genuinely stuck — at max, or its creations failing — has waiters with no covering
+   * pending and still warns. Called by the driver as ops are issued; throttled so a contended
+   * burst emits one line per interval, not one per queued op.
    */
   logPoolPressure(nowMs = Date.now()): void {
     const stats = this.poolStats();
-    if (stats.totalWaiters === 0) {
+    if (stats.totalWaiters <= stats.pending) {
       return;
     }
 

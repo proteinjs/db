@@ -34,7 +34,7 @@ type DriverInternals = {
 
 const fakeMonitor = {
   logPoolPressure: () => undefined,
-  poolStats: () => ({ size: 0, available: 0, borrowed: 0, totalWaiters: 0 }),
+  poolStats: () => ({ size: 0, available: 0, borrowed: 0, pending: 0, totalWaiters: 0 }),
   reportError: () => undefined,
   stop: () => undefined,
 };

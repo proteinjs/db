@@ -119,7 +119,10 @@ describe('SpannerLivenessMonitor', () => {
 });
 
 describe('SpannerLivenessMonitor pool gauge (P4a)', () => {
-  const fakePool = { size: 25, available: 20, borrowed: 5, totalWaiters: 0 };
+  // Mirrors the library pool's getter arithmetic: `borrowed` INCLUDES in-flight creations
+  // (`_inventory.borrowed.size + _pending`); `totalPending` is the creations alone. The gauge
+  // under test must subtract, so the fake carries both raw numbers.
+  const fakePool = { size: 25, available: 20, borrowed: 5, totalPending: 0, totalWaiters: 0 };
   let monitor: SpannerLivenessMonitor;
   let warnLogSpy: jest.SpyInstance;
 
@@ -127,6 +130,7 @@ describe('SpannerLivenessMonitor pool gauge (P4a)', () => {
     fakePool.size = 25;
     fakePool.available = 20;
     fakePool.borrowed = 5;
+    fakePool.totalPending = 0;
     fakePool.totalWaiters = 0;
     monitor = new SpannerLivenessMonitor({ pool_: fakePool } as unknown as Database);
     warnLogSpy = jest.spyOn((monitor as unknown as MonitorInternals).logger, 'warn').mockImplementation(() => {});
@@ -136,8 +140,10 @@ describe('SpannerLivenessMonitor pool gauge (P4a)', () => {
     jest.restoreAllMocks();
   });
 
-  test('poolStats surfaces the four pool numbers', () => {
-    expect(monitor.poolStats()).toEqual({ size: 25, available: 20, borrowed: 5, totalWaiters: 0 });
+  test('poolStats surfaces the five pool numbers, with borrowed EXCLUDING in-flight creations', () => {
+    fakePool.borrowed = 5; // library getter: 3 truly borrowed + 2 pending
+    fakePool.totalPending = 2;
+    expect(monitor.poolStats()).toEqual({ size: 25, available: 20, borrowed: 3, pending: 2, totalWaiters: 0 });
   });
 
   test('no waiters: no pressure warning', () => {
@@ -145,7 +151,7 @@ describe('SpannerLivenessMonitor pool gauge (P4a)', () => {
     expect(warnLogSpy).not.toHaveBeenCalled();
   });
 
-  test('waiters > 0: warns with the four pool numbers', () => {
+  test('waiters with no growth in flight: warns with the five pool numbers', () => {
     fakePool.available = 0;
     fakePool.borrowed = 25;
     fakePool.totalWaiters = 3;
@@ -156,9 +162,35 @@ describe('SpannerLivenessMonitor pool gauge (P4a)', () => {
     expect(warnLogSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         message: expect.stringContaining('session pool under pressure'),
-        obj: { size: 25, available: 0, borrowed: 25, totalWaiters: 3 },
+        obj: { size: 25, available: 0, borrowed: 25, pending: 0, totalWaiters: 3 },
       })
     );
+  });
+
+  test('fill window (in-flight creations cover the waiters): no warning', () => {
+    // The per-suite construction shape that produced the endless CI "borrowed 25" warnings:
+    // the pool is CREATING its sessions (nothing truly borrowed) and the first op queued
+    // behind the fill. Growth is already covering demand — warning here is noise that
+    // masquerades as exhaustion (the 2026-09-02 leak-hunt false lead).
+    fakePool.available = 0;
+    fakePool.borrowed = 25; // library getter: 0 truly borrowed + 25 pending
+    fakePool.totalPending = 25;
+    fakePool.totalWaiters = 1;
+
+    monitor.logPoolPressure(1_000);
+
+    expect(warnLogSpy).not.toHaveBeenCalled();
+  });
+
+  test('growth in flight but not covering demand: warns', () => {
+    fakePool.available = 0;
+    fakePool.borrowed = 26; // 25 truly borrowed + 1 pending
+    fakePool.totalPending = 1;
+    fakePool.totalWaiters = 3;
+
+    monitor.logPoolPressure(1_000);
+
+    expect(warnLogSpy).toHaveBeenCalledTimes(1);
   });
 
   test('pressure warnings are throttled to one per interval', () => {
