@@ -82,7 +82,12 @@ export class SpannerDriver implements DbDriver {
         // see envTokenAuthOverride(). Absent, the merge below is exactly the ADC construction it
         // always was; explicit spannerOptions still win the merge, unchanged.
         SpannerDriver.SPANNER = new Spanner(
-          Object.assign({ projectId: this.config.projectId }, keepalive, this.envTokenAuthOverride(), this.config.spannerOptions)
+          Object.assign(
+            { projectId: this.config.projectId },
+            keepalive,
+            this.envTokenAuthOverride(),
+            this.config.spannerOptions
+          )
         );
       } else {
         SpannerDriver.SPANNER = new Spanner(
