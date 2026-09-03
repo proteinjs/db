@@ -4,6 +4,14 @@ import { Table } from '../Table';
 import { SourceRecord, withSourceRecordColumns } from '../source/SourceRecord';
 
 export interface Migration extends SourceRecord {
+  /**
+   * The declaring loader's class name (`BackfillOnboardingStateForExistingAccounts`) — the
+   * ledger's human handle, leading the Migrations table. Derived by the source-record sync from
+   * the declaration itself ({@link MigrationTable.sourceRecordOptions} `fromDeclaration`), never
+   * typed into a migration's record: existing rows are backfilled by the first boot after this
+   * column ships and left alone from then on (a derived field is drift-compared like any other).
+   */
+  name?: string;
   description: string;
   /**
    * The explicit non-automatable class (plans/POST_RELEASE_QUEUE.md 27f): destructive
@@ -71,32 +79,51 @@ export class MigrationTable extends Table<Migration> {
     service: { query: { permission: 'dev' }, update: { permission: 'dev' }, delete: { permission: 'dev' } },
   };
   /**
-   * The row scan the founder actually reads: what ran, how it went, HOW LONG it took
-   * (duration — stamped by the runner at completion; the default pick's five-column cap
-   * dropped it), then the declaration flags. Failure detail and timestamps stay on the
-   * record form.
+   * The row scan the founder actually reads (ruled 2026-09-02): WHICH migration (name — the
+   * loader's class name), what it does, how the run went, WHEN it ran ("Ran at" = start_time,
+   * the one timestamp that answers "when did it land"), how long, when it finished, and a
+   * glimpse of its output (the mono JSON snippet; the record form carries the full value).
+   * The declaration flags and the failure detail stay on the record form. Most recent run
+   * first; never-run rows last — GoogleSQL orders NULL as the least value, so start_time DESC
+   * places rows without a run after every real timestamp; ledger order (created) breaks ties.
    */
   public ui: Table<Migration>['ui'] = {
     recordTable: {
-      columns: ['description', 'status', 'duration', 'manual', 'preSchemaSync', 'retired'],
+      columns: ['name', 'description', 'status', 'startTime', 'duration', 'endTime', 'output'],
+      sort: [
+        { field: 'startTime', desc: true },
+        { field: 'created', desc: false },
+      ],
     },
   };
+  /**
+   * Declared in the order the record form reads them (within a section the form keeps schema
+   * order): the migration's identity and flags up top (unlabeled), then its Run — status, ran
+   * at, duration, end time, the full output, failure message and stack — then the System meta.
+   * Column order carries no DDL weight on an existing table.
+   */
   public columns = withSourceRecordColumns<Migration>({
-    description: new StringColumn('description', { encrypted: false }, 4000), // dev-authored system prose
-    manual: new BooleanColumn('manual'),
-    preSchemaSync: new BooleanColumn('pre_schema_sync'),
-    retired: new BooleanColumn('retired'),
-    status: new StringColumn('status', { encrypted: false, defaultValue: async () => 'proposed' }),
-    failureMessage: new StringColumn('failure_message', { encrypted: false }, 4000),
-    failureStack: new StringColumn('failure_stack', { encrypted: false }, 'MAX'),
-    startTime: new DateTimeColumn('start_time'),
-    endTime: new DateTimeColumn('end_time'),
-    duration: new StringColumn('duration', { encrypted: false }),
-    output: new ObjectColumn('output', { encrypted: false }),
+    name: new StringColumn('name', { encrypted: false }), // dev-authored system identifier
+    description: new StringColumn('description', { encrypted: false, ui: { formGroup: 'identity' } }, 4000), // dev-authored system prose
+    manual: new BooleanColumn('manual', { ui: { formGroup: 'identity' } }),
+    preSchemaSync: new BooleanColumn('pre_schema_sync', { ui: { formGroup: 'identity' } }),
+    retired: new BooleanColumn('retired', { ui: { formGroup: 'identity' } }),
+    status: new StringColumn('status', { encrypted: false, defaultValue: async () => 'proposed', ui: { formGroup: 'run' } }),
+    startTime: new DateTimeColumn('start_time', { ui: { label: 'Ran at', formGroup: 'run' } }),
+    duration: new StringColumn('duration', { encrypted: false, ui: { formGroup: 'run' } }),
+    endTime: new DateTimeColumn('end_time', { ui: { formGroup: 'run' } }),
+    // Opted visible: an ObjectColumn hides by default, but a run's output is exactly what the
+    // ledger is opened to read (snippet on the row, full JSON on the form).
+    output: new ObjectColumn('output', { encrypted: false, ui: { hidden: false, formGroup: 'run' } }),
+    failureMessage: new StringColumn('failure_message', { encrypted: false, ui: { formGroup: 'run' } }, 4000),
+    failureStack: new StringColumn('failure_stack', { encrypted: false, ui: { formGroup: 'run' } }, 'MAX'),
   });
   public sourceRecordOptions: Table<Migration>['sourceRecordOptions'] = {
     // The ledger outlives the migration class: run history stays when the source is deleted.
     onSourceRemoved: 'keep',
+    // The ledger's `name` is the declaring loader's class name — derived from the declaration
+    // by the sync (backfilled once onto existing rows), never typed into each migration.
+    fromDeclaration: ({ name }) => ({ name }),
     ui: {
       hideColumns: true,
     },

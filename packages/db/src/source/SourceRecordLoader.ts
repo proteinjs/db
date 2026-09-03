@@ -9,6 +9,9 @@ import { RecordSerializer } from '../Record';
 type DeclaredRecord = {
   /** The owning package (the declaring loader's package) — the grain the sync prunes within. */
   source: string;
+  /** The declaration's reflection qualified name and its own name (the loader's class name). */
+  qualifiedName: string;
+  name: string;
   record: Omit<SourceRecord, 'created' | 'updated'>;
 };
 
@@ -56,6 +59,10 @@ export class SourceRecordLoader {
    *   tables it no longer declares anything for: dropping the last declaration is a removal.
    * - Rows with no owner stamp (written before `source_package` existed) are claimed by the
    *   declaration that still matches them; the rest are reported as unowned and left alone.
+   * - The version stamp records the version that last WROTE the row (its insert or its last
+   *   redefinition). A newer version whose declaration is unchanged writes nothing — it neither
+   *   re-stamps the version nor bumps `updated` — so a release that touches no declaration
+   *   leaves every row byte-identical (see {@link hasChanges}).
    *
    * Accepted residuals: a package removed from every build leaves its rows behind (no surviving
    * boot carries its authority — clean up explicitly); two builds of one package at the SAME
@@ -94,9 +101,16 @@ export class SourceRecordLoader {
       let unchangedCount = 0;
       let adoptedCount = 0;
       let skippedNewer = removed.skippedNewer;
-      for (const { source, record } of records) {
+      for (const { source, qualifiedName, name, record } of records) {
         let sourceRecord = record;
         sourceRecord.isLoadedFromSource = true;
+        // Fields derived from the declaration itself (e.g. the migration ledger's `name` = the
+        // loader's class name) — merged before the drift comparison, so they backfill existing
+        // rows exactly once and the derivation, not the declared record, owns them.
+        const derived = table.sourceRecordOptions.fromDeclaration?.({ source, qualifiedName, name });
+        if (derived) {
+          Object.assign(sourceRecord, derived);
+        }
         // Ownership stamp: the declaring package (and its version) claims the row. Stamped
         // before the drift comparison so pre-existing rows (including pre-source_package legacy
         // rows and rows whose declaration moved packages) converge to the current owner on
@@ -408,13 +422,26 @@ export class SourceRecordLoader {
    * Object-valued fields (e.g. `JsonColumn` blobs) are treated as source-authoritative:
    * any structural drift, including extra keys left behind by earlier source versions,
    * triggers a rewrite. Primitive columns retain their existing semantics.
+   *
+   * The version stamp (`source_package_version`) is bookkeeping, not definition: it names the
+   * version that last WROTE the row and rides every source record (every release bumps the
+   * declaring package), so comparing it would rewrite every row on every release — the churn
+   * that bumped `updated` on migration ledger rows nobody had touched. A stamped row's version
+   * is therefore never drift by itself; it moves only when a genuine change rewrites the row.
+   * A row with NO stamp (written before versions existed, or by a build that could not resolve
+   * its version) still gets one — once — so version ordering can protect it from then on.
    */
   private async hasChanges(table: Table<any>, sourceRecord: any, existingRecord: any): Promise<boolean> {
     const serializer = new RecordSerializer(table);
     const serializedSource = await serializer.serialize(sourceRecord);
     const serializedExisting = await serializer.serialize(existingRecord);
+    const versionStampColumn: string | undefined = (table.columns as any).sourcePackageVersion?.name;
     for (const columnName in serializedSource) {
       if (columnName === 'id' || columnName === 'created' || columnName === 'updated') {
+        continue;
+      }
+
+      if (columnName === versionStampColumn && serializedExisting[columnName] != null) {
         continue;
       }
 
@@ -439,13 +466,13 @@ export class SourceRecordLoader {
     }
 
     const buildSources = new Set<string>();
-    for (const { source, loader } of getSourceRecordLoaders()) {
+    for (const { source, qualifiedName, name, loader } of getSourceRecordLoaders()) {
       buildSources.add(source);
       if (!tables[loader.table.name]) {
         tables[loader.table.name] = { table: loader.table, records: [] };
       }
 
-      tables[loader.table.name].records.push({ source, record: loader.record });
+      tables[loader.table.name].records.push({ source, qualifiedName, name, record: loader.record });
     }
 
     return { tables, buildSources };

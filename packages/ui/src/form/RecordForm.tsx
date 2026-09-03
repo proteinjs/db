@@ -247,7 +247,9 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
   /** Pick the field control that tells the truth about the column's type. */
   function createField(columnPropertyName: string, column: Column<T, any>) {
     const name = columnPropertyName;
-    const label = StringUtil.humanizeCamel(columnPropertyName);
+    // The column's declared display label (ColumnOptions.ui.label) — the record table's header
+    // reads the same owner — else the humanized property name.
+    const label = column.options?.ui?.label ?? StringUtil.humanizeCamel(columnPropertyName);
 
     const fieldRenderer = getFieldRenderer(columnPropertyName);
     if (fieldRenderer) {

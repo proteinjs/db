@@ -3,6 +3,36 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.18.0](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.17.1...@proteinjs/db-ui@1.18.0) (2026-09-03)
+
+
+### Features
+
+* **db-ui:** declared record-form panels — RecordPanel + the one-loader record page (plans/USAGE_SURFACES.md §B.1, US-1/US-2) ([dc72f63](https://github.com/proteinjs/db/commit/dc72f63ea25296ebaec22f9b06ed10b88c932b11))
+
+
+
+
+
+## [1.17.1](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.17.0...@proteinjs/db-ui@1.17.1) (2026-09-02)
+
+**Note:** Version bump only for package @proteinjs/db-ui
+
+
+
+
+
+# [1.17.0](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.16.2...@proteinjs/db-ui@1.17.0) (2026-09-02)
+
+
+### Features
+
+* **db, db-ui:** the Migrations ops table — name column, declared sort + labels, and the every-release `updated` re-stamp fixed at the source-record sync ([a961c6f](https://github.com/proteinjs/db/commit/a961c6f81710e3c03ab6ba0f2840a7c3f3d77d46))
+
+
+
+
+
 ## [1.16.2](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.16.1...@proteinjs/db-ui@1.16.2) (2026-09-02)
 
 **Note:** Version bump only for package @proteinjs/db-ui

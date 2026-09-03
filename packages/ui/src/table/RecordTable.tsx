@@ -276,6 +276,9 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
 
     for (const columnName of columns) {
       const column = (props.table.columns as any)[columnName];
+      // A column's declared display label (ColumnOptions.ui.label) is the header — the same
+      // owner the record form's field label reads, so the two surfaces can't disagree.
+      const declaredLabel: string | undefined = column?.options?.ui?.label;
       const isNumeric =
         isInstanceOf(column, IntegerColumn) || isInstanceOf(column, FloatColumn) || isInstanceOf(column, DecimalColumn);
       // Plain strings ride the base Table's own default path (body2 + three-line clamp, quiet
@@ -289,10 +292,14 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
         !isInstanceOf(column, DateColumn) &&
         !isInstanceOf(column, DateTimeColumn);
       if (isPlainString) {
+        if (declaredLabel) {
+          defaultConfig[columnName] = { header: declaredLabel };
+        }
         continue;
       }
 
       defaultConfig[columnName] = {
+        ...(declaredLabel ? { header: declaredLabel } : {}),
         renderer: getDefaultRenderer(column, columnName as string),
         // The type renderers are value-driven: an empty value means an empty card field.
         omitEmptyOnCard: true,
@@ -315,8 +322,13 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
     return defaultConfig;
   }
 
+  /**
+   * The default ordering is the table's declared one (Table.ui.recordTable.sort — the framework
+   * renders what tables declare); undeclared tables keep the record family's `updated` desc.
+   */
   function defaultTableLoader() {
-    return new QueryTableLoader(props.table, undefined, [{ field: 'updated', desc: true }]);
+    const declaredSort = props.table.ui?.recordTable?.sort;
+    return new QueryTableLoader(props.table, undefined, declaredSort ?? [{ field: 'updated', desc: true }]);
   }
 
   async function defaultRowOnClickRedirectUrl(row: T) {

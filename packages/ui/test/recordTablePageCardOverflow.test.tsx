@@ -1,12 +1,14 @@
 /**
  * @jest-environment jsdom
  *
- * RecordTablePage's phone layout (founder ruling 2026-08-31: admin tables take the full mobile
- * view). Below the phone line the page is FULL-BLEED: no Paper card, no page gutters — the
- * table fills the shell's page column (flex-grow against the viewport column, min-height 0 so
- * the table's own scroll container carries the height) and rows present as Table's phone card
- * face. Desktop keeps the deliberate house card (admin round 3): floating fit-content Paper in
- * 32px padding, 80vh cap.
+ * The desktop record-table card OWNS its overflow (founder finding 2026-09-02, the Migrations
+ * admin table: the header row's background painted past the card's rounded edges on the left
+ * and right). Mechanism: the card is a flex item whose automatic minimum width is its table's
+ * min-content, and nothing clipped at its radius — a table wider than the page (narrow window,
+ * zoom, a wide column declaration) grew the card past its container instead of the table's own
+ * scroller absorbing the width. Pinned here as the card's computed rules (jsdom lays nothing
+ * out): the card is capped at its container's width, may shrink below its content, and clips
+ * at its radius — so the header and body columns share the card's inner box, always.
  */
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
@@ -60,10 +62,10 @@ class StubIntersectionObserver {
 }
 (globalThis as any).IntersectionObserver = StubIntersectionObserver;
 
-let phoneMode = true;
+// Desktop: the phone line is never matched.
 beforeAll(() => {
   (window as any).matchMedia = (query: string) => ({
-    matches: phoneMode,
+    matches: false,
     media: query,
     onchange: null,
     addListener: () => undefined,
@@ -89,7 +91,7 @@ const cssFor = (el: Element): string => {
   return out.join('\n');
 };
 
-describe('RecordTablePage phone layout', () => {
+describe('RecordTablePage desktop card overflow', () => {
   let container: HTMLDivElement;
   let root: Root;
 
@@ -118,39 +120,24 @@ describe('RecordTablePage phone layout', () => {
         </QueryClientProvider>
       );
     });
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
+    for (let i = 0; i < 5 && !document.body.textContent?.includes('a@n3xa.io'); i++) {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    }
   };
 
-  it('phone: full-bleed — no card, no gutters; the table fills the page column and rows render as the card face', async () => {
-    phoneMode = true;
+  it('the card is capped at its container, may shrink below its table, and clips at its radius', async () => {
     await mount();
-    // No card chrome anywhere on the page (the founder's cards-on-mobile defect).
-    expect(document.querySelector('.MuiPaper-root')).toBeNull();
-    const host = document.querySelector('[data-phone-fullbleed]') as HTMLElement;
-    expect(host).toBeTruthy();
-    const hostCss = cssFor(host);
-    // Fills the shell's flex page column; the table's own scroll container carries the height.
-    expect(hostCss).toContain('flex-grow: 1');
-    expect(hostCss).toContain('min-height: 0');
-    // No outer padding gutters.
-    expect(hostCss).not.toContain('padding');
-    expect(document.querySelector('[data-table-phone-face]')).toBeTruthy();
-    expect(document.querySelector('table')).toBeNull();
-    expect(document.body.textContent).toContain('a@n3xa.io');
-  });
-
-  it('desktop: the floating fit-content card and the table face stay unchanged', async () => {
-    phoneMode = false;
-    await mount();
-    const paper = document.querySelector('.MuiPaper-root') as HTMLElement;
-    expect(paper).toBeTruthy();
-    // Fit-content: no bare `width` rule (the card's overflow contract sets `max-width: 100%`,
-    // which caps it at the container without stretching it — see recordTablePageCardOverflow).
-    expect(cssFor(paper)).not.toMatch(/(^|[^-\w])width: 100%/);
-    expect(document.querySelector('[data-phone-fullbleed]')).toBeNull();
-    expect(document.querySelector('table')).toBeTruthy();
-    expect(document.querySelector('[data-table-phone-face]')).toBeNull();
+    const card = document.querySelector('.MuiPaper-root');
+    expect(card).not.toBeNull();
+    const css = cssFor(card as Element);
+    expect(css).toMatch(/max-width:\s*100%/);
+    expect(css).toMatch(/min-width:\s*0/);
+    expect(css).toMatch(/overflow:\s*hidden/);
+    // The table's own scroller still owns scrolling inside the card (the header stays sticky).
+    const scroller = document.querySelector('[data-table-scroll-container]');
+    expect(scroller).not.toBeNull();
+    expect(cssFor(scroller as Element)).toMatch(/overflow:\s*auto/);
   });
 });
