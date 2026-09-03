@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.46.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.45.0...@proteinjs/db@1.46.0) (2026-09-03)
+
+
+### Features
+
+* **db, db-ui:** the record-link seam — a table whose rows have their own page declares Table.ui.recordTable.recordLink; the record table links rows there and draws no New / selection Delete; the generic form page replace-navigates stale record URLs to it (plans/ACCOUNT_SURFACE.md §5, rev 2 item 9) ([1327c91](https://github.com/proteinjs/db/commit/1327c91ee42979477407206598b5165cb7b48a1e))
+
+
+
+
+
 # [1.45.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.44.0...@proteinjs/db@1.45.0) (2026-09-03)
 
 
