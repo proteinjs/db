@@ -331,7 +331,16 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
     return new QueryTableLoader(props.table, undefined, declaredSort ?? [{ field: 'updated', desc: true }]);
   }
 
+  /**
+   * A row goes to the table's OWN page for its rows when one is declared
+   * (`Table.ui.recordTable.recordLink`); otherwise to the generic record form.
+   */
   async function defaultRowOnClickRedirectUrl(row: T) {
+    const recordLink = props.table.ui?.recordTable?.recordLink;
+    if (recordLink) {
+      return recordLink(row);
+    }
+
     return recordFormLink(props.table.name, row.id);
   }
 
@@ -341,6 +350,11 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
    * session table, whose rows are system-written, could only lead to a refused save). A UI act
    * rides the service RPC and DbService's inner Db re-checks the db api as the calling user,
    * so an affordance requires BOTH doors. Explicit `buttons` props pass through untouched.
+   *
+   * A table whose rows have their OWN page (`Table.ui.recordTable.recordLink`) draws neither
+   * derived affordance: its rows are created and removed by whatever owns that page, so a
+   * generic New would open a form the table doesn't use and a generic Delete would bypass it.
+   * The seam decides this, not the doors — the doors may well be wide open.
    */
   function buttons() {
     if (props.hideButtons) {
@@ -349,6 +363,10 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
 
     if (props.buttons) {
       return props.buttons;
+    }
+
+    if (props.table.ui?.recordTable?.recordLink) {
+      return [];
     }
 
     const tableAuth = new TableAuth();

@@ -1,9 +1,11 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { FormPage, Page, PageComponentProps, useFormFactor } from '@proteinjs/ui';
 import { getDbService, tableByName } from '@proteinjs/db';
 import { RecordForm } from '../form/RecordForm';
 import { getRecordPanels, RecordPanel } from '../panel/RecordPanel';
 import { RecordSurface } from '../panel/RecordSurface';
+import { recordTableLink } from './RecordTablePage';
 import { Box, Theme, SxProps, Typography } from '@mui/material';
 
 export const recordFormPage: Page = {
@@ -31,6 +33,21 @@ export const newRecordFormLink = (tableName: string) => {
 };
 
 /**
+ * The redirect a declaring table's stale form URL takes (see `Table.ui.recordTable.recordLink`):
+ * renders nothing and replaces the history entry, so Back skips the URL that was never a page.
+ *
+ * It is its own component so the router dependency belongs to the tables that actually redirect
+ * — the generic form path keeps rendering standalone, with no `<Router>` above it.
+ */
+const RecordLinkRedirect = ({ link }: { link: string }) => {
+  const navigate = useNavigate();
+  React.useEffect(() => {
+    navigate(link, { replace: true });
+  }, [link]);
+  return null;
+};
+
+/**
  * The record page: ONE loader for the record and its declared panels (`RecordPanel`), one paint.
  *
  * Shell — phone (founder ruling 2026-08-31): the form takes the FULL mobile view under the
@@ -43,6 +60,14 @@ export const newRecordFormLink = (tableName: string) => {
 const DynamicRecordForm = ({ urlParams }: PageComponentProps) => {
   const recordId = urlParams['record'];
   const { isPhone } = useFormFactor();
+  /**
+   * Tables whose rows have their OWN page (`Table.ui.recordTable.recordLink`) never render the
+   * generic form. A stale `/record/form?table=<name>&record=<id>` URL — a bookmark, an old link,
+   * the back button — replace-navigates to the declared link, built from the id ALONE so the
+   * redirect never waits on (or fails with) a row load. A stale new-record URL (no `record`
+   * param) has no row to point at, so it lands on the table.
+   */
+  const recordLink = getTable().table?.ui?.recordTable?.recordLink;
   const [record, setRecord] = React.useState<any>();
   const [panels, setPanels] = React.useState<RecordPanel[]>([]);
   const [panelData, setPanelData] = React.useState<{ [panelName: string]: unknown }>({});
@@ -104,6 +129,12 @@ const DynamicRecordForm = ({ urlParams }: PageComponentProps) => {
   };
 
   React.useEffect(() => {
+    // A declaring table redirects instead of loading: the record it would fetch belongs to
+    // another page, and the redirect needs nothing from the row.
+    if (recordLink) {
+      return;
+    }
+
     load();
   }, [urlParams.table, urlParams.record]);
 
@@ -149,6 +180,11 @@ const DynamicRecordForm = ({ urlParams }: PageComponentProps) => {
     }
 
     return <RecordForm table={table} record={record} />;
+  }
+
+  if (recordLink) {
+    const { table } = getTable();
+    return <RecordLinkRedirect link={recordId ? recordLink({ id: recordId }) : recordTableLink(table!)} />;
   }
 
   const { table } = getTable();

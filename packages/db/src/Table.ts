@@ -139,6 +139,14 @@ export abstract class Table<T extends Record> implements Loadable, CustomSeriali
        * migration ledger reads most-recently-run first, never-run rows last.
        */
       sort?: SortCriteria<T>[];
+      /**
+       * A table whose rows have their OWN page instead of the generic record form: the record table
+       * links each row here (replacing the generic form link), draws no New button and no selection
+       * Delete button, and the generic form page replace-navigates stale
+       * `/record/form?table=<name>&record=<id>` URLs to this link. Built from the id alone so the
+       * redirect never needs a row load.
+       */
+      recordLink?: (row: Pick<T, 'id'>) => string;
     };
   };
   public auth?: {
