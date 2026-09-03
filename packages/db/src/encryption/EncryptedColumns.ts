@@ -19,6 +19,7 @@ import {
 } from '../Columns';
 import { EncryptedColumnConfigError } from './DbEncryptionConfig';
 import { EncryptionDerivedTableRegistry } from './EncryptionDerivedTableRegistry';
+import { LeafPolicy, LeafPolicyDeclaration, isLeafPolicySource } from './LeafPolicy';
 
 /** One search-token row: a keyed fingerprint of one token of one encrypted column value. */
 export interface EncryptionSearchToken extends Record {
@@ -129,9 +130,9 @@ export class EncryptedColumns {
     if (undeclared.length > 0) {
       throw new EncryptedColumnConfigError(
         `(${table.name}) Every text-holding column must declare 'encrypted' (false, or a config ` +
-          `object such as {} or { searchable: 'contains' }). JSON and other non-string column ` +
-          `classes cannot encrypt — declare 'encrypted: false' on them, or move the payload to a ` +
-          `string-serialized column class (ObjectColumn) to encrypt. ` +
+          `object such as {} or { searchable: 'contains' }). JSON-typed columns declare ` +
+          `'encrypted: false' (structural data) or 'encrypted: { leaves: <policy> }' (the words ` +
+          `inside the document become ciphertext, the shape and facts stay queryable). ` +
           `Missing declarations: ${undeclared.join(', ')}`
       );
     }
@@ -144,9 +145,54 @@ export class EncryptedColumns {
     return encrypted && typeof encrypted === 'object' ? encrypted : undefined;
   }
 
-  /** Property names of this table's encrypted columns. */
+  /** Property names of this table's encrypted columns (whole-value and leaf alike). */
   encryptedProps(table: Table<any>): string[] {
     return Object.keys(table.columns).filter((prop) => !!this.configFor(table, prop));
+  }
+
+  /** Property names declared `encrypted: { leaves }` (JSON documents encrypted per content leaf). */
+  leafProps(table: Table<any>): string[] {
+    return this.encryptedProps(table).filter((prop) => !!this.configFor(table, prop)!.leaves);
+  }
+
+  isLeafEncrypted(table: Table<any>, prop: string): boolean {
+    return !!this.configFor(table, prop)?.leaves;
+  }
+
+  /** The leaf policy declaration of `prop`, or undefined when the column is not leaf-encrypted. */
+  leafDeclarationFor(table: Table<any>, prop: string): LeafPolicyDeclaration | undefined {
+    return this.configFor(table, prop)?.leaves;
+  }
+
+  /**
+   * The policy a write of `row` (property-keyed; possibly partial) lands under for `prop`:
+   * the declaration itself when static, else the source's answer for the row. A source asked
+   * with no row (a context-free serializer) resolves its DEFAULT policy — by contract the safe
+   * side (every string content).
+   */
+  async resolveLeafPolicy(table: Table<any>, prop: string, row: any): Promise<LeafPolicy> {
+    const declaration = this.leafDeclarationFor(table, prop);
+    if (!declaration) {
+      throw new EncryptedColumnConfigError(`(${table.name}.${prop}) is not a leaf-encrypted column.`);
+    }
+    if (isLeafPolicySource(declaration)) {
+      return await declaration.resolve(row ?? {});
+    }
+    return declaration;
+  }
+
+  /** The row properties every leaf policy source of `table` reads (the walker selects them). */
+  leafPolicyDependencies(table: Table<any>): string[] {
+    const props = new Set<string>();
+    for (const prop of this.leafProps(table)) {
+      const declaration = this.leafDeclarationFor(table, prop)!;
+      if (isLeafPolicySource(declaration)) {
+        for (const dependency of declaration.dependsOn ?? []) {
+          props.add(dependency);
+        }
+      }
+    }
+    return Array.from(props);
   }
 
   /** Property names declared `searchable: 'contains'`. */
@@ -204,11 +250,33 @@ export class EncryptedColumns {
       );
     }
 
+    if (encrypted.leaves) {
+      if (this.isTextColumn(column)) {
+        throw new EncryptedColumnConfigError(
+          `(${table.name}.${prop}) encrypted.leaves is for JSON-typed columns (a document whose words ` +
+            `encrypt in place); a StringColumn-family column encrypts whole-value — declare encrypted: {}.`
+        );
+      }
+      if (!this.requiresDeclaration(column)) {
+        throw new EncryptedColumnConfigError(
+          `(${table.name}.${prop}) encrypted.leaves needs a JSON-typed column; ` +
+            `identifier, reference, numeric, boolean, date, and binary columns carry no words.`
+        );
+      }
+      if (encrypted.searchable || encrypted.sortKey) {
+        throw new EncryptedColumnConfigError(
+          `(${table.name}.${prop}) encrypted.searchable / encrypted.sortKey do not apply to a leaf-encrypted ` +
+            `JSON column — searchability is declared per path on the leaf policy.`
+        );
+      }
+      return encrypted;
+    }
+
     if (!this.isTextColumn(column)) {
       throw new EncryptedColumnConfigError(
         `(${table.name}.${prop}) 'encrypted' is only supported on text columns (StringColumn family). ` +
-          `Identifier and reference columns are metadata by construction; JSON-typed columns must use a ` +
-          `string-serialized column type to encrypt.`
+          `Identifier and reference columns are metadata by construction; a JSON-typed column encrypts its ` +
+          `words in place with encrypted: { leaves: <policy> }.`
       );
     }
 

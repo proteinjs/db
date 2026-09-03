@@ -10,7 +10,7 @@ import {
   addUpdateFieldValues,
 } from './Table';
 import { ReverseCascadeEdgeIndex } from './ReverseCascadeEdgeIndex';
-import { Record, RecordSerializer, SerializedRecord } from './Record';
+import { Record, RecordSerializer, SerializedRecord, RecordEncryptionContext } from './Record';
 import { Logger } from '@proteinjs/logger';
 import { SourceRecordLoader } from './source/SourceRecordLoader';
 import { ParameterizationConfig, QueryBuilder, Statement, StatementFactory } from '@proteinjs/db-query';
@@ -104,6 +104,8 @@ export class Db<R extends Record = Record> implements DbService<R> {
   private transactionContextFactory: DefaultTransactionContextFactory;
   /** See {@link asContentPreservingRewrite}. Instance state, never ambient: it rides only the Db that opted in. */
   private contentPreservingRewrite = false;
+  /** See {@link asDecryptOut}. Instance state, never ambient. */
+  private decryptOut = false;
   public serviceMetadata: Service['serviceMetadata'] = {
     auth: {
       canAccess: (methodName, args) => new TableServiceAuth().canAccess(methodName, args),
@@ -199,6 +201,25 @@ export class Db<R extends Record = Record> implements DbService<R> {
     }
     const db = new Db<R>(this.dbDriver, this.getTable, this.transactionContextFactory, true);
     db.contentPreservingRewrite = true;
+    db.decryptOut = this.decryptOut;
+    return db;
+  }
+
+  /**
+   * The DECRYPT-OUT write mode (the encryption rollback act — `EncryptionLifecycleWalker` mode
+   * 'decrypt'): every write through this instance lands its encrypted-column values as PLAINTEXT
+   * and clears their companions, regardless of what the column declares. The walk therefore runs
+   * on the live build (the declarations still on) without re-encrypting behind itself, and the
+   * same walk is correct on a build whose declarations already flipped to `encrypted: false`.
+   * System only, like content-preserving rewrites: a reclassification is an operator act.
+   */
+  asDecryptOut(): Db<R> {
+    if (!this.runAsSystem) {
+      throw new Error(`Decrypt-out writes run as system only (getDbAsSystem().asDecryptOut()).`);
+    }
+    const db = new Db<R>(this.dbDriver, this.getTable, this.transactionContextFactory, true);
+    db.contentPreservingRewrite = this.contentPreservingRewrite;
+    db.decryptOut = true;
     return db;
   }
 
@@ -233,7 +254,8 @@ export class Db<R extends Record = Record> implements DbService<R> {
         table,
         recordCopy,
         encryptionContext.keyOwner,
-        this.newSystemDb()
+        this.newSystemDb(),
+        { plaintext: this.decryptOut }
       );
     }
     await this.runColumnAfterInsertHooks(table, recordCopy);
@@ -1006,7 +1028,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
    * under. Undefined for writes that touch no encrypted column — the serializer then runs
    * exactly as before.
    */
-  private async encryptionWriteContext(table: Table<any>, record: any): Promise<{ keyOwner: string } | undefined> {
+  private async encryptionWriteContext(table: Table<any>, record: any): Promise<RecordEncryptionContext | undefined> {
     const { EncryptedColumns } = await import('./encryption/EncryptedColumns');
     const encryptedColumns = new EncryptedColumns();
     encryptedColumns.ensureSchema(table);
@@ -1015,7 +1037,11 @@ export class Db<R extends Record = Record> implements DbService<R> {
     }
 
     const { EncryptionRecordHooks } = await import('./encryption/EncryptionRecordHooks');
-    return { keyOwner: await new EncryptionRecordHooks().resolveKeyOwnerForWrite(table, record) };
+    return {
+      keyOwner: await new EncryptionRecordHooks().resolveKeyOwnerForWrite(table, record),
+      row: record,
+      ...(this.decryptOut ? { plaintext: true } : {}),
+    };
   }
 
   private async updateTouchesEncryptedColumns(table: Table<any>, record: any): Promise<boolean> {
@@ -1044,7 +1070,47 @@ export class Db<R extends Record = Record> implements DbService<R> {
 
     const { EncryptionRecordHooks } = await import('./encryption/EncryptionRecordHooks');
     const { EncryptionTokenMaintenance } = await import('./encryption/EncryptionTokenMaintenance');
+    const { EncryptedColumns } = await import('./encryption/EncryptedColumns');
     const hooks = new EncryptionRecordHooks();
+    const tokenMaintenance = new EncryptionTokenMaintenance();
+    const plaintext = this.decryptOut ? { plaintext: true } : {};
+
+    // A payload touching a LEAF-encrypted JSON column lands under each row's OWN policy (its
+    // type decides which paths are words), so those rows serialize one at a time with the
+    // stored row overlaid by the payload as the policy's row — the payload's own discriminator
+    // wins on a type switch. Whole-value columns keep the per-owner grouping below.
+    const leafTouched = new EncryptedColumns()
+      .leafProps(table)
+      .some((prop) => typeof (recordCopy as any)[prop] !== 'undefined');
+    if (leafTouched) {
+      let leafUpdateCount = 0;
+      for (const row of targetRows) {
+        const owner = await hooks.resolveKeyOwnerForWrite(table, row);
+        const recordSerializer = new RecordSerializer<T>(table, {
+          keyOwner: owner,
+          row: { ...(row as object), ...(recordCopy as object) },
+          ...plaintext,
+        });
+        const serializedRecord = await recordSerializer.serialize(recordCopy);
+        delete serializedRecord['id'];
+        const rowQb = new QueryBuilderFactory()
+          .getQueryBuilder(table)
+          .condition({ field: 'id', operator: '=', value: row.id as T[keyof T] });
+        const generateUpdate = (config: DbDriverDmlStatementConfig) =>
+          new StatementFactory<T>().update(
+            table.name,
+            serializedRecord as Partial<T>,
+            rowQb,
+            this.statementConfigFactory.getStatementConfig(config)
+          );
+        leafUpdateCount += await this.dbDriver.runDml(generateUpdate, this.transactionForDriver());
+        await tokenMaintenance.afterUpdate(table, [row.id], recordCopy, owner, this.newSystemDb(), {
+          plaintext: this.decryptOut,
+        });
+      }
+      return leafUpdateCount;
+    }
+
     const idsByOwner = new Map<string, string[]>();
     for (const row of targetRows) {
       const owner = await hooks.resolveKeyOwnerForWrite(table, row);
@@ -1054,9 +1120,8 @@ export class Db<R extends Record = Record> implements DbService<R> {
     }
 
     let recordUpdateCount = 0;
-    const tokenMaintenance = new EncryptionTokenMaintenance();
     for (const [owner, ids] of Array.from(idsByOwner.entries())) {
-      const recordSerializer = new RecordSerializer<T>(table, { keyOwner: owner });
+      const recordSerializer = new RecordSerializer<T>(table, { keyOwner: owner, ...plaintext });
       const serializedRecord = await recordSerializer.serialize(recordCopy);
       delete serializedRecord['id'];
       const groupQb = new QueryBuilderFactory()
@@ -1070,7 +1135,9 @@ export class Db<R extends Record = Record> implements DbService<R> {
           this.statementConfigFactory.getStatementConfig(config)
         );
       recordUpdateCount += await this.dbDriver.runDml(generateUpdate, this.transactionForDriver());
-      await tokenMaintenance.afterUpdate(table, ids, recordCopy, owner, this.newSystemDb());
+      await tokenMaintenance.afterUpdate(table, ids, recordCopy, owner, this.newSystemDb(), {
+        plaintext: this.decryptOut,
+      });
     }
 
     return recordUpdateCount;

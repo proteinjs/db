@@ -1,4 +1,16 @@
-import { Record, StringColumn, Table, withRecordColumns } from '@proteinjs/db';
+import {
+  ALL_STRINGS_CONTENT,
+  ID_SKELETON_ENTRIES,
+  LeafPathPolicy,
+  LeafPolicy,
+  LeafPolicySource,
+  Record,
+  StringColumn,
+  Table,
+  WHOLE_VALUE_CONTENT,
+  withRecordColumns,
+} from '@proteinjs/db';
+import { JsonColumn } from '@proteinjs/db-spanner-common';
 
 /**
  * Tables for the column-encryption suites (`ColumnEncryption.test.ts`,
@@ -113,3 +125,49 @@ export class PlainPerfRowTable extends Table<EncPerfRow> {
     body: new StringColumn('body', { encrypted: false }, 'MAX'),
   });
 }
+
+/**
+ * Leaf-encryption suite (`LeafEncryption.test.ts`): JSON documents encrypted per content leaf.
+ * `doc` resolves its policy PER ROW from the plaintext `kind` discriminator (the thought
+ * `type` shape): kind `trip` declares `state`/`start` as facts (metadata, filterable), anything
+ * else gets the default (every string content, `$.type` a platform key). `sources` is the
+ * ids-skeleton array policy; `blob` is one whole-value envelope.
+ */
+export interface EncLeafDoc extends Record {
+  scope: string;
+  kind?: string | null;
+  doc?: any;
+  sources?: any;
+  blob?: any;
+}
+
+const LEAF_DOC_DEFAULT_POLICY: LeafPolicy = new LeafPathPolicy({
+  metadata: ['$.type'],
+  strings: 'content',
+  nonStrings: 'metadata',
+});
+const LEAF_DOC_TRIP_POLICY: LeafPolicy = new LeafPathPolicy({
+  metadata: ['$.type', '$.state', '$.start'],
+  strings: 'content',
+  nonStrings: 'metadata',
+});
+
+/** The per-row resolver — the shape a domain layer (thought-common) supplies for its typed documents. */
+export const encLeafDocPolicySource: LeafPolicySource = {
+  dependsOn: ['kind'],
+  resolve: (row) => (row?.kind === 'trip' ? LEAF_DOC_TRIP_POLICY : LEAF_DOC_DEFAULT_POLICY),
+  isAlwaysMetadata: (path) => path === '$.type',
+};
+
+export class EncLeafDocTable extends Table<EncLeafDoc> {
+  name = 'db_test_enc_leaf_doc';
+  columns: Table<EncLeafDoc>['columns'] = withRecordColumns<EncLeafDoc>({
+    scope: new StringColumn('scope', {}, 36),
+    kind: new StringColumn('kind', { encrypted: false }),
+    doc: new JsonColumn('doc', { nullable: true, encrypted: { leaves: encLeafDocPolicySource } }),
+    sources: new JsonColumn('sources', { nullable: true, encrypted: { leaves: ID_SKELETON_ENTRIES } }),
+    blob: new JsonColumn('blob', { nullable: true, encrypted: { leaves: WHOLE_VALUE_CONTENT } }),
+  });
+}
+
+void ALL_STRINGS_CONTENT;

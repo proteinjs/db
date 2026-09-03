@@ -22,10 +22,16 @@ export class EncryptionTokenMaintenance {
   private tokenizer = new SearchTokenizer();
 
   /** Write token rows for the contains-searchable columns present in an inserted record. */
-  async afterInsert(table: Table<any>, record: any, keyOwner: string, systemDb: TokenMaintenanceDb): Promise<void> {
+  async afterInsert(
+    table: Table<any>,
+    record: any,
+    keyOwner: string,
+    systemDb: TokenMaintenanceDb,
+    options: TokenMaintenanceOptions = {}
+  ): Promise<void> {
     const touched = this.touchedContainsProps(table, record);
-    if (touched.length === 0) {
-      return;
+    if (touched.length === 0 || options.plaintext) {
+      return; // a decrypt-out write stores plaintext and carries no fingerprints
     }
 
     await this.writeTokenRows(table, [record.id], record, touched, keyOwner, systemDb);
@@ -37,7 +43,8 @@ export class EncryptionTokenMaintenance {
     recordIds: string[],
     record: any,
     keyOwner: string,
-    systemDb: TokenMaintenanceDb
+    systemDb: TokenMaintenanceDb,
+    options: TokenMaintenanceOptions = {}
   ): Promise<void> {
     const touched = this.touchedContainsProps(table, record);
     if (touched.length === 0 || recordIds.length === 0) {
@@ -53,6 +60,9 @@ export class EncryptionTokenMaintenance {
       await systemDb.delete(tokenTable, deleteQb);
     }
 
+    if (options.plaintext) {
+      return; // decrypt-out: the stale fingerprints are gone, plaintext carries none
+    }
     await this.writeTokenRows(table, recordIds, record, touched, keyOwner, systemDb);
   }
 
@@ -117,6 +127,9 @@ export class EncryptionTokenMaintenance {
     return chunks;
   }
 }
+
+/** `plaintext` = the decrypt-out write mode (see `Db.asDecryptOut`): existing token rows are removed, none are written. */
+export type TokenMaintenanceOptions = { plaintext?: boolean };
 
 /** The Db surface token maintenance needs (a system Db instance — see class doc). */
 export interface TokenMaintenanceDb {

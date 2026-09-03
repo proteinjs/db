@@ -18,6 +18,11 @@ export class SettingTable extends Table<Setting> {
   };
   public columns = withScopedRecordColumns<Setting>({
     name: new StringColumn('name', { encrypted: false }), // machine setting keys
-    value: new ObjectColumn('value', { encrypted: false }), // encryption wave-B residue: per-user view/config state — metadata by ruling today; revisit if settings ever carry words
+    // Per-user view/config state — and the words a user types into saved table filters
+    // (`TableFilterCondition.value`: "contains: divorce") ride here too. Encrypted whole-value
+    // (founder ruling 2026-09-03, ENCRYPTED_THOUGHT_OBJECT §7 #9): the row's scope is its owner, so
+    // a user's own settings decrypt for them and no one reading the database sees the filter words.
+    // Never queried by value.
+    value: new ObjectColumn('value', { encrypted: {} }),
   });
 }

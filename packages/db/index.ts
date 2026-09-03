@@ -47,6 +47,9 @@ export * from './src/encryption/EncryptionRecordHooks';
 export * from './src/encryption/EncryptionTokenMaintenance';
 export * from './src/encryption/EncryptionLifecycleWalker';
 export * from './src/encryption/EncryptionDerivedTableRegistry';
+export * from './src/encryption/LeafPolicy';
+export * from './src/encryption/LeafEnvelopeCodec';
+export * from './src/encryption/LeafPaths';
 
 export * from './src/tables/tables';
 export * from './src/tables/MigrationTable';

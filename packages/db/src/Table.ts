@@ -254,6 +254,16 @@ export type EncryptedColumnConfig = {
    * tie-break app-side within the returned page.
    */
   sortKey?: { revealPrefix: number };
+  /**
+   * LEAF envelopes for a JSON-typed column (plans/ENCRYPTED_THOUGHT_OBJECT.md): the column stays
+   * a queryable JSON document and only the nodes the policy classifies as CONTENT are replaced
+   * by envelopes in place — words become ciphertext, identifiers / enums / numbers / dates /
+   * structure stay plaintext and filterable (`JSON_VALUE`, `JSON_SET`, generated columns keep
+   * working on metadata paths). Reads need no policy (an envelope names its own key). Not
+   * combinable with `searchable` / `sortKey` (searchability is per path, on the policy). See
+   * `LeafPolicy` for the declaration and `LeafEnvelopeCodec` for the stored shapes.
+   */
+  leaves?: import('./encryption/LeafPolicy').LeafPolicyDeclaration;
 };
 
 export type ColumnOptions = {

@@ -5,9 +5,14 @@ import { EncryptedColumns } from './EncryptedColumns';
 import { EncryptionEnvelope } from './EncryptionEnvelope';
 import { DataKeyMaterial, DataKeyStore } from './DataKeyStore';
 import { SearchTokenizer } from './SearchTokenizer';
+import { LeafEnvelopeCodec } from './LeafEnvelopeCodec';
 
-/** Who a row being written belongs to — the data key its values encrypt under. */
-export type EncryptionWriteContext = { keyOwner: string };
+/**
+ * Who a row being written belongs to — the data key its values encrypt under — plus the row
+ * the write describes (leaf policies resolve from it) and the decrypt-out flag (see
+ * `RecordEncryptionContext`).
+ */
+export type EncryptionWriteContext = { keyOwner: string; row?: any; plaintext?: boolean };
 
 /**
  * The transparent encrypt/decrypt seam, invoked by `RecordSerializer` on every write's
@@ -33,6 +38,7 @@ export class EncryptionRecordHooks {
   private encryptedColumns = new EncryptedColumns();
   private envelope = new EncryptionEnvelope();
   private tokenizer = new SearchTokenizer();
+  private leafCodec = new LeafEnvelopeCodec();
 
   /** Encrypt encrypted-column values in `serialized` (column-name-keyed) and add companions. */
   async onSerialize(table: Table<any>, serialized: SerializedRecord, context?: EncryptionWriteContext): Promise<void> {
@@ -50,14 +56,33 @@ export class EncryptionRecordHooks {
       const column = (table.columns as any)[prop];
       const config = this.encryptedColumns.configFor(table, prop)!;
       const value = serialized[column.name];
-      if (value === null) {
-        // Null stays null (IS NULL queries keep working); companions null out with it.
+      if (value === null || context?.plaintext) {
+        // Null stays null (IS NULL queries keep working); companions null out with it. The
+        // decrypt-out walk writes the value as it is (plaintext) and clears the companions.
         if (config.searchable === 'equality') {
           serialized[`${column.name}_enc_eq`] = null;
         }
         if (config.sortKey) {
           serialized[`${column.name}_enc_srt`] = null;
         }
+        continue;
+      }
+
+      if (config.leaves) {
+        // A leaf-encrypted JSON document: the column's own serialize step already produced the
+        // document object (arrays wrapped, see JsonColumn); the codec envelopes its content
+        // nodes under the row's policy and leaves the shape and facts as plaintext JSON.
+        if (typeof value !== 'object') {
+          throw new EncryptedColumnConfigError(
+            `(${table.name}.${prop}) a leaf-encrypted column must serialize to a JSON document (object or ` +
+              `array); got ${typeof value}. Declare encrypted.leaves on a JSON-typed column.`
+          );
+        }
+        if (!writeKey) {
+          writeKey = await this.writeKeyFor(table, prop, context);
+        }
+        const policy = await this.encryptedColumns.resolveLeafPolicy(table, prop, context?.row);
+        serialized[column.name] = this.leafCodec.encrypt(value, policy, writeKey);
         continue;
       }
 
@@ -69,14 +94,7 @@ export class EncryptionRecordHooks {
       }
 
       if (!writeKey) {
-        if (!context?.keyOwner) {
-          throw new EncryptedColumnConfigError(
-            `(${table.name}) A write touches encrypted column '${prop}' but no key owner was ` +
-              `resolved. Writes to encrypted columns must resolve the row's scope owner ` +
-              `(the row's 'scope' value, or DbEncryptionConfig.resolveKeyOwner).`
-          );
-        }
-        writeKey = await new DataKeyStore().getWriteKey(context.keyOwner);
+        writeKey = await this.writeKeyFor(table, prop, context);
       }
 
       serialized[column.name] = this.envelope.encrypt(value, writeKey);
@@ -92,28 +110,42 @@ export class EncryptionRecordHooks {
   /**
    * A copy of `serializedRecord` with framework companion columns dropped and every
    * envelope value decrypted (any column — self-describing ciphertext also covers the
-   * decrypt-out transition, where the config no longer marks the column).
+   * decrypt-out transition, where the config no longer marks the column). JSON documents are
+   * walked for leaf envelopes the same policy-free way: a row of an unknown or deleted type,
+   * a half-converged mixed row, and a row read by a build whose declaration flipped back all
+   * decrypt identically — the envelope names its key.
    */
   async onDeserialize(table: Table<any>, serializedRecord: SerializedRecord): Promise<SerializedRecord> {
     this.encryptedColumns.ensureSchema(table);
     const prepared: SerializedRecord = {};
     const internalColumnNames = this.internalColumnNames(table);
     let decrypted = false;
+    const keyStore = new DataKeyStore();
+    const keyFor = (owner: string, version: number) => {
+      this.assertServerSide();
+      return keyStore.getKeyByVersion(owner, version);
+    };
     for (const columnName of Object.keys(serializedRecord)) {
       if (internalColumnNames.has(columnName)) {
         continue;
       }
 
       const value = serializedRecord[columnName];
+      if (value !== null && typeof value === 'object') {
+        // A JSON document (leaf envelopes inside) — copy-on-hit: unchanged reference when clean.
+        const walked = await this.leafCodec.decrypt(value, keyFor);
+        prepared[columnName] = walked;
+        decrypted = decrypted || walked !== value;
+        continue;
+      }
+
       const parsed = this.envelope.parse(value);
       if (!parsed) {
         prepared[columnName] = value;
         continue;
       }
 
-      this.assertServerSide();
-      const key = await new DataKeyStore().getKeyByVersion(parsed.owner, parsed.version);
-      prepared[columnName] = this.envelope.decrypt(value as string, key);
+      prepared[columnName] = this.envelope.decrypt(value as string, await keyFor(parsed.owner, parsed.version));
       decrypted = true;
     }
 
@@ -153,6 +185,17 @@ export class EncryptionRecordHooks {
         `carries no 'scope' value and DbEncryptionConfig.resolveKeyOwner resolved nothing. ` +
         `Scoped tables get this automatically; other tables must supply resolveKeyOwner.`
     );
+  }
+
+  private async writeKeyFor(table: Table<any>, prop: string, context?: EncryptionWriteContext): Promise<DataKeyMaterial> {
+    if (!context?.keyOwner) {
+      throw new EncryptedColumnConfigError(
+        `(${table.name}) A write touches encrypted column '${prop}' but no key owner was ` +
+          `resolved. Writes to encrypted columns must resolve the row's scope owner ` +
+          `(the row's 'scope' value, or DbEncryptionConfig.resolveKeyOwner).`
+      );
+    }
+    return await new DataKeyStore().getWriteKey(context.keyOwner);
   }
 
   /** The record's value for the property whose physical column is named `scope`, if the table has one. */

@@ -47,9 +47,17 @@ export function withRecordColumns<T extends Record>(
 
 export type SerializedRecord = { [columnName: string]: any };
 
-/** Who a row being written belongs to — the data key its encrypted columns encrypt under
- *  (see `EncryptionRecordHooks`). Resolved by `Db` for writes touching encrypted columns. */
-export type RecordEncryptionContext = { keyOwner: string };
+/**
+ * Who a row being written belongs to — the data key its encrypted columns encrypt under (see
+ * `EncryptionRecordHooks`) — plus the ROW the write describes, property-keyed: the record being
+ * inserted, or (on an update) the stored row overlaid with the payload. Leaf policies resolve
+ * from it (a thought's `type` decides which paths are words), so an `update({ id, object })`
+ * that carries no `type` still lands under the row's own policy, never the default one.
+ * `plaintext: true` is the decrypt-out walk: values pass the seam unencrypted (companions and
+ * tokens cleared) regardless of the declaration — the rollback act runs on the live build.
+ * Resolved by `Db` for writes touching encrypted columns.
+ */
+export type RecordEncryptionContext = { keyOwner: string; row?: any; plaintext?: boolean };
 
 export class RecordSerializer<T extends Record> {
   private logger = new Logger({ name: this.constructor.name });
@@ -151,15 +159,6 @@ export class FieldSerializer<T extends Record> {
     const columns: { [prop: string]: Column<any, any> } = this.table.columns;
     let fieldPropertyName = columnName;
     let column: Column<any, any> | undefined = columns[columnName]; // the scenario that the column name is the same as the property name
-    if (column && column.name !== columnName) {
-      // The row key matches a PROPERTY whose physical column is named differently — e.g. a
-      // retired physical column still present in the database next to its renamed successor
-      // (the encryption rollout's `object` JSON → `object_enc` move). The value under this
-      // key belongs to whichever declared column actually CARRIES this name (the scan
-      // below), never to the same-named property — claiming it there would clobber the real
-      // column's value with the retired column's stale bytes.
-      column = undefined;
-    }
     if (!column) {
       for (const columnPropertyName in columns) {
         const checkColumn = (this.table.columns as any)[columnPropertyName];

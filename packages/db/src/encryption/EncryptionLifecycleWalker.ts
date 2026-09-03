@@ -1,19 +1,28 @@
 import { QueryBuilder } from '@proteinjs/db-query';
 import { Logger } from '@proteinjs/logger';
 import type { Table } from '../Table';
+import { FieldSerializer } from '../Record';
 import { EncryptedColumns } from './EncryptedColumns';
 import { EncryptionEnvelope } from './EncryptionEnvelope';
 import { DataKeyStore } from './DataKeyStore';
+import { LeafEnvelopeCodec } from './LeafEnvelopeCodec';
+import { ALL_STRINGS_CONTENT, LeafPolicy } from './LeafPolicy';
 
 /**
  * The config-lifecycle transitions, all riding this one walker:
  * - `encrypt` — plaintext → `encrypted: {...}` adoption: rewrite rows whose stored value is
- *   not yet an envelope (also how the initial adoption wave lands).
+ *   not yet an envelope (also how the initial adoption wave lands). For a leaf-encrypted JSON
+ *   column: rows with any CONTENT node still plaintext, or any envelope at a path the current
+ *   policy calls metadata — the rewrite converges the document on the current policy in both
+ *   directions (a declared policy change is the reviewed act; the walk merely lands it).
  * - `retokenize` — a `searchable`/`sortKey` capability added later: rewrite every non-null
  *   value so the write seam derives the new companions/tokens.
- * - `decrypt` — `encrypted` → `false` (a deliberate, reviewed reclassification): rewrite
- *   rows whose stored value is still an envelope; pass the affected columns explicitly
- *   (the config no longer marks them). Stale token rows are swept.
+ * - `decrypt` — `encrypted` → `false` (a deliberate, reviewed reclassification; the encryption
+ *   rollback act): rewrite rows whose stored value still carries an envelope (any leaf, for JSON
+ *   columns), writing PLAINTEXT through the seam regardless of the live declaration
+ *   (`Db.asDecryptOut`) — so the walk cannot re-encrypt behind itself on the live build. Pass
+ *   the affected columns explicitly (a flipped config no longer marks them). Stale token rows
+ *   are swept.
  * - `rotate-keys` — after `DataKeyStore.rotateKey`: rewrite rows whose envelope names an
  *   older version (plaintext stragglers are encrypted too), then the caller retires the old
  *   version.
@@ -23,6 +32,8 @@ export type EncryptionWalkMode = 'encrypt' | 'retokenize' | 'decrypt' | 'rotate-
 export interface EncryptionWalkSummary {
   scanned: number;
   rewritten: number;
+  /** Rows whose rewrite lost the race to a concurrent save (re-read and rewritten, or converged by that save). */
+  contended: number;
 }
 
 export interface EncryptionWalkOptions {
@@ -47,16 +58,29 @@ export interface EncryptionWalkOptions {
  * search tokens all derive exactly as a live write would).
  *
  * Idempotent and resumable by construction: pending-ness is detected from the stored value
- * itself (envelope or not, version current or not), so a re-run — after a crash, or just to
- * be sure — skips completed rows and continues. Rows written by live traffic mid-walk are
- * already in the new shape and skip too. Run it from a `Migration.run()` for deploy-coupled
- * transitions.
+ * itself (envelope or not, version current or not; for a JSON column, per leaf against the
+ * row's own policy), so a re-run — after a crash, or just to be sure — skips completed rows
+ * and continues. Rows written by live traffic mid-walk are already in the new shape and skip
+ * too. Run it from a `Migration.run()` for deploy-coupled transitions.
+ *
+ * THE READ-MODIFY-WRITE RULE (ENCRYPTED_THOUGHT_OBJECT §8 C4): each row's rewrite is one
+ * read-write transaction — the read inside it, the write after — so a save that lands between
+ * the two aborts the walker's commit (Spanner's serializable transactions), the driver retries
+ * the transaction, and the retry re-reads the SAVED body. A non-transactional get→update would
+ * overwrite the save with the walker's stale copy and report success — the data-loss class the
+ * E1′ pin guards.
  */
 export class EncryptionLifecycleWalker {
   private static readonly DEFAULT_WINDOW_SIZE = 200;
   private logger = new Logger({ name: this.constructor.name });
   private encryptedColumns = new EncryptedColumns();
   private envelope = new EncryptionEnvelope();
+  private leafCodec = new LeafEnvelopeCodec();
+  /**
+   * Test seam (typed-cast access only): runs inside the rewrite transaction after the row was
+   * read and before it is written — where a concurrent save would land. Never set in product code.
+   */
+  private interposeBeforeRewrite?: (id: string) => Promise<void>;
 
   async walkTable(
     table: Table<any>,
@@ -71,19 +95,29 @@ export class EncryptionLifecycleWalker {
     // rewrite by definition: `updated` stays as found and the content-derived watchers
     // (recency, mirrors, change notifications) stay silent, while encryption, companions, and
     // tokens re-derive exactly as a live write would. See ContentPreservingRewrite.
-    const db = (options.db ?? getDbAsSystem()).asContentPreservingRewrite();
+    let db = (options.db ?? getDbAsSystem()).asContentPreservingRewrite();
+    if (mode === 'decrypt') {
+      db = db.asDecryptOut();
+    }
     const windowSize = options.windowSize ?? EncryptionLifecycleWalker.DEFAULT_WINDOW_SIZE;
     const columnNames = props.map((prop) => ({
       prop,
       columnName: ((table.columns as any)[prop] as { name: string }).name,
     }));
+    // Leaf policies resolve from the row's discriminator (a thought's `type`): select what the
+    // sources read beside the walked columns so pending-ness is decided under the row's policy.
+    const leafProps = new Set(this.encryptedColumns.leafProps(table));
+    const dependencyProps = this.encryptedColumns
+      .leafPolicyDependencies(table)
+      .filter((prop) => !props.includes(prop) && prop !== 'id')
+      .map((prop) => ({ prop, columnName: ((table.columns as any)[prop] as { name: string }).name }));
     const activeVersionByOwner = new Map<string, number>();
 
-    const summary: EncryptionWalkSummary = { scanned: 0, rewritten: 0 };
+    const summary: EncryptionWalkSummary = { scanned: 0, rewritten: 0, contended: 0 };
     let cursor = options.startAfterId;
     // eslint-disable-next-line no-constant-condition
     while (true) {
-      const rawRows = await this.rawWindow(table, dbDriver, columnNames, cursor, windowSize);
+      const rawRows = await this.rawWindow(table, dbDriver, [...columnNames, ...dependencyProps], cursor, windowSize);
       if (rawRows.length === 0) {
         break;
       }
@@ -91,8 +125,19 @@ export class EncryptionLifecycleWalker {
       for (const rawRow of rawRows) {
         summary.scanned++;
         const pendingProps: string[] = [];
+        let policyRow: any | undefined;
         for (const { prop, columnName } of columnNames) {
-          if (await this.isPending(mode, rawRow[columnName], activeVersionByOwner)) {
+          let pending: boolean;
+          if (leafProps.has(prop)) {
+            // The walked columns themselves ride along: a document's own discriminator (a composite's
+            // inner type id) is a plaintext key the policy reads.
+            policyRow = policyRow ?? (await this.policyRow(table, rawRow, [...columnNames, ...dependencyProps]));
+            const policy = await this.encryptedColumns.resolveLeafPolicy(table, prop, policyRow);
+            pending = await this.isLeafPending(mode, rawRow[columnName], policy, activeVersionByOwner);
+          } else {
+            pending = await this.isPending(mode, rawRow[columnName], activeVersionByOwner);
+          }
+          if (pending) {
             pendingProps.push(prop);
           }
         }
@@ -101,8 +146,12 @@ export class EncryptionLifecycleWalker {
           continue;
         }
 
-        await this.rewriteRow(table, db, rawRow['id'], pendingProps);
-        summary.rewritten++;
+        const outcome = await this.rewriteRow(table, db, rawRow['id'], pendingProps);
+        if (outcome === 'rewritten') {
+          summary.rewritten++;
+        } else if (outcome === 'contended') {
+          summary.contended++;
+        }
       }
 
       cursor = rawRows[rawRows.length - 1]['id'];
@@ -135,6 +184,29 @@ export class EncryptionLifecycleWalker {
       return false;
     }
 
+    if (typeof rawValue === 'object') {
+      // A JSON document on a column that no longer declares `leaves` (the flipped-build
+      // rollback path): its stored envelopes still count — decrypt-out and rotation walk them;
+      // nothing adopts (no policy says any of it is words).
+      const audit = this.leafCodec.audit(rawValue, ALL_STRINGS_CONTENT);
+      switch (mode) {
+        case 'encrypt':
+          return false;
+        case 'retokenize':
+          return true;
+        case 'decrypt':
+          return audit.envelopes.length > 0;
+        case 'rotate-keys': {
+          for (const { owner, version } of audit.envelopes) {
+            if (version < (await this.activeVersion(owner, activeVersionByOwner))) {
+              return true;
+            }
+          }
+          return false;
+        }
+      }
+    }
+
     const parsed = this.envelope.parse(rawValue);
     switch (mode) {
       case 'encrypt':
@@ -147,44 +219,117 @@ export class EncryptionLifecycleWalker {
         if (!parsed) {
           return true; // plaintext straggler — encrypt under the current key
         }
-        let activeVersion = activeVersionByOwner.get(parsed.owner);
-        if (typeof activeVersion === 'undefined') {
-          activeVersion = (await new DataKeyStore().getWriteKey(parsed.owner)).version;
-          activeVersionByOwner.set(parsed.owner, activeVersion);
-        }
-        return parsed.version < activeVersion;
+        return parsed.version < (await this.activeVersion(parsed.owner, activeVersionByOwner));
       }
     }
   }
 
+  /** Per-leaf pending-ness of a stored JSON document against the row's current policy. */
+  private async isLeafPending(
+    mode: EncryptionWalkMode,
+    rawValue: any,
+    policy: LeafPolicy,
+    activeVersionByOwner: Map<string, number>
+  ): Promise<boolean> {
+    if (rawValue === null || typeof rawValue === 'undefined') {
+      return false;
+    }
+    if (typeof rawValue === 'string') {
+      // A JSON column the driver handed back as text — parse before auditing.
+      try {
+        rawValue = JSON.parse(rawValue);
+      } catch {
+        return false;
+      }
+    }
+
+    const audit = this.leafCodec.audit(rawValue, policy);
+    switch (mode) {
+      case 'encrypt':
+        return audit.plaintextContent.length > 0 || audit.envelopedMetadata.length > 0;
+      case 'retokenize':
+        return true;
+      case 'decrypt':
+        return audit.envelopes.length > 0;
+      case 'rotate-keys': {
+        if (audit.plaintextContent.length > 0) {
+          return true;
+        }
+        for (const { owner, version } of audit.envelopes) {
+          if (version < (await this.activeVersion(owner, activeVersionByOwner))) {
+            return true;
+          }
+        }
+        return false;
+      }
+    }
+  }
+
+  private async activeVersion(owner: string, activeVersionByOwner: Map<string, number>): Promise<number> {
+    let activeVersion = activeVersionByOwner.get(owner);
+    if (typeof activeVersion === 'undefined') {
+      activeVersion = (await new DataKeyStore().getWriteKey(owner)).version;
+      activeVersionByOwner.set(owner, activeVersion);
+    }
+    return activeVersion;
+  }
+
+  /** The property-keyed row a leaf policy source resolves from (the raw dependency columns, deserialized). */
+  private async policyRow(
+    table: Table<any>,
+    rawRow: any,
+    dependencyProps: { prop: string; columnName: string }[]
+  ): Promise<any> {
+    const fieldSerializer = new FieldSerializer(table);
+    const row: any = { id: rawRow['id'] };
+    for (const { columnName } of dependencyProps) {
+      if (typeof rawRow[columnName] === 'undefined') {
+        continue;
+      }
+      const { fieldPropertyName, fieldValue } = await fieldSerializer.deserialize(columnName, rawRow[columnName], rawRow);
+      row[fieldPropertyName] = fieldValue;
+    }
+    return row;
+  }
+
   /**
-   * Rewrite one row through the normal seam: read it (the deserialize hook decrypts — or
-   * passes plaintext through, the adoption path), write the pending columns back (the
-   * serialize hook re-derives ciphertext, companions, and tokens under the current config).
+   * Rewrite one row through the normal seam inside ONE read-write transaction: read it (the
+   * deserialize hook decrypts — or passes plaintext through, the adoption path), write the
+   * pending columns back (the serialize hook re-derives ciphertext, companions, and tokens
+   * under the current config). A save landing between the read and the write aborts the commit;
+   * the driver re-runs the transaction against the saved row (see the class doc).
    */
   private async rewriteRow(
     table: Table<any>,
     db: import('../Db').Db<any>,
     id: string,
     pendingProps: string[]
-  ): Promise<void> {
-    const row = await db.get(table, { id });
-    if (!row) {
-      return; // deleted mid-walk
-    }
-
-    const payload: any = { id };
-    for (const prop of pendingProps) {
-      if (typeof row[prop] !== 'undefined') {
-        payload[prop] = row[prop];
+  ): Promise<'rewritten' | 'skipped' | 'contended'> {
+    let attempts = 0;
+    return await db.runTransaction(async () => {
+      attempts++;
+      const row = await db.get(table, { id });
+      if (!row) {
+        return 'skipped'; // deleted mid-walk
       }
-    }
 
-    if (Object.keys(payload).length === 1) {
-      return;
-    }
+      const payload: any = { id };
+      for (const prop of pendingProps) {
+        if (typeof row[prop] !== 'undefined') {
+          payload[prop] = row[prop];
+        }
+      }
 
-    await db.update(table, payload);
+      if (Object.keys(payload).length === 1) {
+        return 'skipped';
+      }
+
+      if (this.interposeBeforeRewrite) {
+        await this.interposeBeforeRewrite(id);
+      }
+      await db.update(table, payload);
+      return attempts > 1 ? 'contended' : 'rewritten';
+    });
   }
 
   /** Raw (un-deserialized) id-ordered window — pending-ness must see stored bytes, not decrypted values. */
