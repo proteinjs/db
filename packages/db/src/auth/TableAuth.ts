@@ -67,27 +67,19 @@ export class TableAuth {
     }
   }
 
-  private canAccess(
-    table: Table<any>,
-    api: 'db' | 'service',
-    operation: 'query' | 'insert' | 'update' | 'delete'
-  ): boolean {
-    const tableAuth = table.auth ? table.auth[api] : undefined;
-    if (!tableAuth || Object.keys(tableAuth).length == 0) {
-      return UserAuth.hasRole('admin');
+  /**
+   * Non-throwing read of ONE declared identity against the CURRENT user — the same grammar the
+   * table doors speak (`'public' | 'authenticated' | roles[] | { permission }`), for declared
+   * UI affordances that carry their own grant (a record form's declared panels, `Table.auth.ui`).
+   * An UNDECLARED identity is the default-deny made explicit: admin only. Fails closed (false)
+   * when no user can be resolved, like `canPerform`.
+   */
+  identityAllows(identity: Identity | undefined): boolean {
+    try {
+      return identity === undefined ? UserAuth.hasRole('admin') : this.allows(identity);
+    } catch {
+      return false;
     }
-
-    return (
-      tableAuth.all === 'public' ||
-      tableAuth[operation] === 'public' ||
-      (tableAuth.all === 'authenticated' && UserAuth.isLoggedIn()) ||
-      (tableAuth[operation] === 'authenticated' && UserAuth.isLoggedIn()) ||
-      (Array.isArray(tableAuth.all) && UserAuth.hasRoles(tableAuth.all, 'at least one')) ||
-      (Array.isArray(tableAuth[operation]) && UserAuth.hasRoles(tableAuth[operation] as string[], 'at least one')) ||
-      (isPermissionIdentity(tableAuth.all) && UserAuth.hasPermission(tableAuth.all.permission)) ||
-      (isPermissionIdentity(tableAuth[operation]) &&
-        UserAuth.hasPermission((tableAuth[operation] as PermissionIdentity).permission))
-    );
   }
 
   canQuery(table: Table<any>, api: 'db' | 'service' = 'db'): void {
@@ -112,5 +104,38 @@ export class TableAuth {
     if (!this.canAccess(table, api, 'delete')) {
       throw new TableAuthError(`User is not authorized to delete records from table: ${table.name}`);
     }
+  }
+
+  private canAccess(
+    table: Table<any>,
+    api: 'db' | 'service',
+    operation: 'query' | 'insert' | 'update' | 'delete'
+  ): boolean {
+    const tableAuth = table.auth ? table.auth[api] : undefined;
+    if (!tableAuth || Object.keys(tableAuth).length == 0) {
+      return UserAuth.hasRole('admin');
+    }
+
+    // Within a declared block an undeclared operation stays closed to everyone (the block is
+    // the whole declaration) — `allows` reads undefined as false, so the two doors are exactly
+    // the ones the table wrote down.
+    return this.allows(tableAuth.all) || this.allows(tableAuth[operation]);
+  }
+
+  /** One identity against the current user; undefined (nothing declared) is not a grant. */
+  private allows(identity: Identity | undefined): boolean {
+    if (identity === 'public') {
+      return true;
+    }
+    if (identity === 'authenticated') {
+      return UserAuth.isLoggedIn();
+    }
+    if (Array.isArray(identity)) {
+      return UserAuth.hasRoles(identity, 'at least one');
+    }
+    if (isPermissionIdentity(identity)) {
+      return UserAuth.hasPermission(identity.permission);
+    }
+    return false;
   }
 }

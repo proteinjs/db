@@ -9,3 +9,5 @@ export * from './src/pages/RecordFormPage';
 export * from './src/pages/TablesPage';
 export * from './src/tableDisplayName';
 export * from './src/pages/adminScrollAffordances';
+export * from './src/panel/RecordPanel';
+export * from './src/panel/RecordSurface';

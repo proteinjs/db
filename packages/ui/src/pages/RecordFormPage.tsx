@@ -2,6 +2,8 @@ import React from 'react';
 import { FormPage, Page, PageComponentProps, useFormFactor } from '@proteinjs/ui';
 import { getDbService, tableByName } from '@proteinjs/db';
 import { RecordForm } from '../form/RecordForm';
+import { getRecordPanels, RecordPanel } from '../panel/RecordPanel';
+import { RecordSurface } from '../panel/RecordSurface';
 import { Box, Theme, SxProps, Typography } from '@mui/material';
 
 export const recordFormPage: Page = {
@@ -17,31 +19,7 @@ export const recordFormPage: Page = {
       backgroundColor: theme.palette.background.default,
     };
   },
-  component: ({ ...props }) => <RecordFormPageLayout {...props} />,
-};
-
-/**
- * Phone (founder ruling 2026-08-31): the form takes the FULL mobile view under the shell's
- * chrome — no FormPage card, no page gutters; the page column scrolls the form itself. The
- * form keeps its own content inset (the card's inset was the only thing keeping fields off
- * the glass). Desktop keeps the house FormPage card.
- */
-const RecordFormPageLayout = ({ ...props }: PageComponentProps) => {
-  const { isPhone } = useFormFactor();
-
-  if (isPhone) {
-    return (
-      <Box data-phone-fullbleed sx={{ flexGrow: 1, minHeight: 0, width: '100%', overflow: 'auto', padding: 2 }}>
-        <DynamicRecordForm {...props} />
-      </Box>
-    );
-  }
-
-  return (
-    <FormPage>
-      <DynamicRecordForm {...props} />
-    </FormPage>
-  );
+  component: ({ ...props }) => <DynamicRecordForm {...props} />,
 };
 
 export const recordFormLink = (tableName: string, recordId: string) => {
@@ -52,37 +30,81 @@ export const newRecordFormLink = (tableName: string) => {
   return `/${recordFormPage.path}?table=${tableName}`;
 };
 
+/**
+ * The record page: ONE loader for the record and its declared panels (`RecordPanel`), one paint.
+ *
+ * Shell — phone (founder ruling 2026-08-31): the form takes the FULL mobile view under the
+ * shell's chrome — no FormPage card, no page gutters; the page column scrolls the form itself.
+ * The form keeps its own content inset (the card's inset was the only thing keeping fields off
+ * the glass). Desktop keeps the house FormPage card. With panels declared for the current user,
+ * the shell is `RecordSurface` (form + panels, placement derived from the viewport); without
+ * panels this page renders exactly as it did before panels existed.
+ */
 const DynamicRecordForm = ({ urlParams }: PageComponentProps) => {
   const recordId = urlParams['record'];
-  const [record, setRecord] = React.useState();
+  const { isPhone } = useFormFactor();
+  const [record, setRecord] = React.useState<any>();
+  const [panels, setPanels] = React.useState<RecordPanel[]>([]);
+  const [panelData, setPanelData] = React.useState<{ [panelName: string]: unknown }>({});
   /**
    * The form renders differently for a new record than for an existing one (RecordFormCustomization
    * keys its buttons and fields off `record`), so an existing record must not be rendered until it
    * has loaded — otherwise the form briefly shows the create surface for a record that already
-   * exists. New-record forms have nothing to wait for and start loaded.
+   * exists. New-record forms have nothing to wait for and start loaded. The same gate holds the
+   * panels: the page paints the form and every panel's first-paint data TOGETHER, never a panel
+   * arriving beside an already-painted form.
    */
   const [recordLoaded, setRecordLoaded] = React.useState(!recordId);
   const [loadError, setLoadError] = React.useState<string>();
 
-  React.useEffect(() => {
-    const fetchData = async () => {
-      const { table } = getTable();
-      if (!table || !recordId) {
-        return;
-      }
+  /**
+   * The one loader: the record, then every visible panel's `load(record)`. `reload` (handed to
+   * the panels) re-runs it — the record is refreshed IN PLACE (the form keeps its record
+   * identity, exactly like a field renderer's reload) and every panel's data is re-read.
+   */
+  const load = async () => {
+    const { table } = getTable();
+    if (!table || !recordId) {
+      return;
+    }
 
-      setRecordLoaded(false);
-      setLoadError(undefined);
-      try {
-        const fetchedRecord = await getDbService().get(table, { id: recordId });
+    setRecordLoaded(false);
+    setLoadError(undefined);
+    try {
+      const fetchedRecord = await getDbService().get(table, { id: recordId });
+      const declared = fetchedRecord ? getRecordPanels(table.name) : [];
+      const loaded = await Promise.all(
+        declared.map(async (panel) => {
+          try {
+            return { panel, data: await panel.load(fetchedRecord) };
+          } catch (error) {
+            // A panel that cannot load its first-paint data does not paint — no spinner, no
+            // half-panel beside a working form. Loud in the console, never a blank page.
+            console.error(`Record panel '${panel.name}' failed to load and will not render`, error);
+            return undefined;
+          }
+        })
+      );
+      const visible = loaded.filter((entry): entry is { panel: RecordPanel; data: unknown } => !!entry);
+      if (record && fetchedRecord) {
+        Object.assign(record, fetchedRecord);
+      } else {
         setRecord(fetchedRecord);
-      } catch {
-        setLoadError(`Unable to load ${table.name} record: ${recordId}`);
       }
-      setRecordLoaded(true);
-    };
+      setPanels(visible.map((entry) => entry.panel));
+      const data: { [panelName: string]: unknown } = {};
+      for (const entry of visible) {
+        data[entry.panel.name] = entry.data;
+      }
+      setPanelData(data);
+    } catch {
+      setLoadError(`Unable to load ${table.name} record: ${recordId}`);
+    }
+    setRecordLoaded(true);
+  };
 
-    fetchData();
+  React.useEffect(() => {
+    load();
   }, [urlParams.table, urlParams.record]);
 
   function getTable() {
@@ -129,5 +151,31 @@ const DynamicRecordForm = ({ urlParams }: PageComponentProps) => {
     return <RecordForm table={table} record={record} />;
   }
 
-  return <Form />;
+  const { table } = getTable();
+  // Panels are declared per table and gated per viewer — known before the load resolves, so a
+  // page that will paint the pair never first paints the lone form card in the pair's place.
+  const declaresPanels = !!table && !!recordId && getRecordPanels(table.name).length > 0;
+  if (declaresPanels && !loadError) {
+    if (!recordLoaded) {
+      return null;
+    }
+
+    if (record && panels.length > 0) {
+      return <RecordSurface table={table} record={record} panels={panels} panelData={panelData} reload={load} />;
+    }
+  }
+
+  if (isPhone) {
+    return (
+      <Box data-phone-fullbleed sx={{ flexGrow: 1, minHeight: 0, width: '100%', overflow: 'auto', padding: 2 }}>
+        <Form />
+      </Box>
+    );
+  }
+
+  return (
+    <FormPage>
+      <Form />
+    </FormPage>
+  );
 };
