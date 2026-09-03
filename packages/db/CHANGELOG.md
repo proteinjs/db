@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.45.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.44.0...@proteinjs/db@1.45.0) (2026-09-03)
+
+
+### Features
+
+* **db-ui:** declared record-form panels — RecordPanel + the one-loader record page (plans/USAGE_SURFACES.md §B.1, US-1/US-2) ([dc72f63](https://github.com/proteinjs/db/commit/dc72f63ea25296ebaec22f9b06ed10b88c932b11))
+
+
+
+
+
 # [1.44.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.43.0...@proteinjs/db@1.44.0) (2026-09-02)
 
 
