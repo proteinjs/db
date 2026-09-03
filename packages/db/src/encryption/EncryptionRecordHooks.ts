@@ -28,6 +28,8 @@ export type EncryptionWriteContext = { keyOwner: string };
  * through `DbService` and receives decrypted values over the authenticated service.
  */
 export class EncryptionRecordHooks {
+  /** The framework's scope column name — the key-owner fallback resolves the row's scope by this NAME (see resolveKeyOwnerForWrite). */
+  private static readonly SCOPE_COLUMN_NAME = 'scope';
   private encryptedColumns = new EncryptedColumns();
   private envelope = new EncryptionEnvelope();
   private tokenizer = new SearchTokenizer();
@@ -121,8 +123,16 @@ export class EncryptionRecordHooks {
   /**
    * The key owner for a row being written — its permission-source scope owner:
    * `DbEncryptionConfig.resolveKeyOwner` when the deployment supplies one (richer sharing
-   * models map scope→owner there), else the row's `scope` column value (the framework's
+   * models map scope→owner there), else the row's `scope` COLUMN value (the framework's
    * scope columns hold the owning user's id).
+   *
+   * The fallback is keyed by the physical column NAME, not the property name: a table may
+   * expose its `scope` column under another property (thought's `_scope` — the creator stamp
+   * every pre-sharing root carries). Keying on the property silently made the fallback dead
+   * for exactly those rows, so a root whose owner grant was never minted (pre-sharing-era
+   * roots, sessionless creations) refused every encrypted write and aborted the adoption
+   * backfill at the first such row. The scope column IS the owner for every such root; the
+   * app-level owner-grant census reports them so they are ruled on, never guessed at silently.
    */
   async resolveKeyOwnerForWrite(table: Table<any>, record: any): Promise<string> {
     const config = getDbEncryptionConfig();
@@ -133,8 +143,9 @@ export class EncryptionRecordHooks {
       }
     }
 
-    if (typeof record.scope === 'string' && record.scope.length > 0) {
-      return record.scope;
+    const scope = this.scopeColumnValue(table, record);
+    if (typeof scope === 'string' && scope.length > 0) {
+      return scope;
     }
 
     throw new EncryptedColumnConfigError(
@@ -142,6 +153,17 @@ export class EncryptionRecordHooks {
         `carries no 'scope' value and DbEncryptionConfig.resolveKeyOwner resolved nothing. ` +
         `Scoped tables get this automatically; other tables must supply resolveKeyOwner.`
     );
+  }
+
+  /** The record's value for the property whose physical column is named `scope`, if the table has one. */
+  private scopeColumnValue(table: Table<any>, record: any): unknown {
+    for (const prop of Object.keys(table.columns)) {
+      const column = (table.columns as any)[prop] as { name?: string } | undefined;
+      if (column?.name === EncryptionRecordHooks.SCOPE_COLUMN_NAME) {
+        return record?.[prop];
+      }
+    }
+    return undefined;
   }
 
   private internalColumnNames(table: Table<any>): Set<string> {

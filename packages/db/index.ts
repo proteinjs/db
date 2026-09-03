@@ -10,6 +10,7 @@ export * from './src/reference/ReferenceArray';
 export * from './src/reference/ArrayMembershipOps';
 export * from './src/reference/Reference';
 export * from './src/UpdatePreserving';
+export * from './src/ContentPreservingRewrite';
 export * from './src/reference/ReferenceCache';
 export * from './src/RecordIterator';
 export * from './src/CursorWindowPager';

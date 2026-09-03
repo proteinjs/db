@@ -32,6 +32,7 @@ import { ReferenceArray } from './reference/ReferenceArray';
 import { ReferenceCache } from './reference/ReferenceCache';
 import { ArrayMembershipUpdate, applyArrayMembershipOps } from './reference/ArrayMembershipOps';
 import { PreservedPath, overlayPreservedPaths } from './UpdatePreserving';
+import { markContentPreservingRewrite } from './ContentPreservingRewrite';
 
 /** get `Db` if on server, and `DbService` if on browser */
 export const getDb = <R extends Record = Record>() =>
@@ -101,6 +102,8 @@ export class Db<R extends Record = Record> implements DbService<R> {
   private auth = new TableAuth();
   private tableWatcherRunner = new TableWatcherRunner<R>();
   private transactionContextFactory: DefaultTransactionContextFactory;
+  /** See {@link asContentPreservingRewrite}. Instance state, never ambient: it rides only the Db that opted in. */
+  private contentPreservingRewrite = false;
   public serviceMetadata: Service['serviceMetadata'] = {
     auth: {
       canAccess: (methodName, args) => new TableServiceAuth().canAccess(methodName, args),
@@ -174,6 +177,29 @@ export class Db<R extends Record = Record> implements DbService<R> {
 
   async tableExists<T extends R>(table: Table<T>): Promise<boolean> {
     return await this.dbDriver.getTableManager().tableExists(table);
+  }
+
+  /**
+   * A SYSTEM Db whose updates are CONTENT-PRESERVING REWRITES (see `ContentPreservingRewrite`):
+   * the stored bytes change — an envelope adopted, a key version rotated, a legacy column copied
+   * into its successor — but the record's content does not, so nothing content-derived may move.
+   * Two halves, one owner:
+   * - the db layer keeps the record's `updated` stamp exactly as found (a caller-supplied
+   *   `updated` still lands — the rewrite chose it);
+   * - every update payload is marked, so table watchers that turn content writes into recency
+   *   bumps, mirror updates, and change notifications return early
+   *   (`isContentPreservingRewrite`).
+   * Everything else — encryption, companions, search tokens, cascades — runs exactly as a live
+   * write: that is what a rewrite exists to re-derive. System-only by construction: rewrites are
+   * framework/migration machinery, never a caller-path write.
+   */
+  asContentPreservingRewrite(): Db<R> {
+    if (!this.runAsSystem) {
+      throw new Error(`Content-preserving rewrites run as system only (getDbAsSystem().asContentPreservingRewrite()).`);
+    }
+    const db = new Db<R>(this.dbDriver, this.getTable, this.transactionContextFactory, true);
+    db.contentPreservingRewrite = true;
+    return db;
   }
 
   async get<T extends R>(table: Table<T>, query: Query<T>, options?: QueryOptions<T>): Promise<T> {
@@ -288,6 +314,18 @@ export class Db<R extends Record = Record> implements DbService<R> {
       }
     }
     await addUpdateFieldValues(table, recordCopy);
+    if (this.contentPreservingRewrite) {
+      // The content did not change, so "last changed" must not either: drop the auto-stamped
+      // `updated` unless the rewrite supplied one itself (see asContentPreservingRewrite). The
+      // other update-time values (a dynamic reference's table name) stay — they derive from the
+      // payload, not from the clock.
+      if ((record as any).updated === undefined) {
+        delete (recordCopy as any).updated;
+      }
+      // Marked BEFORE the watchers run: the same payload object chains through every
+      // beforeUpdate/afterUpdate watcher, which is where the mark is read.
+      markContentPreservingRewrite(recordCopy);
+    }
     const qb = new QueryBuilderFactory().getQueryBuilder(table, query);
     await this.addColumnQueries(table, qb, 'write');
     if (!query) {

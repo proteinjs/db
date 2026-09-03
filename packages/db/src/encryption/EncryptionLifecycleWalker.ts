@@ -67,7 +67,11 @@ export class EncryptionLifecycleWalker {
     const props = this.resolveProps(table, mode, options);
     const { Db, getDbAsSystem } = await import('../Db');
     const dbDriver = options.dbDriver ?? Db.getDefaultDbDriver();
-    const db = options.db ?? getDbAsSystem();
+    // Every mode rewrites how rows are STORED, never what they say — a content-preserving
+    // rewrite by definition: `updated` stays as found and the content-derived watchers
+    // (recency, mirrors, change notifications) stay silent, while encryption, companions, and
+    // tokens re-derive exactly as a live write would. See ContentPreservingRewrite.
+    const db = (options.db ?? getDbAsSystem()).asContentPreservingRewrite();
     const windowSize = options.windowSize ?? EncryptionLifecycleWalker.DEFAULT_WINDOW_SIZE;
     const columnNames = props.map((prop) => ({
       prop,
