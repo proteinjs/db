@@ -30,6 +30,7 @@ import {
 } from '@proteinjs/db';
 import { recordTableLink } from '../pages/RecordTablePage';
 import { recordFormLink } from '../pages/RecordFormPage';
+import { isStructuredValue } from '../structuredValue';
 import { getRecordFormCustomization, RecordFormFieldRenderer } from './RecordFormCustomization';
 
 export type RecordFormProps<T extends Record> = {
@@ -218,6 +219,23 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
   }
 
   /**
+   * A field that holds STRUCTURE — by the column's class (Object/Array; never a reference
+   * array, whose storage is a MAX string but whose face is ids) or by the loaded VALUE's shape
+   * (a driver's JSON column the registry types outside @proteinjs/db, a blob it deserializes —
+   * founder, R7 round 3: such a value rendered as `[object Object]` in a single-line input).
+   * ONE predicate for every seat the shape decides: the control (the mono JSON multiline, with
+   * the field's own preview + Open door over the inline bound), the section (Content), the
+   * full-width row, the pretty-printed load, and the JSON.parse round trip on save.
+   */
+  function isStructuredField(columnPropertyName: string, column: Column<T, any> | undefined) {
+    if (column && (isInstanceOf(column, ObjectColumn) || isInstanceOf(column, ArrayColumn))) {
+      return !isInstanceOf(column, ReferenceArrayColumn);
+    }
+    const value = record ? (record as any)[columnPropertyName] : undefined;
+    return isStructuredValue(value) && !isReferenceValue(value) && !isReferenceArrayValue(value);
+  }
+
+  /**
    * A customization's component for the field, if it declared one. Only existing records have
    * stored state to present, so the new-record form never consults renderers (see
    * `RecordFormCustomization.getFieldRenderer`).
@@ -301,8 +319,8 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
     }
 
     // Structured values edit as pretty-printed JSON in a mono multiline (loaded/saved through
-    // onLoad/getFieldValue).
-    if (isInstanceOf(column, ObjectColumn) || isInstanceOf(column, ArrayColumn)) {
+    // onLoad/getFieldValue) — by column class OR by the loaded value's shape (isStructuredField).
+    if (isStructuredField(name, column)) {
       return textField({ name, label, description: 'JSON', multiline: true, monospace: true });
     }
 
@@ -370,12 +388,7 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
       return 'identity';
     }
 
-    if (
-      column &&
-      (isLongTextColumn(column) ||
-        ((isInstanceOf(column, ObjectColumn) || isInstanceOf(column, ArrayColumn)) &&
-          !isInstanceOf(column, ReferenceArrayColumn)))
-    ) {
+    if (column && (isLongTextColumn(column) || isStructuredField(columnPropertyName, column))) {
       return 'content';
     }
 
@@ -419,9 +432,7 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
         const isMultiline =
           !isReadonlyField(columnPropertyName, column) &&
           !getFieldRenderer(columnPropertyName) &&
-          (isLongTextColumn(column) ||
-            ((isInstanceOf(column, ObjectColumn) || isInstanceOf(column, ArrayColumn)) &&
-              !isInstanceOf(column, ReferenceArrayColumn)));
+          (isLongTextColumn(column) || isStructuredField(columnPropertyName, column));
         // The record's address wants its own line — a uuid halved into a two-column row wraps.
         const isSoloValue = isMultiline || columnPropertyName === 'id';
         if (isSoloValue) {
@@ -525,10 +536,7 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
 
     // Structured columns round-trip through the JSON the multiline field presents; a paste
     // that isn't JSON fails the save with a message naming the field, not a driver error.
-    if (
-      (isInstanceOf(column, ObjectColumn) || isInstanceOf(column, ArrayColumn)) &&
-      !isInstanceOf(column, ReferenceArrayColumn)
-    ) {
+    if (isStructuredField(columnPropertyName, column)) {
       if (typeof fieldValue !== 'string' || !fieldValue.trim()) {
         return null;
       }
@@ -689,8 +697,7 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
         field.description = fieldValue.fromNow();
         fieldValue = fieldValue.format('MMM D, YYYY, h:mm A');
       } else if (
-        (isInstanceOf(column, ObjectColumn) || isInstanceOf(column, ArrayColumn)) &&
-        !isInstanceOf(column, ReferenceArrayColumn) &&
+        isStructuredField(columnPropertyName, column) &&
         fieldValue != null &&
         typeof fieldValue !== 'string'
       ) {
