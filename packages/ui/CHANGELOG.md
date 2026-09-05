@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.19.1](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.19.0...@proteinjs/db-ui@1.19.1) (2026-09-05)
+
+
+### Bug Fixes
+
+* record surfaces present a structured VALUE as content whatever its column class — a driver JSON column no longer reads [object Object]: the table cell is the structured content view, the form field the mono JSON multiline with its preview + Open door and the JSON.parse round trip on save (one predicate, isStructuredField) ([cd20b21](https://github.com/proteinjs/db/commit/cd20b21b6349f1bce66618e4a42752e3ab2e9dbb))
+
+
+
+
+
 # [1.19.0](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.18.0...@proteinjs/db-ui@1.19.0) (2026-09-03)
 
 
