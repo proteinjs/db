@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.29.5](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.29.4...@proteinjs/db-driver-spanner@1.29.5) (2026-09-05)
+
+
+### Bug Fixes
+
+* **db-driver-spanner:** size the session pool on demand under the emulator — min 0 / incStep 1 when SPANNER_EMULATOR_HOST is set and the config passes no sessionPoolOptions ([b6deabd](https://github.com/proteinjs/db/commit/b6deabd13e19c9539ff0823111b384b22ecec0f0))
+
+
+
+
+
 ## [1.29.4](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.29.3...@proteinjs/db-driver-spanner@1.29.4) (2026-09-03)
 
 **Note:** Version bump only for package @proteinjs/db-driver-spanner
