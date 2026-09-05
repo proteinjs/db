@@ -1,4 +1,5 @@
 import { Database, Instance, Spanner, SpannerOptions, Transaction } from '@google-cloud/spanner';
+import { SessionPoolOptions } from '@google-cloud/spanner/build/src/session-pool';
 import {
   DbDriver,
   DbDriverQueryStatementConfig,
@@ -111,9 +112,11 @@ export class SpannerDriver implements DbDriver {
 
   private getSpannerDb(): Database {
     if (!SpannerDriver.SPANNER_DB) {
+      // The pool hangs off the Database handle: `database()`'s second argument is where pool
+      // options enter (the Spanner client constructor carries none) — see sessionPoolOptions().
       SpannerDriver.SPANNER_DB = this.getSpannerInstance().database(
         this.config.databaseName,
-        this.config.sessionPoolOptions
+        this.sessionPoolOptions()
       );
       // The monitor's start() is also the Database's one 'error'-channel owner (the session
       // pool forwards its errors to the Database emitter; unlistened, Node's unhandled-'error'
@@ -663,6 +666,33 @@ export class SpannerDriver implements DbDriver {
       gaxOptions.retry = null;
     }
     return gaxOptions;
+  }
+
+  /**
+   * Session-pool options for the process-wide Database handle (`Instance.database()`'s second
+   * argument — the only place pool options enter; the Spanner client constructor carries none).
+   * An explicit `SpannerConfig.sessionPoolOptions` is the contract and always wins. Otherwise,
+   * by backend:
+   *
+   * - Real Spanner: the vendor's defaults stand (`min: 25, incStep: 25` — an eager 25-session
+   *   fill in the handle's constructor, growth in steps of 25). Production's pool is untouched.
+   * - Emulator (SPANNER_EMULATOR_HOST — the same switch the client library keys on): sessions on
+   *   demand, `min: 0, incStep: 1`. The emulator is local and single-tenant, and the FILL is the
+   *   cost, not the sessions: every fresh Database pays a 25-session BatchCreateSessions burst on
+   *   its first op, and jest's per-file module registry gives each suite a fresh driver — a
+   *   340-suite package paid it ~340 times, the bursts contending under two workers until a
+   *   suite's first op tripped its 60 s timeout (flow, 2026-09-05), and the emulator never reaps
+   *   the 25 sessions each suite leaves behind. A suite peaks at one or two sessions; it gets
+   *   them when it asks.
+   */
+  private sessionPoolOptions(): SessionPoolOptions | undefined {
+    if (this.config.sessionPoolOptions) {
+      return this.config.sessionPoolOptions;
+    }
+    if (process.env.SPANNER_EMULATOR_HOST) {
+      return { min: 0, incStep: 1 };
+    }
+    return undefined;
   }
 
   private operationDeadlineMs(): number {

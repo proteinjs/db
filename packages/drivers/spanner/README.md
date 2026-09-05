@@ -79,6 +79,7 @@ Follow these steps to setup a test Spanner Database to be used with running auto
          --sql='select table_name from information_schema.tables'
      ```
 4. Note: every time you restart the emulator, you need to re-create state (like the instance and the db).
+5. Session pool under the emulator: with `SPANNER_EMULATOR_HOST` set and no `sessionPoolOptions` in the driver config, the driver sizes its session pool on demand (`min: 0, incStep: 1`) instead of the client library's eager 25-session fill. Every jest suite constructs a fresh driver, and the fill — not the sessions — is what a loaded emulator pays for, once per suite (the emulator never reaps the sessions a suite leaves behind). Pass `sessionPoolOptions` to override; real Spanner keeps the library defaults.
 
 
 # Prod Environment Setup

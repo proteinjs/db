@@ -8,9 +8,12 @@ export type SpannerConfig = {
   databaseName: string;
   spannerOptions?: SpannerOptions;
   /**
-   * Session pool options passed through to `Instance.database()` (library defaults apply when
-   * omitted). Note: the driver's Database is a process-wide singleton — the first driver to
-   * touch the db fixes the pool for the process, like `spannerOptions`.
+   * Session pool options passed through to `Instance.database()`. When omitted, the library
+   * defaults apply on real Spanner (min 25 / incStep 25), and under `SPANNER_EMULATOR_HOST` the
+   * driver sizes the pool on demand (`min: 0, incStep: 1` — see SpannerDriver.sessionPoolOptions:
+   * the eager 25-session fill is what a loaded emulator pays for, once per fresh driver). Note:
+   * the driver's Database is a process-wide singleton — the first driver to touch the db fixes
+   * the pool for the process, like `spannerOptions`.
    */
   sessionPoolOptions?: SessionPoolOptions;
   /**
