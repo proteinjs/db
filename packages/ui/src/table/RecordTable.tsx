@@ -31,6 +31,7 @@ import { QueryTableLoader } from './QueryTableLoader';
 import { newRecordFormLink, recordFormLink } from '../pages/RecordFormPage';
 import { recordTableLink } from '../pages/RecordTablePage';
 import { tableDisplayName } from '../tableDisplayName';
+import { isStructuredValue } from '../structuredValue';
 import { ReferenceArrayCellValue, ReferenceCellValue } from './ReferenceCellValue';
 import { isInstanceOf } from '@proteinjs/util';
 import {
@@ -236,6 +237,11 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
         return <ReferenceArrayCellValue tableName={value._table} ids={value._ids} />;
       }
       if (isInstanceOf(column, ObjectColumn) || isInstanceOf(column, ArrayColumn)) {
+        return <JsonSnippetCellValue value={value} />;
+      }
+      // A structured VALUE on a column the registry types some other way (a driver's JSON column,
+      // a blob it deserializes) is content too — never `[object Object]` (founder, R7 round 3).
+      if (isStructuredValue(value)) {
         return <JsonSnippetCellValue value={value} />;
       }
       if (

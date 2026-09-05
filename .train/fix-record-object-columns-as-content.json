@@ -1,0 +1,10 @@
+{
+  "branch": "fix/record-object-columns-as-content",
+  "packages": ["ui"],
+  "suites": [
+    "packages/ui/test/recordStructuredValues.test.tsx",
+    "packages/ui/test/recordTableDefaultRenderers.test.tsx",
+    "packages/ui/test/recordFormStructuredFields.test.tsx"
+  ],
+  "removes": []
+}
