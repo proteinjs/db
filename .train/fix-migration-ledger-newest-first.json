@@ -1,6 +1,0 @@
-{
-  "branch": "fix/migration-ledger-newest-first",
-  "packages": ["db", "ui"],
-  "suites": ["packages/ui/test/recordTableDeclaredPresentation.test.tsx"],
-  "removes": []
-}
