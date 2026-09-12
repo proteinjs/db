@@ -6,7 +6,8 @@
  *  1. `ColumnOptions.ui.label` is the column's header on the record table AND its field label
  *     on the record form (one owner; the migration ledger's `startTime` reads "Ran at" on both);
  *  2. `Table.ui.recordTable.sort` is the record table's default ordering (the migration ledger:
- *     most recent run first, never-run rows last); undeclared tables keep `updated` desc;
+ *     newest first by `created` — a row that never ran keeps its place among the rows that
+ *     did); undeclared tables keep `updated` desc;
  *  3. the migration ledger's own declaration: name → description → status → Ran at → duration
  *     → end time → output, then the record family's created/updated.
  */
@@ -23,18 +24,46 @@ import {
   MigrationTable,
   QueryBuilder,
   Record,
+  SortCriteria,
   StringColumn,
   Table,
   withRecordColumns,
 } from '@proteinjs/db';
 
 const captured: { sorts: any[][] } = { sorts: [] };
+/** The rows the default loader's query finds — served in the order the query asks for. */
+let seededRows: any[] = [];
+
+/** A value as the store compares it: an absent value is the least value (GoogleSQL's NULL). */
+const sortValue = (value: any): number | string => {
+  if (value == null) {
+    return Number.NEGATIVE_INFINITY;
+  }
+  return moment.isMoment(value) ? value.valueOf() : value;
+};
+
+/** The store's ORDER BY over in-memory rows: each criterion in turn, ascending or descending. */
+const storeOrder = (rows: any[], criteria: SortCriteria<any>[]): any[] =>
+  [...rows].sort((a, b) => {
+    for (const { field, desc } of criteria) {
+      const left = sortValue(a[field]);
+      const right = sortValue(b[field]);
+      if (left === right) {
+        continue;
+      }
+      const ascending = left < right ? -1 : 1;
+      return desc ? -ascending : ascending;
+    }
+    return 0;
+  });
+
 const mockDb = {
   query: jest.fn(async (table: any, qb: QueryBuilder<any>) => {
-    captured.sorts.push(qb.getSortCriteria());
-    return [];
+    const criteria = qb.getSortCriteria();
+    captured.sorts.push(criteria);
+    return storeOrder(seededRows, criteria);
   }),
-  getRowCount: jest.fn(async () => 0),
+  getRowCount: jest.fn(async () => seededRows.length),
 };
 const mockDbService = { get: jest.fn(), update: jest.fn(async () => 1), delete: jest.fn(async () => 1) };
 
@@ -111,6 +140,21 @@ const migrationRow = {
   updated: moment('2026-08-30T10:00:02Z'),
 } as unknown as Migration;
 
+/**
+ * A ledger row created on `createdDay`; a row that ran carries its start time (`ranDay`), a row
+ * that never ran has none.
+ */
+const ledgerRow = (letter: string, createdDay: string, status: string, ranDay?: string): Migration =>
+  ({
+    id: `ledger-id-${letter}`,
+    name: `ledger-row-${letter}`,
+    description: `ledger row ${letter}`,
+    status,
+    ...(ranDay ? { startTime: moment(`${ranDay}T10:00:00Z`), endTime: moment(`${ranDay}T10:00:01Z`) } : {}),
+    created: moment(`${createdDay}T09:00:00Z`),
+    updated: moment(`${ranDay ?? createdDay}T10:00:01Z`),
+  }) as unknown as Migration;
+
 describe('RecordTable — declared presentation', () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -118,6 +162,7 @@ describe('RecordTable — declared presentation', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     captured.sorts = [];
+    seededRows = [];
     (UserAuth as any).userRepo = { getUser: () => ({ email: 'admin@test.local', roles: ['admin'] }) };
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -151,7 +196,19 @@ describe('RecordTable — declared presentation', () => {
         await Promise.resolve();
       });
     }
+    // The default loader's rows arrive through react-query (a query + a row count in flight).
+    for (let i = 0; i < 20 && seededRows.some((row) => !document.body.textContent?.includes(row.name)); i++) {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    }
   };
+
+  /** The ledger rows on screen, top to bottom, by the letter of their name. */
+  const renderedLetters = () =>
+    Array.from(document.querySelectorAll('tbody tr'))
+      .map((tr) => tr.textContent?.match(/ledger-row-([A-Z])/)?.[1])
+      .filter((letter): letter is string => letter !== undefined);
 
   const headerTexts = () =>
     Array.from(document.querySelectorAll('th'))
@@ -191,12 +248,26 @@ describe('RecordTable — declared presentation', () => {
     expect(document.body.textContent).toContain('rowsInserted');
   });
 
-  it('the migration ledger orders by start_time desc (never-run rows last), ledger order breaking ties', async () => {
+  it('the migration ledger declares its order: created desc (newest first), id breaking ties', async () => {
     await mountTable(new MigrationTable());
     expect(captured.sorts[0]).toEqual([
-      { field: 'startTime', desc: true },
-      { field: 'created', desc: false },
+      { field: 'created', desc: true },
+      { field: 'id', desc: true },
     ]);
+  });
+
+  it('the migration ledger reads newest first by created — a row that never ran sits among the rows that did, by age', async () => {
+    // Two rows ran, days after they were created; two never did (no start time). Newest first
+    // by created: D, C, B, A — status plays no part. An order by run time would float B and D
+    // above C and A (the never-run rows have no start time, the least value to the store).
+    seededRows = [
+      ledgerRow('A', '2026-08-01', 'proposed'),
+      ledgerRow('B', '2026-08-02', 'success', '2026-08-05'),
+      ledgerRow('C', '2026-08-03', 'proposed'),
+      ledgerRow('D', '2026-08-04', 'success', '2026-08-06'),
+    ];
+    await mountTable(new MigrationTable());
+    expect(renderedLetters()).toEqual(['D', 'C', 'B', 'A']);
   });
 });
 

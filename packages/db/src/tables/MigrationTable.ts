@@ -79,20 +79,26 @@ export class MigrationTable extends Table<Migration> {
     service: { query: { permission: 'dev' }, update: { permission: 'dev' }, delete: { permission: 'dev' } },
   };
   /**
-   * The row scan the founder actually reads (ruled 2026-09-02): WHICH migration (name — the
-   * loader's class name), what it does, how the run went, WHEN it ran ("Ran at" = start_time,
-   * the one timestamp that answers "when did it land"), how long, when it finished, and a
-   * glimpse of its output (the mono JSON snippet; the record form carries the full value).
-   * The declaration flags and the failure detail stay on the record form. Most recent run
-   * first; never-run rows last — GoogleSQL orders NULL as the least value, so start_time DESC
-   * places rows without a run after every real timestamp; ledger order (created) breaks ties.
+   * The row scan: WHICH migration (name — the loader's class name), what it does, how the run
+   * went, WHEN it ran ("Ran at" = start_time, the one timestamp that answers "when did it
+   * land"), how long, when it finished, and a glimpse of its output (the mono JSON snippet; the
+   * record form carries the full value). The declaration flags and the failure detail stay on
+   * the record form.
+   *
+   * Ordered as a ledger: newest first by `created` (id breaking ties — rows land in batches at
+   * one boot), the reverse of the order {@link MigrationRunner.runPendingMigrations} runs them
+   * in. Status plays no part: a row that never ran (`proposed`, a `manual` migration waiting
+   * for its operator) keeps its place among the rows that did, so the migrations that shipped
+   * together read together. An order by run time would push every never-run row below every
+   * run one (a never-run row has no start_time, and GoogleSQL orders NULL as the least value,
+   * last under DESC) — the pending manual migrations become the hardest rows to find.
    */
   public ui: Table<Migration>['ui'] = {
     recordTable: {
       columns: ['name', 'description', 'status', 'startTime', 'duration', 'endTime', 'output'],
       sort: [
-        { field: 'startTime', desc: true },
-        { field: 'created', desc: false },
+        { field: 'created', desc: true },
+        { field: 'id', desc: true },
       ],
     },
   };
