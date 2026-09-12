@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.46.1](https://github.com/proteinjs/db/compare/@proteinjs/db@1.46.0...@proteinjs/db@1.46.1) (2026-09-12)
+
+
+### Bug Fixes
+
+* **db:** the migration ledger's record table orders by created, newest first ([9fde88a](https://github.com/proteinjs/db/commit/9fde88a1cbd6423af50b3ea125134c8e88f0d2bb))
+
+
+
+
+
 # [1.46.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.45.0...@proteinjs/db@1.46.0) (2026-09-03)
 
 
