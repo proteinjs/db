@@ -202,17 +202,18 @@ describe('Spanner env-token auth', () => {
       );
     });
 
-    test('an UNAUTHENTICATED op in ADC mode passes through unchanged — translation only exists in env-token mode', async () => {
+    test('an UNAUTHENTICATED op in ADC mode passes through untranslated — the typed op error carries the vendor error as cause; translation only exists in env-token mode', async () => {
       const driver = makeDriver();
       internals(driver).getSpanner(); // no env token: ADC, no env auth installed
       const dead = unauthenticated();
       statics.SPANNER_DB = { run: () => Promise.reject(dead) };
       statics.LIVENESS_MONITOR = fakeMonitor;
 
-      await expect(driver.runQuery(generateStatement)).rejects.toBe(dead);
+      await expect(driver.runQuery(generateStatement)).rejects.toMatchObject({ code: 16, cause: dead });
+      await expect(driver.runQuery(generateStatement)).rejects.not.toBeInstanceOf(SpannerEnvTokenAuthError);
     });
 
-    test('non-auth errors in env-token mode pass through unchanged', async () => {
+    test('non-auth errors in env-token mode pass through untranslated (the vendor error rides as cause, its code kept)', async () => {
       process.env[SPANNER_ENV_TOKEN_VAR] = 'live-token';
       const driver = makeDriver();
       internals(driver).getSpanner();
@@ -220,7 +221,8 @@ describe('Spanner env-token auth', () => {
       statics.SPANNER_DB = { run: () => Promise.reject(unavailable) };
       statics.LIVENESS_MONITOR = fakeMonitor;
 
-      await expect(driver.runQuery(generateStatement)).rejects.toBe(unavailable);
+      await expect(driver.runQuery(generateStatement)).rejects.toMatchObject({ code: 14, cause: unavailable });
+      await expect(driver.runQuery(generateStatement)).rejects.not.toBeInstanceOf(SpannerEnvTokenAuthError);
     });
   });
 });

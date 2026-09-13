@@ -10,6 +10,7 @@ import {
 } from '@proteinjs/db';
 import { SpannerConfig } from './SpannerConfig';
 import { SpannerEnvTokenAuth, SpannerEnvTokenAuthError, SPANNER_ENV_TOKEN_VAR } from './SpannerEnvTokenAuth';
+import { SpannerOperationError, SpannerOperationKind } from './SpannerOperationError';
 import { SpannerLivenessMonitor, type SpannerSessionPoolStats } from './SpannerLivenessMonitor';
 import { Logger } from '@proteinjs/logger';
 import { Statement } from '@proteinjs/db-query';
@@ -243,12 +244,14 @@ export class SpannerDriver implements DbDriver {
     generateStatement: (config: DbDriverQueryStatementConfig) => Statement,
     transaction?: Transaction
   ): Promise<any[]> {
-    return await this.executeQuery(generateStatement, transaction || this.getSpannerDb());
+    const callSiteStack = this.callSiteStack(this.runQuery);
+    return await this.executeQuery(generateStatement, transaction || this.getSpannerDb(), callSiteStack);
   }
 
   private async executeQuery(
     generateStatement: (config: DbDriverQueryStatementConfig) => Statement,
-    runner: Database | Transaction
+    runner: Database | Transaction,
+    callSiteStack?: string
   ): Promise<any[]> {
     const { sql, namedParams } = generateStatement({
       useParams: true,
@@ -288,12 +291,7 @@ export class SpannerDriver implements DbDriver {
       return rows.map((row) => row.toJSON());
     } catch (error: any) {
       const durationMs = Number(process.hrtime.bigint() - startTime) / 1_000_000;
-      this.logger.error({
-        message: `Failed when executing query`,
-        obj: { sql, params: namedParams, errorDetails: error.details, durationMs },
-      });
-      SpannerDriver.LIVENESS_MONITOR.reportError(error);
-      throw error;
+      throw this.operationFailure('query', sql, error, durationMs, callSiteStack);
     }
   }
 
@@ -306,8 +304,9 @@ export class SpannerDriver implements DbDriver {
     generateStatement: (config: DbDriverDmlStatementConfig) => Statement,
     transaction?: Transaction
   ): Promise<number> {
+    const callSiteStack = this.callSiteStack(this.runDml);
     if (transaction) {
-      return await this.executeDml(generateStatement, transaction);
+      return await this.executeDml(generateStatement, transaction, callSiteStack);
     }
 
     // Stalls in the transaction wrapper itself (session acquisition / begin / commit) happen
@@ -320,7 +319,7 @@ export class SpannerDriver implements DbDriver {
       '(runTransactionAsync)',
       this.getSpannerDb().runTransactionAsync(async (transaction) => {
         try {
-          const rowCount = await this.executeDml(generateStatement, transaction);
+          const rowCount = await this.executeDml(generateStatement, transaction, callSiteStack);
           await this.commit(transaction);
           return rowCount;
         } catch (error) {
@@ -333,7 +332,8 @@ export class SpannerDriver implements DbDriver {
 
   private async executeDml(
     generateStatement: (config: DbDriverDmlStatementConfig) => Statement,
-    runner: Transaction
+    runner: Transaction,
+    callSiteStack?: string
   ): Promise<number> {
     const { sql, namedParams } = generateStatement({
       useParams: true,
@@ -373,13 +373,53 @@ export class SpannerDriver implements DbDriver {
       return rowCount;
     } catch (error: any) {
       const durationMs = Number(process.hrtime.bigint() - startTime) / 1_000_000;
-      this.logger.error({
-        message: `Failed when executing dml`,
-        obj: { sql, params: namedParams, errorDetails: error.details, durationMs },
-      });
-      SpannerDriver.LIVENESS_MONITOR.reportError(error);
-      throw error;
+      throw this.operationFailure('dml', sql, error, durationMs, callSiteStack);
     }
+  }
+
+  /**
+   * A data op's failure, logged ONCE with its cause and rethrown as the driver's typed error
+   * (`SpannerOperationError`: the vendor error as `cause`, its gRPC `code` copied, the CALLER's
+   * stack). The log line names what actually failed — the underlying status and message, the
+   * statement's verb and table, the duration — and never the bound values: those ride the DEBUG
+   * line beside the op only. A rejection that is already one of the driver's own typed errors (the
+   * env-token auth translation, an earlier wrap) is logged the same way and passes through as is.
+   */
+  private operationFailure(
+    operation: SpannerOperationKind,
+    sql: string,
+    error: unknown,
+    durationMs: number,
+    callSiteStack?: string
+  ): Error {
+    const failure =
+      error instanceof SpannerOperationError || error instanceof SpannerEnvTokenAuthError
+        ? error
+        : new SpannerOperationError(operation, SpannerOperationError.statementShape(sql), error, callSiteStack);
+    this.logger.error({
+      message: `Failed when executing ${operation}`,
+      error: failure,
+      obj: {
+        statement: SpannerOperationError.statementShape(sql),
+        cause: SpannerOperationError.summarize(error),
+        sql,
+        durationMs,
+      },
+    });
+    SpannerDriver.LIVENESS_MONITOR.reportError(error);
+    return failure;
+  }
+
+  /**
+   * The caller's frames at a public door (`runQuery` / `runDml`), captured synchronously on entry —
+   * before the vendor client's own frames take over — so a failure's stack locates the code that
+   * issued the statement (as far as the callers' compile targets let V8 walk the await chain).
+   */
+  private callSiteStack(door: Function): string | undefined {
+    const holder: { stack?: string } = {};
+    Error.captureStackTrace(holder, door);
+    const frames = holder.stack?.replace(/^Error\n?/, '');
+    return frames || undefined;
   }
 
   /**
