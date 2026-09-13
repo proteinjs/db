@@ -1,0 +1,6 @@
+{
+  "branch": "feat/settings-admin-door",
+  "packages": ["settings"],
+  "suites": ["packages/settings/test/SettingsAdmin.integration.test.ts"],
+  "removes": []
+}
