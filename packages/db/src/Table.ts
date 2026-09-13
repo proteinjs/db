@@ -101,6 +101,31 @@ export const addUpdateFieldValues = async (table: Table<any>, record: any) => {
 /**
  * primary key is `id`
  */
+/**
+ * One act of a record table's LIST ACTIONS — the acts the table's title-row seat carries, on every
+ * form factor (the seat's create act is the `+` that opens the new-record form; its delete act
+ * removes the selected rows and shows once rows are selected). The framework performs the act by
+ * `kind`; the table declares who may see it and what it is called.
+ */
+export type RecordTableAction = {
+  /** Which seat act this declaration configures. */
+  kind: 'create' | 'delete';
+  /**
+   * Who may see the act — the `Table.auth` Identity vocabulary. Undeclared → the act keeps the
+   * doors' verdict (`create` from the insert doors, `delete` from the delete doors). Declare when
+   * the act is a DOMAIN act rather than the generic operation: an invite is minted by its own
+   * service, so the generic insert doors stay closed by design and the create act names the
+   * identity the send act serves instead. The act itself stays gated where it runs (the form,
+   * the service); this door is the affordance's.
+   */
+  door?: Identity;
+  /**
+   * The act's name — tooltip and accessible label — when the generic verb is not what the act
+   * IS (an invite is SENT). Undeclared → "Create <table>" / "Delete selected rows".
+   */
+  label?: string;
+};
+
 export abstract class Table<T extends Record> implements Loadable, CustomSerializableObject {
   public __serializerId = TableSerializerId;
   abstract name: string;
@@ -147,6 +172,15 @@ export abstract class Table<T extends Record> implements Loadable, CustomSeriali
        * redirect never needs a row load.
        */
       recordLink?: (row: Pick<T, 'id'>) => string;
+      /**
+       * The list actions the record table's title-row seat carries (see `RecordTableAction`).
+       * Undeclared, the seat derives the generic pair from the auth doors — create from the
+       * insert doors, delete-on-selection from the delete doors — exactly as every table did
+       * before this declaration existed. A declared entry CONFIGURES the act of its kind (door
+       * and/or label); kinds left undeclared keep the derivation. The seat, not the table, owns
+       * placement: every declared act renders in the same seat on desktop and phone.
+       */
+      actions?: RecordTableAction[];
     };
   };
   public auth?: {

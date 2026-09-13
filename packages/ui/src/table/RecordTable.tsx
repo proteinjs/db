@@ -21,6 +21,7 @@ import {
   Column,
   QueryBuilderFactory,
   Record,
+  RecordTableAction,
   ReferenceArrayColumn,
   ReferenceColumn,
   Table,
@@ -56,9 +57,10 @@ export type RecordTableProps<T extends Record> = {
   hideButtons?: boolean;
 } & SpecificTableProps<T>;
 
-function deleteButton<T extends Record>(table: Table<T>): TableButton<T> {
+function deleteButton<T extends Record>(table: Table<T>, label?: string): TableButton<T> {
   return {
-    name: `Delete selected rows`,
+    // Named for what the act IS when the table says so (a revocation), else the generic verb.
+    name: label ?? `Delete selected rows`,
     icon: Delete,
     visibility: {
       showWhenRowsSelected: true,
@@ -81,9 +83,10 @@ function deleteButton<T extends Record>(table: Table<T>): TableButton<T> {
   };
 }
 
-function createButton<T extends Record>(table: Table<T>): TableButton<T> {
+function createButton<T extends Record>(table: Table<T>, label?: string): TableButton<T> {
   return {
-    name: `Create ${S(table.name).humanize().s}`,
+    // Named for what the act IS when the table says so (an invite is sent), else the generic verb.
+    name: label ?? `Create ${S(table.name).humanize().s}`,
     icon: Add,
     visibility: {
       showWhenRowsSelected: false,
@@ -361,6 +364,17 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
    * derived affordance: its rows are created and removed by whatever owns that page, so a
    * generic New would open a form the table doesn't use and a generic Delete would bypass it.
    * The seam decides this, not the doors — the doors may well be wide open.
+   *
+   * The seat renders what the table DECLARES (`Table.ui.recordTable.actions`): each act of the
+   * seat — create (the `+` that opens the new-record form) and delete (the selected rows) — may
+   * carry its own door and its own name. A declared door replaces the doors' verdict for that act:
+   * a table whose creation is a domain act (its rows minted by its own service — an invite) keeps
+   * the generic insert doors closed by design, so the door derivation alone drew nothing and the
+   * new-record form's own act was unreachable from the table (an invites table lost its `+` on
+   * every form factor the day the derivation landed); the declared act names who may OPEN the
+   * form, and the act stays gated in the form and its service. A door-less declaration keeps the
+   * doors' verdict and only renames the act; an act left undeclared keeps the derivation entirely.
+   * The seat is the same on both form factors, so a declared act never needs its own placement.
    */
   function buttons() {
     if (props.hideButtons) {
@@ -378,15 +392,21 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
     const tableAuth = new TableAuth();
     const canPerform = (operation: 'insert' | 'delete') =>
       tableAuth.canPerform(props.table, operation, 'service') && tableAuth.canPerform(props.table, operation, 'db');
+    const declared = (kind: RecordTableAction['kind']) =>
+      props.table.ui?.recordTable?.actions?.find((action) => action.kind === kind);
+    const allowed = (kind: RecordTableAction['kind'], operation: 'insert' | 'delete') => {
+      const door = declared(kind)?.door;
+      return door !== undefined ? tableAuth.identityAllows(door) : canPerform(operation);
+    };
 
-    const derivedButtons: TableButton<T>[] = [];
-    if (canPerform('delete')) {
-      derivedButtons.push(deleteButton(props.table));
+    const seatActions: TableButton<T>[] = [];
+    if (allowed('delete', 'delete')) {
+      seatActions.push(deleteButton(props.table, declared('delete')?.label));
     }
-    if (canPerform('insert')) {
-      derivedButtons.push(createButton(props.table));
+    if (allowed('create', 'insert')) {
+      seatActions.push(createButton(props.table, declared('create')?.label));
     }
-    return derivedButtons;
+    return seatActions;
   }
 
   return (

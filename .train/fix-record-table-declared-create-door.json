@@ -1,0 +1,6 @@
+{
+  "branch": "fix/record-table-declared-create-door",
+  "packages": ["db", "ui"],
+  "suites": ["packages/ui/test/recordTableDerivedAffordances.test.tsx"],
+  "removes": []
+}

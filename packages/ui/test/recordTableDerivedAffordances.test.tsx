@@ -88,6 +88,61 @@ class AsymmetricDoorsTable extends Table<Session> {
   });
 }
 
+/**
+ * The invite shape: creation is a DOMAIN ACT (a service mints the row), so the generic insert
+ * doors stay closed by design — and the table DECLARES its list actions instead: the create act
+ * with the door the act serves and the name the act has (`ui.recordTable.actions`).
+ */
+class DeclaredCreateActionTable extends Table<Session> {
+  public name = 'invite';
+  public auth: Table<Session>['auth'] = {
+    db: { query: { permission: 'users' }, delete: { permission: 'users' } },
+    service: { query: { permission: 'users' }, delete: { permission: 'users' } },
+  };
+  public ui: Table<Session>['ui'] = {
+    recordTable: { actions: [{ kind: 'create', label: 'Send invite', door: { permission: 'users' } }] },
+  };
+  public columns = withRecordColumns<Session>({
+    userEmail: new StringColumn('user_email'),
+  });
+}
+
+/** The same closed insert doors WITHOUT declared actions: nothing to derive the create act from. */
+class ClosedInsertUndeclaredTable extends Table<Session> {
+  public name = 'invite_undeclared';
+  public auth: Table<Session>['auth'] = {
+    db: { query: { permission: 'users' }, delete: { permission: 'users' } },
+    service: { query: { permission: 'users' }, delete: { permission: 'users' } },
+  };
+  public columns = withRecordColumns<Session>({
+    userEmail: new StringColumn('user_email'),
+  });
+}
+
+/**
+ * Both seat acts declared: the delete act carries its own name and door (a revocation is the
+ * domain's word for it), the create act only a name — a door-less declaration keeps the doors'
+ * verdict and renames the act.
+ */
+class DeclaredBothActionsTable extends Table<Session> {
+  public name = 'membership';
+  public auth: Table<Session>['auth'] = {
+    db: { all: { permission: 'users' } },
+    service: { all: { permission: 'users' } },
+  };
+  public ui: Table<Session>['ui'] = {
+    recordTable: {
+      actions: [
+        { kind: 'delete', label: 'Revoke selected memberships', door: { permission: 'memberships' } },
+        { kind: 'create', label: 'New membership' },
+      ],
+    },
+  };
+  public columns = withRecordColumns<Session>({
+    userEmail: new StringColumn('user_email'),
+  });
+}
+
 /** No auth block: the historic admin-only default. */
 class NoAuthBlockTable extends Table<Session> {
   public name = 'legacy_thing';
@@ -187,5 +242,93 @@ describe('RecordTable — auth-derived affordances', () => {
 
     expect(createButton()).toBeNull();
     expect(selectRowCheckbox()).toBeNull();
+  });
+
+  /**
+   * Declared list actions (the invites shape: the table lost its `+` when affordances began
+   * deriving from the doors — invites are minted by a service, so the insert doors are closed by
+   * design and the derivation drew nothing on either form factor; the form's own Send act was
+   * unreachable from the table). A table declares the acts its title-row seat carries — each with
+   * its door and its name; an undeclared act keeps the doors' derivation.
+   */
+  describe('declared list actions — the seat renders what the table declares', () => {
+    const sendInvite = () => document.querySelector('button[aria-label="Send invite"]');
+
+    it('a declared create act draws for the identity its door names, under its own name', async () => {
+      setUser(['staff']);
+      await mount(new DeclaredCreateActionTable());
+
+      expect(sendInvite()).not.toBeNull();
+      // Named for the act — never the generic "Create <table>" fallback.
+      expect(createButton()).toBeNull();
+    });
+
+    it('draws nothing for a user the declared door does not name — the form act would refuse them too', async () => {
+      setUser(['ops-team']);
+      await mount(new DeclaredCreateActionTable());
+
+      expect(sendInvite()).toBeNull();
+      expect(createButton()).toBeNull();
+    });
+
+    it('an undeclared act keeps the doors: delete/selection still derive from the delete doors', async () => {
+      setUser(['staff']);
+      await mount(new DeclaredCreateActionTable());
+
+      // 'users' opens delete on this shape, so the selection column serves it.
+      expect(selectRowCheckbox()).not.toBeNull();
+    });
+
+    it('closed insert doors with no declared actions draw no create act — even for admin', async () => {
+      setUser(['admin']);
+      await mount(new ClosedInsertUndeclaredTable());
+
+      expect(createButton()).toBeNull();
+      expect(sendInvite()).toBeNull();
+    });
+
+    it('a declared delete act rides the same seat under its own name once rows are selected', async () => {
+      setMapping({ users: ['staff'], memberships: ['staff'] });
+      setUser(['staff']);
+      await mount(new DeclaredBothActionsTable());
+
+      await act(async () => {
+        (selectRowCheckbox() as HTMLInputElement).click();
+      });
+      expect(document.querySelector('button[aria-label="Revoke selected memberships"]')).not.toBeNull();
+      expect(document.querySelector('button[aria-label="Delete selected rows"]')).toBeNull();
+    });
+
+    it("a declared delete door replaces the doors' verdict: no delete act for a user it does not name", async () => {
+      // 'users' would open the delete DOORS for staff, but the declared act's door is 'memberships'.
+      setMapping({ users: ['staff'], memberships: ['membership-admins'] });
+      setUser(['staff']);
+      await mount(new DeclaredBothActionsTable());
+
+      // The create act (door-less, insert doors open) still draws — so the seat exists — but
+      // selecting a row surfaces no delete act under either name.
+      expect(document.querySelector('button[aria-label="New membership"]')).not.toBeNull();
+      await act(async () => {
+        (selectRowCheckbox() as HTMLInputElement).click();
+      });
+      expect(document.querySelector('button[aria-label="Revoke selected memberships"]')).toBeNull();
+      expect(document.querySelector('button[aria-label="Delete selected rows"]')).toBeNull();
+    });
+
+    it("a door-less declared act keeps the doors' verdict and only renames the act", async () => {
+      setMapping({ users: ['staff'], memberships: ['staff'] });
+      setUser(['staff']);
+      await mount(new DeclaredBothActionsTable());
+      expect(document.querySelector('button[aria-label="New membership"]')).not.toBeNull();
+      expect(createButton()).toBeNull();
+
+      await act(async () => {
+        root.unmount();
+      });
+      root = createRoot(container);
+      setUser(['ops-team']);
+      await mount(new DeclaredBothActionsTable());
+      expect(document.querySelector('button[aria-label="New membership"]')).toBeNull();
+    });
   });
 });
