@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.30.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.29.7...@proteinjs/db-driver-spanner@1.30.0) (2026-09-13)
+
+
+### Features
+
+* **db-driver-spanner:** failed queries and DML throw SpannerOperationError — the vendor error as cause, its gRPC code kept, the status and the statement's shape in the message, the caller's frames as the stack; the error log line names the cause and the statement shape and never the bound values ([a867cfe](https://github.com/proteinjs/db/commit/a867cfe0aa6141a2e18b9d93ea08651d3d3c5c19))
+
+
+
+
+
 ## [1.29.7](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.29.6...@proteinjs/db-driver-spanner@1.29.7) (2026-09-13)
 
 **Note:** Version bump only for package @proteinjs/db-driver-spanner
