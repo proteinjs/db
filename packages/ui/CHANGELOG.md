@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.20.0](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.19.2...@proteinjs/db-ui@1.20.0) (2026-09-13)
+
+
+### Features
+
+* **db, db-ui:** declared list actions — a table declares the acts its record table's title-row seat carries (Table.ui.recordTable.actions: per act its door and its name; create and delete today); the record table renders every declared act in that one seat on both form factors, a declared door replacing the doors' verdict for its act and a door-less declaration only renaming it, while undeclared acts keep the insert/delete-door derivation exactly as before — so a table whose creation is a domain act (rows minted by its own service, insert doors closed by design) no longer strands its new-record form's act ([474cec2](https://github.com/proteinjs/db/commit/474cec2b3869c1e829d9cff3cd1380c7a7305220))
+
+
+
+
+
 ## [1.19.2](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.19.1...@proteinjs/db-ui@1.19.2) (2026-09-12)
 
 
