@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.47.1](https://github.com/proteinjs/db/compare/@proteinjs/db@1.47.0...@proteinjs/db@1.47.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* bind JSON column values as PARSE_JSON([@p](https://github.com/p), wide_number_mode=>'round') over a STRING param ([fcf4b03](https://github.com/proteinjs/db/commit/fcf4b03169cf80be6a6499550ea7fc2e0f4599b1))
+
+
+
+
+
 # [1.47.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.46.1...@proteinjs/db@1.47.0) (2026-09-13)
 
 
