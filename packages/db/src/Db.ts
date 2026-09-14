@@ -13,7 +13,7 @@ import { ReverseCascadeEdgeIndex } from './ReverseCascadeEdgeIndex';
 import { Record, RecordSerializer, SerializedRecord } from './Record';
 import { Logger } from '@proteinjs/logger';
 import { SourceRecordLoader } from './source/SourceRecordLoader';
-import { ParameterizationConfig, QueryBuilder, Statement, StatementFactory } from '@proteinjs/db-query';
+import { ParameterizationConfig, ParamType, QueryBuilder, Statement, StatementFactory } from '@proteinjs/db-query';
 import { QueryBuilderFactory } from './QueryBuilderFactory';
 import { StatementConfigFactory } from './StatementConfigFactory';
 import { TableManager } from './schema/TableManager';
@@ -60,11 +60,15 @@ export type DbDriverQueryStatementConfig = ParameterizationConfig & {
   handleCaseSensitivity: (tableName: string, columnName: string, caseSensitive: boolean) => string;
   /** Driver SQL for truncating a datetime column to a bucket unit (`QueryBuilder.timeBucket`). */
   dateTruncExpression?: (resolvedColumnName: string, unit: 'day' | 'hour' | 'minute') => string;
+  /** Driver SQL standing in for a bound param's placeholder, by driver type (`StatementConfig.paramExpression`). */
+  paramExpression?: (placeholder: string, type: ParamType) => string;
 };
 
 export type DbDriverDmlStatementConfig = ParameterizationConfig & {
   prefixTablesWithDb?: boolean;
   getDriverColumnType?: (tableName: string, columnName: string) => string;
+  /** Driver SQL standing in for a bound param's placeholder, by driver type (`StatementConfig.paramExpression`). */
+  paramExpression?: (placeholder: string, type: ParamType) => string;
 };
 
 export interface DefaultDbDriverFactory extends Loadable {

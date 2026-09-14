@@ -1,0 +1,12 @@
+{
+  "branch": "fix/spanner-json-float-round-trip",
+  "packages": ["query", "db", "drivers/spanner"],
+  "suites": [
+    "packages/query/test/ParamExpression.test.ts",
+    "packages/query/test/StatementFactory.test.ts",
+    "packages/drivers/spanner/test/JsonParams.test.ts",
+    "packages/drivers/spanner/test/Float64Params.test.ts",
+    "packages/drivers/spanner/test/Crud.test.ts"
+  ],
+  "removes": []
+}

@@ -13,7 +13,7 @@ import { SpannerEnvTokenAuth, SpannerEnvTokenAuthError, SPANNER_ENV_TOKEN_VAR } 
 import { SpannerOperationError, SpannerOperationKind } from './SpannerOperationError';
 import { SpannerLivenessMonitor, type SpannerSessionPoolStats } from './SpannerLivenessMonitor';
 import { Logger } from '@proteinjs/logger';
-import { Statement } from '@proteinjs/db-query';
+import { ParamType, Statement } from '@proteinjs/db-query';
 import { SpannerSchemaOperations } from './SpannerSchemaOperations';
 import { SpannerColumnTypeFactory } from './SpannerColumnTypeFactory';
 import { SpannerSchemaMetadata } from './SpannerSchemaMetadata';
@@ -264,19 +264,21 @@ export class SpannerDriver implements DbDriver {
       // callers render the UTC buckets in the operator's local time).
       dateTruncExpression: (resolvedColumnName: string, unit: 'day' | 'hour' | 'minute') =>
         `TIMESTAMP_TRUNC(${resolvedColumnName}, ${unit === 'minute' ? 'MINUTE' : unit === 'hour' ? 'HOUR' : 'DAY'}, 'UTC')`,
+      paramExpression: this.paramExpression,
     });
 
     const startTime = process.hrtime.bigint();
 
     try {
       this.logger.debug({ message: `Executing query`, obj: { sql, params: namedParams } });
+      const wire = this.wireParams(namedParams);
       const [rows] = await this.withDeadline(
         'spanner query',
         sql,
         runner.run({
           sql,
-          params: this.bindableParams(namedParams),
-          types: namedParams?.types,
+          params: wire.params,
+          types: wire.types,
           // The gRPC deadline is what actually cancels the RPC on a dead channel: the stream
           // errors, the library ends the snapshot, and the borrowed session RETURNS to the
           // pool. The withDeadline race alone would fail the caller but leak the session.
@@ -340,6 +342,7 @@ export class SpannerDriver implements DbDriver {
       useNamedParams: true,
       prefixTablesWithDb: false,
       getDriverColumnType: this.getColumnType.bind(this),
+      paramExpression: this.paramExpression,
     });
 
     const startTime = process.hrtime.bigint();
@@ -357,10 +360,11 @@ export class SpannerDriver implements DbDriver {
       // resumption layer re-mints a NEW seqno into the SAME transaction after inline-begin
       // learned its id (unprotected even on real Spanner). The unary RPC has none of that
       // machinery — see dmlGaxOptions() for the per-backend retry policy on it.
+      const wire = this.wireParams(namedParams);
       const [rowCounts] = await this.withDeadline(
         'spanner dml',
         sql,
-        runner.batchUpdate([{ sql, params: this.bindableParams(namedParams), types: namedParams?.types }], {
+        runner.batchUpdate([{ sql, params: wire.params, types: wire.types }], {
           gaxOptions: this.dmlGaxOptions(),
         })
       );
@@ -744,29 +748,56 @@ export class SpannerDriver implements DbDriver {
   }
 
   /**
-   * Bind-boundary FLOAT64 wrapping — every query/dml param passes through here on its way to
-   * the client. The client codec encodes param VALUES by their JS shape, ignoring the declared
-   * param type: any integral JS number (`0`, `7`) is stringified into the INT64 wire encoding,
-   * which a FLOAT64 column rejects ("Could not parse 0 as a FLOAT64" — sandbox cost telemetry
-   * failed on every provision writing `compute_seconds=0`, 2026-08-24). `Spanner.float()` is
-   * the client's own escape hatch: the codec unwraps it to a raw number, FLOAT64's correct
-   * encoding. Typing is categorical — driven by the statement's types map, which carries the
-   * COLUMN type (SpannerColumnTypeFactory via getColumnType) — never by the value's
-   * integralness, so `0` and `0.5` bind identically. Scalars and ARRAY<FLOAT64> elements are
-   * both wrapped; non-number values (null) pass through untouched.
+   * Bind-boundary typing, the SQL half (the wire half is wireParams()). A JSON column binds as
+   * `PARSE_JSON(@p, wide_number_mode=>'round')` over a STRING param, never as a JSON-typed param:
+   * Spanner parses a JSON-typed param in its default `exact` mode and refuses any number whose
+   * text does not survive its own float64 canonicalization — ordinary shortest-form doubles
+   * included (`0.915908`, `297.3344693281405`; their 17-digit forms are refused too), so no
+   * client-side rendering is guaranteed to pass and the write fails with OUT_OF_RANGE "Input
+   * number: 0.915908 cannot round-trip through string representation". `'round'` is the vendor's
+   * documented remedy: Spanner stores the nearest float64 and renders it back with up to 17
+   * significant digits, which parses to the identical JS double — the value round-trips exactly
+   * through the client. The emulator enforces the rule on JSON literals and on PARSE_JSON, not on
+   * JSON-typed params (JsonParams.test.ts applies it to the wire form by hand).
    */
-  private bindableParams(namedParams?: Statement['namedParams']): { [param: string]: any } | undefined {
+  private paramExpression = (placeholder: string, type: ParamType): string =>
+    type === 'json' ? `PARSE_JSON(${placeholder}, wide_number_mode=>'round')` : placeholder;
+
+  /**
+   * Bind-boundary typing, the wire half — every query/dml param passes through here on its way
+   * to the client. Typing is categorical: driven by the statement's types map, which carries the
+   * COLUMN type (SpannerColumnTypeFactory via getColumnType), never by the value's shape.
+   *
+   * FLOAT64: the client codec encodes param VALUES by their JS shape, ignoring the declared
+   * param type — any integral JS number (`0`, `7`) is stringified into the INT64 wire encoding,
+   * which a FLOAT64 column rejects ("Could not parse 0 as a FLOAT64"). `Spanner.float()` is the
+   * client's own escape hatch: the codec unwraps it to a raw number, FLOAT64's correct encoding,
+   * so `0` and `0.5` bind identically. Scalars and ARRAY<FLOAT64> elements are both wrapped;
+   * non-number values (null) pass through untouched.
+   *
+   * JSON: the value travels as its JSON text in a STRING param — the operand of the PARSE_JSON
+   * that paramExpression() stood in for its placeholder — so the param is re-typed `string`.
+   * null stays null (PARSE_JSON(NULL) is NULL). The two halves are one binding: a hand-written
+   * statement declaring a `json` param renders its placeholder through paramExpression() too.
+   */
+  private wireParams(namedParams?: Statement['namedParams']): {
+    params?: { [param: string]: any };
+    types?: { [param: string]: any };
+  } {
     // An untyped statement (hand-written generators may carry params with no types map) has
-    // nothing to key the wrapping on — the params pass through exactly as before.
+    // nothing to key the typing on — the params pass through exactly as written.
     if (!namedParams?.types) {
-      return namedParams?.params;
+      return { params: namedParams?.params, types: namedParams?.types };
     }
-    const types = namedParams.types as { [param: string]: string | { type: string; child?: { type: string } } };
+    const types: { [param: string]: string | { type: string; child?: { type: string } } } = { ...namedParams.types };
     const params: { [param: string]: any } = { ...namedParams.params };
     for (const [name, type] of Object.entries(types)) {
       const value = params[name];
       if (type === 'float64' && typeof value === 'number') {
         params[name] = Spanner.float(value);
+      } else if (type === 'json') {
+        params[name] = value === undefined || value === null ? null : JSON.stringify(value);
+        types[name] = 'string';
       } else if (
         typeof type === 'object' &&
         type.type === 'array' &&
@@ -776,7 +807,7 @@ export class SpannerDriver implements DbDriver {
         params[name] = value.map((element) => (typeof element === 'number' ? Spanner.float(element) : element));
       }
     }
-    return params;
+    return { params, types };
   }
 
   /**

@@ -16,6 +16,9 @@ export interface ParameterizationConfig {
   useNamedParams?: boolean; // Use named parameters (for Spanner), otherwise use '?' (for Knex)
 }
 
+/** A named param's declared driver type: a scalar type name, or an array of one. */
+export type ParamType = string | { type: 'array'; child: { type: string } };
+
 export interface StatementConfig extends ParameterizationConfig {
   dbName?: string;
   resolveFieldName?: (tableName: string, propertyName: string) => string;
@@ -29,6 +32,14 @@ export interface StatementConfig extends ParameterizationConfig {
    * queries loudly at statement generation.
    */
   dateTruncExpression?: (resolvedColumnName: string, unit: 'day' | 'hour' | 'minute') => string;
+  /**
+   * The driver's SQL standing in for a bound param's placeholder, by the param's driver type —
+   * e.g. a JSON column bound as `PARSE_JSON(@p, wide_number_mode=>'round')` over a STRING param
+   * on a driver whose JSON type refuses raw JSON params. Shapes the SQL only: the param's value
+   * and declared type reach the driver unchanged, for its own wire step to convert. Named params
+   * only (the placeholder is `@name`); optional — without it the placeholder binds bare.
+   */
+  paramExpression?: (placeholder: string, type: ParamType) => string;
 }
 
 interface Column {
@@ -247,14 +258,11 @@ export class StatementParamManager {
     } else if (this.config.useParams) {
       if (this.config.useNamedParams) {
         const paramName = `param${this.paramCounter++}`;
-        if (Array.isArray(value)) {
-          this.paramNames[paramName] = value;
-          this.paramTypes[paramName] = { type: 'array', child: { type: valueType } };
-        } else {
-          this.paramNames[paramName] = value;
-          this.paramTypes[paramName] = valueType;
-        }
-        return `@${paramName}`;
+        const type: ParamType = Array.isArray(value) ? { type: 'array', child: { type: valueType } } : valueType;
+        this.paramNames[paramName] = value;
+        this.paramTypes[paramName] = type;
+        const placeholder = `@${paramName}`;
+        return this.config.paramExpression ? this.config.paramExpression(placeholder, type) : placeholder;
       } else {
         this.params.push(value);
         return '?';
