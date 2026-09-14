@@ -1,0 +1,15 @@
+{
+  "branch": "ci/verify-train",
+  "packages": [
+    "db",
+    "query",
+    "ui",
+    "file",
+    "drivers/knex",
+    "drivers/spanner",
+    "encryption-drivers/gcp-kms",
+    "file-storage-drivers/google-cloud-storage"
+  ],
+  "suites": [],
+  "removes": []
+}
