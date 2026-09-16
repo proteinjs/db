@@ -60,6 +60,31 @@ describe('File media metadata columns', () => {
     expect(row.durationMs).toEqual(24_500);
   });
 
+  it('round-trips the rights record on a web-saved copy — licence name, deed URL and the credit sentence', async () => {
+    const file = await new FileStorage().createFile(
+      {
+        name: 'fold.jpg',
+        type: 'image/jpeg',
+        size: 4,
+        width: 4032,
+        height: 3024,
+        sourceUrl: 'https://upload.wikimedia.org/fold.jpg',
+        sourcePageUrl: 'https://commons.wikimedia.org/w/index.php?curid=1',
+        retrievedAt: new Date(),
+        license: 'CC BY 3.0',
+        licenseUrl: 'https://creativecommons.org/licenses/by/3.0/',
+        attribution: '"Samsung Galaxy Z Fold" by Ka Kit Pang is licensed under CC BY 3.0.',
+      } as File,
+      Buffer.from('fold').toString('base64')
+    );
+
+    const row = await getDbAsSystem().get(tables.File, { id: file.id });
+    expect(row.license).toEqual('CC BY 3.0');
+    expect(row.licenseUrl).toEqual('https://creativecommons.org/licenses/by/3.0/');
+    expect(row.attribution).toEqual('"Samsung Galaxy Z Fold" by Ka Kit Pang is licensed under CC BY 3.0.');
+    expect(row.sourcePageUrl).toEqual('https://commons.wikimedia.org/w/index.php?curid=1');
+  });
+
   it('leaves the fields absent for non-media files', async () => {
     const file = await new FileStorage().createFile(
       { name: 'a.txt', type: 'text/plain', size: 5 } as File,
@@ -70,5 +95,7 @@ describe('File media metadata columns', () => {
     expect(row.width ?? undefined).toBeUndefined();
     expect(row.height ?? undefined).toBeUndefined();
     expect(row.durationMs ?? undefined).toBeUndefined();
+    expect(row.license ?? undefined).toBeUndefined();
+    expect(row.attribution ?? undefined).toBeUndefined();
   });
 });

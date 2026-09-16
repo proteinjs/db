@@ -33,6 +33,17 @@ export interface File extends ScopedRecord {
   sourcePageUrl?: string;
   retrievedAt?: Date;
   /**
+   * Rights record — set when a web-saved copy came from a source that states a licence per
+   * item (a Creative Commons / public-domain work): the licence's name ("CC BY-SA 4.0"), its
+   * deed URL, and the ready credit sentence the source supplies. Every consumer that renders the
+   * copy can show the licence beside the source without a join; absent when the source stated
+   * none (a plain provenance copy) and for locally-produced files. Accuracy is the source's
+   * claim, recorded — never vouched for here.
+   */
+  license?: string;
+  licenseUrl?: string;
+  attribution?: string;
+  /**
    * SHA-256 of the stored bytes (hex), stamped at media ingest. Enables content dedup — the
    * same web image saved twice (or cited from two pages) reuses one File row — and doubles as
    * an integrity fact. Absent for files written before the column existed.
@@ -63,6 +74,11 @@ export class FileTable extends Table<File> {
     sourceUrl: new StringColumn('source_url', {}, 'MAX'),
     sourcePageUrl: new StringColumn('source_page_url', {}, 'MAX'),
     retrievedAt: new DateColumn('retrieved_at'),
+    // Rights record (see the interface docs): a licence name is short; the deed URL and the
+    // credit sentence are free text — MAX, like the provenance URLs.
+    license: new StringColumn('license', {}, 64),
+    licenseUrl: new StringColumn('license_url', {}, 'MAX'),
+    attribution: new StringColumn('attribution', {}, 'MAX'),
     contentHash: new StringColumn('content_hash', {}, 64),
   });
   // Dedup lookup path: find the caller's existing copy of these bytes (content_hash is only
