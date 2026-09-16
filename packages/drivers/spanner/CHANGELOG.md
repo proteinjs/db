@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.30.2](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.30.1...@proteinjs/db-driver-spanner@1.30.2) (2026-09-16)
+
+
+### Bug Fixes
+
+* a retried transaction abort logs at debug, not error ([36c62da](https://github.com/proteinjs/db/commit/36c62da5e9c1ed422006bc943d52d587e386fb72))
+
+
+
+
+
 ## [1.30.1](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.30.0...@proteinjs/db-driver-spanner@1.30.1) (2026-09-14)
 
 
