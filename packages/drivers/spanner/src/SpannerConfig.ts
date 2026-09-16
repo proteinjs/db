@@ -32,6 +32,15 @@ export type SpannerConfig = {
    */
   deadlineFailuresBeforeRecycle?: number;
   /**
+   * Wall-clock budget (ms) the client library's transaction runner re-runs an ABORTED read-write
+   * transaction within (default 3_600_000 — the library's own default). Spanner resolves a lock
+   * conflict by aborting one transaction (wound-wait, gRPC ABORTED code 10); the runner re-runs
+   * the body on a fresh transaction after its backoff, and those retried aborts are logged at
+   * DEBUG, not ERROR. Only when this budget runs out does the transaction fail — the runner's
+   * DeadlineError, logged once at ERROR with the last abort as its cause.
+   */
+  transactionRetryTimeoutMs?: number;
+  /**
    * In-run token refresh for env-token auth: when the driver is running on an env-delivered
    * access token (`CLOUDSDK_AUTH_ACCESS_TOKEN` present at client construction) and the token
    * expires or is rejected mid-run, this hook mints the replacement. Default (no hook): re-read

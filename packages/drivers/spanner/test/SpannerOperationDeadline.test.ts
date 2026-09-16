@@ -92,7 +92,13 @@ describe('Spanner op deadlines', () => {
       commit: jest.fn(() => hang()),
     };
     const db = {
-      runTransactionAsync: async (fn: (transaction: unknown) => Promise<unknown>) => {
+      // The library's runTransactionAsync has two overloads — (runFn) and (options, runFn); the
+      // driver uses the latter to set the transaction retry budget, so the run function is the
+      // LAST argument either way.
+      runTransactionAsync: async (optionsOrFn: unknown, maybeFn?: (transaction: unknown) => Promise<unknown>) => {
+        const fn = (typeof optionsOrFn === 'function' ? optionsOrFn : maybeFn) as (
+          transaction: unknown
+        ) => Promise<unknown>;
         try {
           return await fn(transaction);
         } finally {

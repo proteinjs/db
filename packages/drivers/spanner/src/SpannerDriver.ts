@@ -1,5 +1,6 @@
 import { Database, Instance, Spanner, SpannerOptions, Transaction } from '@google-cloud/spanner';
 import { SessionPoolOptions } from '@google-cloud/spanner/build/src/session-pool';
+import { DeadlineError } from '@google-cloud/spanner/build/src/transaction-runner';
 import {
   DbDriver,
   DbDriverQueryStatementConfig,
@@ -36,6 +37,21 @@ export class SpannerDriver implements DbDriver {
    */
   private static CLIENT_GENERATION = 0;
   private static CONSECUTIVE_DEADLINE_FAILURES = 0;
+  /**
+   * The default wall-clock budget the client library's transaction runner re-runs an aborted
+   * `runTransactionAsync` body within — the library's own default, made explicit so the budget the
+   * driver runs under is visible in one place. `SpannerConfig.transactionRetryTimeoutMs` overrides
+   * it (see transactionRetryTimeoutMs()); a budget that runs out surfaces as the runner's
+   * DeadlineError carrying the last abort (see runRetriedTransaction).
+   */
+  private static readonly DEFAULT_TRANSACTION_RETRY_TIMEOUT_MS = 3_600_000;
+  /**
+   * The attempt number of every transaction the runner currently drives, keyed by that attempt's
+   * transaction handle — how the failure path (operationFailure) knows a statement ran inside a
+   * runner-driven transaction, and which attempt it was. Process-wide like the Database the
+   * transactions come from; an entry dies with its handle.
+   */
+  private static readonly RUNNER_ATTEMPTS = new WeakMap<Transaction, number>();
   private logger = new Logger({ name: this.constructor.name });
   private config: SpannerConfig;
   public getTable: ((name: string) => Table<any>) | undefined;
@@ -293,7 +309,7 @@ export class SpannerDriver implements DbDriver {
       return rows.map((row) => row.toJSON());
     } catch (error: any) {
       const durationMs = Number(process.hrtime.bigint() - startTime) / 1_000_000;
-      throw this.operationFailure('query', sql, error, durationMs, callSiteStack);
+      throw this.operationFailure('query', sql, error, durationMs, callSiteStack, runner);
     }
   }
 
@@ -311,24 +327,9 @@ export class SpannerDriver implements DbDriver {
       return await this.executeDml(generateStatement, transaction, callSiteStack);
     }
 
-    // Stalls in the transaction wrapper itself (session acquisition / begin / commit) happen
-    // OUTSIDE executeDml's instrumentation — wrap the whole round trip too. Every await inside
-    // the run function is deadline-bounded (dml, commit, rollback): the run function therefore
-    // ALWAYS settles, which is what makes runTransactionAsync's own `finally` release the
-    // transaction's session back to the pool on a dead channel.
-    return await this.withDeadline(
-      'spanner dml transaction',
-      '(runTransactionAsync)',
-      this.getSpannerDb().runTransactionAsync(async (transaction) => {
-        try {
-          const rowCount = await this.executeDml(generateStatement, transaction, callSiteStack);
-          await this.commit(transaction);
-          return rowCount;
-        } catch (error) {
-          await this.rollbackQuietly(transaction);
-          throw error;
-        }
-      })
+    // A single-statement transaction of its own, under the runner (see runRetriedTransaction).
+    return await this.runRetriedTransaction('spanner dml transaction', (transaction) =>
+      this.executeDml(generateStatement, transaction, callSiteStack)
     );
   }
 
@@ -377,7 +378,7 @@ export class SpannerDriver implements DbDriver {
       return rowCount;
     } catch (error: any) {
       const durationMs = Number(process.hrtime.bigint() - startTime) / 1_000_000;
-      throw this.operationFailure('dml', sql, error, durationMs, callSiteStack);
+      throw this.operationFailure('dml', sql, error, durationMs, callSiteStack, runner);
     }
   }
 
@@ -388,23 +389,40 @@ export class SpannerDriver implements DbDriver {
    * statement's verb and table, the duration — and never the bound values: those ride the DEBUG
    * line beside the op only. A rejection that is already one of the driver's own typed errors (the
    * env-token auth translation, an earlier wrap) is logged the same way and passes through as is.
+   *
+   * A statement ABORTED (gRPC code 10) inside a transaction the runner drives is not a failure
+   * but the runner's retry signal — Spanner's wound-wait aborted the loser of a lock conflict at
+   * its statement, and the runner re-runs the body on a fresh transaction (runRetriedTransaction)
+   * — so it is logged at debug with its attempt number, never at error, and never reported to the
+   * liveness monitor; retriedAbort is the one classification. The typed error still carries the
+   * code: the body rethrows it, and the runner's retry keys on exactly that.
    */
   private operationFailure(
     operation: SpannerOperationKind,
     sql: string,
     error: unknown,
     durationMs: number,
-    callSiteStack?: string
+    callSiteStack: string | undefined,
+    runner: Database | Transaction
   ): Error {
+    const statement = SpannerOperationError.statementShape(sql);
     const failure =
       error instanceof SpannerOperationError || error instanceof SpannerEnvTokenAuthError
         ? error
-        : new SpannerOperationError(operation, SpannerOperationError.statementShape(sql), error, callSiteStack);
+        : new SpannerOperationError(operation, statement, error, callSiteStack);
+    const retried = this.retriedAbort(runner, error);
+    if (retried) {
+      this.logger.debug({
+        message: `Transaction aborted at ${operation}; the transaction runner retries it`,
+        obj: { attempt: retried.attempt, statement, cause: SpannerOperationError.summarize(error), sql, durationMs },
+      });
+      return failure;
+    }
     this.logger.error({
       message: `Failed when executing ${operation}`,
       error: failure,
       obj: {
-        statement: SpannerOperationError.statementShape(sql),
+        statement,
         cause: SpannerOperationError.summarize(error),
         sql,
         durationMs,
@@ -412,6 +430,20 @@ export class SpannerDriver implements DbDriver {
     });
     SpannerDriver.LIVENESS_MONITOR.reportError(error);
     return failure;
+  }
+
+  /**
+   * The one classification of a retried abort: the statement ran on a transaction the runner
+   * drives (marked with its attempt by runRetriedTransaction) and the backend answered ABORTED
+   * (gRPC code 10) — the code the runner retries. Any other rejection, and an ABORTED on a
+   * transaction nobody retries (a caller-managed handle, a single-use read), is a failure.
+   */
+  private retriedAbort(runner: Database | Transaction, error: unknown): { attempt: number } | undefined {
+    const attempt = SpannerDriver.RUNNER_ATTEMPTS.get(runner as Transaction);
+    if (attempt === undefined || (error as { code?: unknown } | null | undefined)?.code !== 10) {
+      return undefined;
+    }
+    return { attempt };
   }
 
   /**
@@ -432,20 +464,63 @@ export class SpannerDriver implements DbDriver {
    * @returns the return of the `fn`
    */
   async runTransaction<T>(fn: (transaction: Transaction) => Promise<T>): Promise<T> {
-    return await this.withDeadline(
-      'spanner transaction',
-      '(runTransactionAsync)',
-      this.getSpannerDb().runTransactionAsync(async (transaction) => {
-        try {
-          const result = await fn(transaction);
-          await this.commit(transaction);
-          return result;
-        } catch (error) {
-          await this.rollbackQuietly(transaction);
-          throw error;
-        }
-      })
-    );
+    return await this.runRetriedTransaction('spanner transaction', fn);
+  }
+
+  /**
+   * One read-write transaction under the client library's runner, committed on success and
+   * rolled back on failure — the shape both `runTransaction` and the single-statement `runDml`
+   * ride. Every await inside the run function is deadline-bounded (statements, commit, rollback):
+   * the run function therefore ALWAYS settles, which is what makes runTransactionAsync's own
+   * `finally` release the transaction's session back to the pool on a dead channel. Stalls in the
+   * wrapper itself (session acquisition / begin / commit) happen OUTSIDE the statements'
+   * instrumentation, so the whole round trip is deadline-wrapped too.
+   *
+   * The runner RETRIES an aborted attempt (transactionRetryTimeoutMs()): the body runs again on a
+   * fresh transaction, and the abort that ended the previous attempt was a retry signal, not a
+   * failure — each attempt's transaction is marked with its attempt number so the failure path
+   * logs that abort at debug (operationFailure via retriedAbort). Only the runner giving up — its
+   * budget spent, thrown as its DeadlineError carrying the last abort — is the failure, logged
+   * here at error with that cause, once.
+   */
+  private async runRetriedTransaction<T>(op: string, fn: (transaction: Transaction) => Promise<T>): Promise<T> {
+    let attempt = 0;
+    const budgetMs = this.transactionRetryTimeoutMs();
+    const startTime = process.hrtime.bigint();
+    try {
+      return await this.withDeadline(
+        op,
+        '(runTransactionAsync)',
+        this.getSpannerDb().runTransactionAsync({ timeout: budgetMs }, async (transaction) => {
+          attempt += 1;
+          SpannerDriver.RUNNER_ATTEMPTS.set(transaction, attempt);
+          try {
+            const result = await fn(transaction);
+            await this.commit(transaction);
+            return result;
+          } catch (error) {
+            await this.rollbackQuietly(transaction);
+            throw error;
+          }
+        })
+      );
+    } catch (error) {
+      if (error instanceof DeadlineError) {
+        const lastAbort: unknown = error.errors[0];
+        this.logger.error({
+          message: `Transaction retry budget exhausted: ${op}`,
+          error,
+          obj: {
+            attempts: attempt,
+            budgetMs,
+            statement: lastAbort instanceof SpannerOperationError ? lastAbort.statement : undefined,
+            cause: SpannerOperationError.summarize(lastAbort),
+            durationMs: Number(process.hrtime.bigint() - startTime) / 1_000_000,
+          },
+        });
+      }
+      throw error;
+    }
   }
 
   /**
@@ -741,6 +816,10 @@ export class SpannerDriver implements DbDriver {
 
   private operationDeadlineMs(): number {
     return this.config.operationDeadlineMs ?? 60_000;
+  }
+
+  private transactionRetryTimeoutMs(): number {
+    return this.config.transactionRetryTimeoutMs ?? SpannerDriver.DEFAULT_TRANSACTION_RETRY_TIMEOUT_MS;
   }
 
   private deadlineFailuresBeforeRecycle(): number {

@@ -1,0 +1,14 @@
+{
+  "branch": "fix/retried-abort-logs-debug",
+  "packages": ["drivers/spanner"],
+  "suites": [
+    "packages/drivers/spanner/test/RetriedAbortLogging.test.ts",
+    "packages/drivers/spanner/test/OperationFailureCause.test.ts",
+    "packages/drivers/spanner/test/Transaction.test.ts",
+    "packages/drivers/spanner/test/TransactionSafety.test.ts",
+    "packages/drivers/spanner/test/DmlRetrySafety.test.ts",
+    "packages/drivers/spanner/test/Liveness.test.ts",
+    "packages/drivers/spanner/test/SpannerOperationDeadline.test.ts"
+  ],
+  "removes": []
+}
