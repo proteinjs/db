@@ -1,7 +1,7 @@
 /**
  * @jest-environment jsdom
  *
- * Unbounded ('MAX') plain-text columns on the record surfaces (founder ruling, admin round 3):
+ * Unbounded ('MAX') plain-text columns on the record surfaces:
  *  1. They SURFACE on the record FORM as multiline fields — the form renders any length
  *     safely now (a migration's failure stack is exactly what the form gets opened to read).
  *  2. Past the inline-edit bound they render the round-2 grammar: a bounded clamped preview

@@ -28,7 +28,7 @@ export class StringColumn<T = string> implements Column<T, string> {
     public maxLength: number | 'MAX' = 255
   ) {
     /**
-     * Unbounded ('MAX') text columns are NOT default-hidden (founder ruling, admin round 3):
+     * Unbounded ('MAX') text columns are NOT default-hidden:
      * the record FORM renders any length safely now (multiline field with the bounded preview
      * + expand dialog past the inline bound), and a value like a migration's failure stack is
      * exactly what the form gets opened to read. The record TABLE's default column pick still

@@ -1,7 +1,7 @@
 /**
  * @jest-environment jsdom
  *
- * RecordTablePage's phone layout (founder ruling 2026-08-31: admin tables take the full mobile
+ * RecordTablePage's phone layout (admin tables take the full mobile
  * view). Below the phone line the page is FULL-BLEED: no Paper card, no page gutters — the
  * table fills the shell's page column (flex-grow against the viewport column, min-height 0 so
  * the table's own scroll container carries the height) and rows present as Table's phone card
@@ -26,7 +26,7 @@ class UserTable extends Table<User> {
   });
 }
 
-const rows: User[] = [{ id: 'u-1', email: 'a@n3xa.io' } as User];
+const rows: User[] = [{ id: 'u-1', email: 'a@example.com' } as User];
 
 const mockDb = {
   query: jest.fn(async () => rows),
@@ -126,7 +126,7 @@ describe('RecordTablePage phone layout', () => {
   it('phone: full-bleed — no card, no gutters; the table fills the page column and rows render as the card face', async () => {
     phoneMode = true;
     await mount();
-    // No card chrome anywhere on the page (the founder's cards-on-mobile defect).
+    // No card chrome anywhere on the page (the cards-on-mobile defect).
     expect(document.querySelector('.MuiPaper-root')).toBeNull();
     const host = document.querySelector('[data-phone-fullbleed]') as HTMLElement;
     expect(host).toBeTruthy();
@@ -138,7 +138,7 @@ describe('RecordTablePage phone layout', () => {
     expect(hostCss).not.toContain('padding');
     expect(document.querySelector('[data-table-phone-face]')).toBeTruthy();
     expect(document.querySelector('table')).toBeNull();
-    expect(document.body.textContent).toContain('a@n3xa.io');
+    expect(document.body.textContent).toContain('a@example.com');
   });
 
   it('desktop: the floating fit-content card and the table face stay unchanged', async () => {

@@ -99,7 +99,7 @@ function createButton<T extends Record>(table: Table<T>, label?: string): TableB
 }
 
 /**
- * The meaningful-data default column pick (the founder's ask — a record table should surface
+ * The meaningful-data default column pick (a record table should surface
  * what a human scans for, not the schema's first columns). Deterministic tiers over the
  * visible (non-`ui.hidden`) columns:
  *   name → identity strings (email/title/description/…) → status-like short strings →
@@ -108,8 +108,7 @@ function createButton<T extends Record>(table: Table<T>, label?: string): TableB
  * Capped at five + created/updated, exactly as before — the tiers change WHICH five.
  *
  * Unbounded ('MAX') plain-text columns never join the default pick: a table row can't afford
- * a value with no length cap (the record FORM is where those surface now — founder ruling,
- * admin round 3). This is the table layer's own rule, not a `ui.hidden` default — an explicit
+ * a value with no length cap (the record FORM is where those surface now). This is the table layer's own rule, not a `ui.hidden` default — an explicit
  * `columns` prop can still request such a column (the cell grammar clamps it to three lines).
  * Object/Array columns are exempt (their storage is MAX but they render as mono JSON snippets).
  */
@@ -243,7 +242,7 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
         return <JsonSnippetCellValue value={value} />;
       }
       // A structured VALUE on a column the registry types some other way (a driver's JSON column,
-      // a blob it deserializes) is content too — never `[object Object]` (founder, R7 round 3).
+      // a blob it deserializes) is content too — never `[object Object]`.
       if (isStructuredValue(value)) {
         return <JsonSnippetCellValue value={value} />;
       }

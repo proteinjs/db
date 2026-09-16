@@ -55,7 +55,7 @@ class TableSummaryLoader extends BaseTableLoader<TableSummary> {
 }
 
 const Tables = () => {
-  // Phone (founder ruling 2026-08-31): the table takes the FULL mobile view under the shell's
+  // Phone: the table takes the FULL mobile view under the shell's
   // chrome — no FormPage card, no gutters. Desktop keeps the house FormPage card.
   const { isPhone } = useFormFactor();
 

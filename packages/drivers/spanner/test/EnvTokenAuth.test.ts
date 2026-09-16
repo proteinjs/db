@@ -6,8 +6,8 @@ import {
 } from '@proteinjs/db-driver-spanner';
 
 /**
- * Env-delivered token auth (CLOUDSDK_AUTH_ACCESS_TOKEN — the sandbox dev-server leg,
- * plans/CLOUD_CREDENTIALS.md / DEV_INFRA_PLAN.md §12.5): with the env var present the driver
+ * Env-delivered token auth (CLOUDSDK_AUTH_ACCESS_TOKEN — a dev server running in a
+ * sandboxed VM with a delivered token): with the env var present the driver
  * builds its Spanner client on that bearer token; absent, construction is the ADC path exactly
  * as before; with SPANNER_EMULATOR_HOST set the vendor short-circuits auth entirely.
  *

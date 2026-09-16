@@ -173,7 +173,7 @@ describe('SourceRecordLoader.hasChanges — stamp hygiene on the migration ledge
     description: 'Marks every existing account onboarded',
     run: async () => undefined,
     isLoadedFromSource: true,
-    sourcePackage: '@n3xa/app-server',
+    sourcePackage: '@acme/app-server',
     sourcePackageVersion: '1.24.0',
     ...overrides,
   });
@@ -183,7 +183,7 @@ describe('SourceRecordLoader.hasChanges — stamp hygiene on the migration ledge
     id: 'bee7a15c-369f-4e77-abf7-ccd5dc3ae60c',
     description: 'Marks every existing account onboarded',
     isLoadedFromSource: true,
-    sourcePackage: '@n3xa/app-server',
+    sourcePackage: '@acme/app-server',
     sourcePackageVersion: '1.23.0',
     status: 'success',
     startTime: moment('2026-08-30T10:00:00Z'),
@@ -228,16 +228,16 @@ describe('getSourceRecordLoaders — declaration identity', () => {
   it("carries the declaration's own name (the loader class) beside its package and qualified name", () => {
     namedObjectCache()['@proteinjs/db/SourceRecordLoader'] = [
       {
-        qualifiedName: '@n3xa/app-server/BackfillOnboardingStateForExistingAccounts',
-        packageName: '@n3xa/app-server',
+        qualifiedName: '@acme/app-server/BackfillOnboardingStateForExistingAccounts',
+        packageName: '@acme/app-server',
         object: { table: {}, record: {} },
       },
     ];
 
     const [declaration] = getSourceRecordLoaders() as any[];
     expect(declaration).toMatchObject({
-      source: '@n3xa/app-server',
-      qualifiedName: '@n3xa/app-server/BackfillOnboardingStateForExistingAccounts',
+      source: '@acme/app-server',
+      qualifiedName: '@acme/app-server/BackfillOnboardingStateForExistingAccounts',
       name: 'BackfillOnboardingStateForExistingAccounts',
     });
   });

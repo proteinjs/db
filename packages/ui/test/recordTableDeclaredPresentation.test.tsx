@@ -1,7 +1,7 @@
 /**
  * @jest-environment jsdom
  *
- * Declared presentation on the generic record surfaces (founder ask 2026-09-02, the Migrations
+ * Declared presentation on the generic record surfaces (the migrations
  * ops table): the framework renders what tables declare —
  *  1. `ColumnOptions.ui.label` is the column's header on the record table AND its field label
  *     on the record form (one owner; the migration ledger's `startTime` reads "Ran at" on both);
@@ -125,7 +125,7 @@ class UndeclaredRunTable extends Table<Run> {
   });
 }
 
-const runRows: Run[] = [{ id: 'r-1', email: 'a@n3xa.io', startedAt: moment('2026-09-01T10:00:00Z') } as Run];
+const runRows: Run[] = [{ id: 'r-1', email: 'a@example.com', startedAt: moment('2026-09-01T10:00:00Z') } as Run];
 
 const migrationRow = {
   id: 'bee7a15c-369f-4e77-abf7-ccd5dc3ae60c',

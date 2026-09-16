@@ -7,7 +7,7 @@ import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
 import '../generated/test/index';
 
 /**
- * MigrationRunner.runPendingMigrations over the real stack (plans/POST_RELEASE_QUEUE.md 27f):
+ * MigrationRunner.runPendingMigrations over the real stack:
  * the deploy-gated series the migration Job runs before a rollout advances.
  *
  * Outcome pins, on the ledger itself (rows written, run effects observed — not interactions):

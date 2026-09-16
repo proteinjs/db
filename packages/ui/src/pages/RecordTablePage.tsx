@@ -30,7 +30,7 @@ export const recordTableLinkByName = (tableName: string) => {
 };
 
 const DynamicRecordTable = ({ urlParams }: PageComponentProps) => {
-  // Phone (founder ruling 2026-08-31): the table takes the FULL mobile view under the shell's
+  // Phone: the table takes the FULL mobile view under the shell's
   // chrome — no card, no gutters; rows present as the table's phone card face. Desktop keeps
   // the deliberate house card (admin round 3).
   const { isPhone } = useFormFactor();
@@ -69,7 +69,7 @@ const DynamicRecordTable = ({ urlParams }: PageComponentProps) => {
       );
     }
 
-    // The card OWNS its overflow (founder finding 2026-09-02: the Migrations header row painted
+    // The card OWNS its overflow (a header row once painted
     // past the card's rounded edges). A flex item's automatic minimum width is its content's
     // min-content — a table wider than the page (narrow window, zoom, a wide column declaration)
     // grew the card past its container, and nothing clipped at the radius. Capped at the

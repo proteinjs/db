@@ -222,7 +222,7 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
    * A field that holds STRUCTURE — by the column's class (Object/Array; never a reference
    * array, whose storage is a MAX string but whose face is ids) or by the loaded VALUE's shape
    * (a driver's JSON column the registry types outside @proteinjs/db, a blob it deserializes —
-   * founder, R7 round 3: such a value rendered as `[object Object]` in a single-line input).
+   * such a value once rendered as `[object Object]` in a single-line input).
    * ONE predicate for every seat the shape decides: the control (the mono JSON multiline, with
    * the field's own preview + Open door over the inline bound), the section (Content), the
    * full-width row, the pretty-printed load, and the JSON.parse round trip on save.
@@ -364,7 +364,7 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
   }
 
   /**
-   * Which form section a column belongs to (the founder's grouping order: identity → content
+   * Which form section a column belongs to (the grouping order: identity → content
    * → details/config → system meta last). `column.options.ui.formGroup` overrides the
    * derivation; unknown hint strings become their own titled sections after Details.
    */

@@ -8,7 +8,7 @@ import { MigrationTable } from '../src/tables/MigrationTable';
 import { TableAuth } from '../src/auth/TableAuth';
 
 /**
- * Migrations ride the 'dev' PERMISSION (plans/ROLES_AND_PERMISSIONS.md decision 4), not the
+ * Migrations ride the 'dev' PERMISSION, not the
  * admin role: the MigrationRunner service and the migration table doors resolve 'dev' through
  * the consumer's PermissionRolesMapping, so a consumer-mapped dev-role holder can run
  * migrations while admin still passes everything as break-glass. The mapping deliberately names

@@ -21,7 +21,7 @@ export type RecordPanelProps<T extends Record = any, D = any> = {
 export type RecordPanelRenderer<T extends Record = any, D = any> = React.ComponentType<RecordPanelProps<T, D>>;
 
 /**
- * A related presentation DECLARED for a table's record form (plans/USAGE_SURFACES.md §B.1) —
+ * A related presentation DECLARED for a table's record form —
  * "look at a user record and see their usage". Resolved by reflection like
  * `RecordFormCustomization`, but MANY per table: a package that does not own the table's
  * customization can still contribute a panel (thought-ui could add "their thoughts" to the user

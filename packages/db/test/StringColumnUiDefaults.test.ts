@@ -1,5 +1,5 @@
 /**
- * StringColumn's ui defaults (founder ruling, admin round 3): an unbounded ('MAX') plain-text
+ * StringColumn's ui defaults: an unbounded ('MAX') plain-text
  * column is NOT default-hidden anymore — the record form renders any length safely (bounded
  * preview + expand past the inline bound), so the old there-is-no-safe-rendering hide is
  * obsolete. The record TABLE's default pick excludes unbounded text at the pick itself

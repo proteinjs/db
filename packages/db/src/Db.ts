@@ -819,8 +819,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
    * ambient transaction (AsyncLocalStorage) at call time, so any Db instance used inside the
    * transaction body — whenever it was constructed — rides the transaction. There is no way
    * to issue an operation outside a transaction from inside its body, and no second session
-   * is ever acquired inside one (the historical pool-wedge class is unrepresentable —
-   * plans/DB_PERF_PLAN.md P2, in the consumer repo).
+   * is ever acquired inside one (the historical pool-wedge class is unrepresentable).
    *
    * Note: Nested transactions are not supported; will throw.
    *

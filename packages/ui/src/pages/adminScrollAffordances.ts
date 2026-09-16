@@ -2,7 +2,7 @@ import type { Theme } from '@mui/material';
 import type { ScrollTopButtonStyleProps } from '@proteinjs/ui';
 
 /**
- * The admin record surfaces' scroll-container affordances (founder ruling, admin round 3):
+ * The admin record surfaces' scroll-container affordances:
  * every admin table scroller carries the top-edge fade and the floating back-to-top button.
  * One owner for the wiring so the record table page and the Tables browser can't drift.
  *

@@ -1,7 +1,7 @@
 /**
  * @jest-environment jsdom
  *
- * TablesPage's (dev table browser) phone layout (founder ruling 2026-08-31: admin tables take
+ * TablesPage's (dev table browser) phone layout (admin tables take
  * the full mobile view). Below the phone line the page is FULL-BLEED: no FormPage card, no
  * gutters — the summary table fills the shell's page column and rows present as Table's phone
  * card face. Desktop keeps the house FormPage card.

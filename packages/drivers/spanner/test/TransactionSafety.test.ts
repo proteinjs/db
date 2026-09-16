@@ -32,7 +32,7 @@ const spannerConfig = {
 const spannerDriver = new SpannerDriver(spannerConfig, getTable);
 
 /**
- * The STATELESS transaction contract (plans/DB_PERF_PLAN.md P2, superseding the
+ * The STATELESS transaction contract (superseding the
  * construction-time-binding guard): Db instances carry no transaction state — every operation
  * resolves the ambient transaction (AsyncLocalStorage) at call time. Inside a transaction body
  * every Db rides the transaction, whenever it was constructed; outside, every Db uses the
@@ -48,7 +48,7 @@ describe('Transaction safety (stateless contract)', () => {
   const txnDb = new Db(spannerDriver, getTable, new TransactionContext());
 
   beforeAll(async () => {
-    // Fail-closed auth needs an explicit identity (the suite predates the flip — n3xa4 side).
+    // Fail-closed auth needs an explicit identity (the suite predates the flip).
     registerTestUser();
     // HERMETIC single-table world: the delete path's reverse-cascade scan walks getTables();
     // scoping the registry to the local table keeps this suite from querying other suites'

@@ -15,7 +15,7 @@ export const getMigrationRunner = () =>
   typeof self === 'undefined' ? new MigrationRunner() : (getMigrationRunnerService() as MigrationRunner);
 
 /**
- * What one deploy-gated series run did (plans/POST_RELEASE_QUEUE.md 27f). Ids appear in ledger
+ * What one deploy-gated series run did. Ids appear in ledger
  * order (oldest-first). The caller's gate is `failed`: present → the series stopped there, the
  * deploy Job must exit non-zero, the rollout must not advance.
  */
@@ -155,7 +155,7 @@ export class MigrationRunner implements MigrationRunnerService {
   }
 
   /**
-   * Deploy-path API (plans/POST_RELEASE_QUEUE.md 27f): the deploy pipeline's migration Job calls
+   * Deploy-path API: the deploy pipeline's migration Job calls
    * this AFTER `new Db().init()` (schema sync + source-record sync — every source-declared
    * migration has a ledger row by then) and BEFORE the rollout advances. Pod boot never calls it:
    * boot stays migration-free (the startupProbe invariant — DbInitStartupTask is schema sync and

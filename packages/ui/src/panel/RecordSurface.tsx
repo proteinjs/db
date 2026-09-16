@@ -19,7 +19,7 @@ export type RecordSurfaceProps<T extends Record> = {
 export const RECORD_PANEL_COLUMN_WIDTH_PX = 480;
 
 /**
- * The record form with its declared panels (plans/USAGE_SURFACES.md §B.1). Placement is DERIVED
+ * The record form with its declared panels. Placement is DERIVED
  * from the viewport, never configured: at `lg` and wider the panels take a column beside the
  * form card; narrower they stack below it, as wide as the form; on phones (the full-bleed form
  * ruling) they stack below the form inside the page's one scroller. The form is the stock

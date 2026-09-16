@@ -14,7 +14,7 @@ export interface Migration extends SourceRecord {
   name?: string;
   description: string;
   /**
-   * The explicit non-automatable class (plans/POST_RELEASE_QUEUE.md 27f): destructive
+   * The explicit non-automatable class: destructive
    * contractions (column/table drops), long backfills over big tables, data-dependent one-offs.
    * `manual: true` EXCLUDES the migration from the deploy-gated auto-run
    * ({@link MigrationRunner.runPendingMigrations}); it keeps the Migrations-page flow

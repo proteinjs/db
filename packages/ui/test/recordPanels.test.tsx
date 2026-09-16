@@ -1,7 +1,7 @@
 /**
  * @jest-environment jsdom
  *
- * Declared record-form panels (`RecordPanel`, plans/USAGE_SURFACES.md §B.1) — the seam a
+ * Declared record-form panels (`RecordPanel`) — the seam a
  * package uses to put a related presentation beside a table's record form ("look at a user
  * record and see their usage"). Outcomes pinned:
  *  - resolution: EVERY declared panel for the table, in declared order (then by name), none

@@ -85,7 +85,7 @@ describe('computeArrayMembershipOps + applyArrayMembershipOps', () => {
     expect(new Set(baOrder)).toEqual(new Set(['a', 'p', 'q']));
   });
 
-  test('CONVERGENCE: the founder burst — three sequential deletes converge under ANY commit order', () => {
+  test('CONVERGENCE: a delete burst — three sequential deletes converge under ANY commit order', () => {
     // In-memory the client deletes d, then e, then f (each delta computed
     // against its own pre-state, as deleteThought does). The wire commits in a
     // reordered sequence (Spanner abort/retry): every permutation must end at

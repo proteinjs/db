@@ -50,7 +50,7 @@ const RecordLinkRedirect = ({ link }: { link: string }) => {
 /**
  * The record page: ONE loader for the record and its declared panels (`RecordPanel`), one paint.
  *
- * Shell — phone (founder ruling 2026-08-31): the form takes the FULL mobile view under the
+ * Shell — phone: the form takes the FULL mobile view under the
  * shell's chrome — no FormPage card, no page gutters; the page column scrolls the form itself.
  * The form keeps its own content inset (the card's inset was the only thing keeping fields off
  * the glass). Desktop keeps the house FormPage card. With panels declared for the current user,

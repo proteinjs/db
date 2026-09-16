@@ -612,9 +612,9 @@ export const sourceRecordSyncTests = (
 
     /**
      * Version-scoped pruning WITHIN one package: two servers running different VERSIONS of the
-     * same package against one shared database (the actual brent-dev-2 incident — the main app
-     * at thought-common 3.29.0 and a feature worktree at 3.32.0, whose added thought types the
-     * older build deleted on every boot). Every row carries the declaring package's version;
+     * same package against one shared database (a real incident — the main application at one
+     * version of a shared package and a feature worktree at a later one, whose added declarations
+     * the older build deleted on every boot). Every row carries the declaring package's version;
      * a boot never prunes (or flags) a row stamped by a NEWER version of the same package.
      * Within the same or an older stamped version, the package stays authoritative:
      * removals still land, and equal-version skew is last-writer-wins by design.

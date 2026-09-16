@@ -3,7 +3,7 @@
  *
  * Structured values the registry types OUTSIDE @proteinjs/db (a driver's JSON column — the shape
  * of @proteinjs/db-spanner-common's JsonColumn, which implements Column directly) on the record
- * surfaces (founder, R7 round 3: "in some of the admin record forms, there will be an object in
+ * surfaces (the defect: "in some of the admin record forms, there will be an object in
  * a column and it will just display [Object]… this is the perfect example of what should display
  * that as content, but leverage the content size scalability features of the ui to not be a
  * problem if it's large"). The presentation follows the VALUE's shape, not the column's class:
@@ -93,7 +93,7 @@ const proposal = {
   description: 'A frontier model.',
   selectable: true,
 };
-/** The founder's "if it's large": a proposal carrying sixty cited sources — past the inline-edit bound. */
+/** The "if it's large" case: a proposal carrying sixty cited sources — past the inline-edit bound. */
 const largeProposal = {
   ...proposal,
   sources: Array.from({ length: 60 }, (_, i) => ({

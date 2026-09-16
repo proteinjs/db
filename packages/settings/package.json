@@ -7,12 +7,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/brentbahry/db.git"
+    "url": "git+https://github.com/proteinjs/db.git"
   },
   "bugs": {
-    "url": "https://github.com/brentbahry/db/issues"
+    "url": "https://github.com/proteinjs/db/issues"
   },
-  "homepage": "https://github.com/brentbahry/db#readme",
+  "homepage": "https://github.com/proteinjs/db#readme",
   "author": "Brent Bahry",
   "license": "ISC",
   "scripts": {

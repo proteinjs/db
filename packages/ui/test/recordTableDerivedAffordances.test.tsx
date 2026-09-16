@@ -1,7 +1,7 @@
 /**
  * @jest-environment jsdom
  *
- * Auth-derived record-table affordances (founder admin review, v1.22: "no + button for
+ * Auth-derived record-table affordances ("no + button for
  * migrations", "no + on the session table"): the create and delete buttons DERIVE from the
  * table's declared auth doors — an operation the declaration doesn't open for the current
  * user draws no affordance, because the act could only end in a refused save. A UI act rides
@@ -151,7 +151,7 @@ class NoAuthBlockTable extends Table<Session> {
   });
 }
 
-const rows: Session[] = [{ id: 's-1', userEmail: 'a@n3xa.io' } as Session];
+const rows: Session[] = [{ id: 's-1', userEmail: 'a@example.com' } as Session];
 
 describe('RecordTable — auth-derived affordances', () => {
   let container: HTMLDivElement;
@@ -184,12 +184,12 @@ describe('RecordTable — auth-derived affordances', () => {
         </QueryClientProvider>
       );
     });
-    for (let i = 0; i < 5 && !document.body.textContent?.includes('a@n3xa.io'); i++) {
+    for (let i = 0; i < 5 && !document.body.textContent?.includes('a@example.com'); i++) {
       await act(async () => {
         await Promise.resolve();
       });
     }
-    expect(document.body.textContent).toContain('a@n3xa.io');
+    expect(document.body.textContent).toContain('a@example.com');
   };
 
   const createButton = () => document.querySelector('button[aria-label^="Create"]');

@@ -47,7 +47,7 @@ const getSessionPool = (): SessionPool => {
 };
 
 /**
- * Pool mechanics at max=1 (plans/DB_PERF_PLAN.md P2):
+ * Pool mechanics at max=1:
  * 1. The historical wedge — an operation inside a transaction acquiring a SECOND session while
  *    the transaction holds the only one — is DESIGNED OUT by the stateless transaction
  *    contract: every operation inside the body rides the held session, so the shape that
@@ -61,7 +61,7 @@ describe('Session pool at max=1 (wedge designed out; real exhaustion documented)
   const txnDb = new Db(spannerDriver, getTable, new TransactionContext());
 
   beforeAll(async () => {
-    // Fail-closed auth needs an explicit identity (the suite predates the flip — n3xa4 side).
+    // Fail-closed auth needs an explicit identity (the suite predates the flip).
     registerTestUser();
     // HERMETIC single-table world: the delete path's reverse-cascade scan walks getTables();
     // scoping the registry to the local table keeps this suite from querying other suites'

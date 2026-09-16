@@ -49,7 +49,7 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ### Features
 
-* **db, db-ui:** the record-link seam — a table whose rows have their own page declares Table.ui.recordTable.recordLink; the record table links rows there and draws no New / selection Delete; the generic form page replace-navigates stale record URLs to it (plans/ACCOUNT_SURFACE.md §5, rev 2 item 9) ([1327c91](https://github.com/proteinjs/db/commit/1327c91ee42979477407206598b5165cb7b48a1e))
+* **db, db-ui:** the record-link seam — a table whose rows have their own page declares Table.ui.recordTable.recordLink; the record table links rows there and draws no New / selection Delete; the generic form page replace-navigates stale record URLs to it ([1327c91](https://github.com/proteinjs/db/commit/1327c91ee42979477407206598b5165cb7b48a1e))
 
 
 
@@ -60,7 +60,7 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ### Features
 
-* **db-ui:** declared record-form panels — RecordPanel + the one-loader record page (plans/USAGE_SURFACES.md §B.1, US-1/US-2) ([dc72f63](https://github.com/proteinjs/db/commit/dc72f63ea25296ebaec22f9b06ed10b88c932b11))
+* **db-ui:** declared record-form panels — RecordPanel + the one-loader record page ([dc72f63](https://github.com/proteinjs/db/commit/dc72f63ea25296ebaec22f9b06ed10b88c932b11))
 
 
 
@@ -117,7 +117,7 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ### Bug Fixes
 
-* admin record surfaces take the full mobile view (founder finding 2026-08-31: the record table, record form, and tables browser rendered as floating cards on phones) — below the phone line RecordTablePage, RecordFormPage, and TablesPage drop the Paper/FormPage card and the page gutters: the surface fills the shell's page column under the default back-to-home chrome row (flex-grow 1 + min-height 0; the table's own scroll container carries the height, the form page scrolls itself and keeps a 16px content inset — the card's inset was all that kept fields off the glass). Desktop keeps the deliberate admin-round-3 house card unchanged. Red-before-green: the three phone-layout suites assert the full-bleed grammar (no MuiPaper, no gutter padding, flex-grow/min-height 0, phone card face) and FAILED at the pre-fix pages (Paper present, exact defect shape); 5 bite mutations (phone branch disabled on each page, gutter padding reintroduced, form overflow dropped) each failed exactly the guarding leg, restored green. db-ui 15 suites / 58 tests green (13/54 pre-existing; tablesPageMobile + recordFormPageMobile new, recordTablePageMobile rewritten to the ruling). Live proof at 375x812 both themes on an isolated estate (v1.20.1 shell + dedicated emulator): all three surfaces full-bleed under the back-to-home row with real rows; desktop cards byte-identical. ([f7b9c8f](https://github.com/proteinjs/db/commit/f7b9c8f83b0650173d285c16af423055e0291d0e))
+* admin record surfaces take the full mobile view (the record table, record form, and tables browser rendered as floating cards on phones) — below the phone line RecordTablePage, RecordFormPage, and TablesPage drop the Paper/FormPage card and the page gutters: the surface fills the shell's page column under the default back-to-home chrome row (flex-grow 1 + min-height 0; the table's own scroll container carries the height, the form page scrolls itself and keeps a 16px content inset — the card's inset was all that kept fields off the glass). Desktop keeps the deliberate admin-round-3 house card unchanged. Red-before-green: the three phone-layout suites assert the full-bleed grammar (no MuiPaper, no gutter padding, flex-grow/min-height 0, phone card face) and FAILED at the pre-fix pages (Paper present, exact defect shape); 5 bite mutations (phone branch disabled on each page, gutter padding reintroduced, form overflow dropped) each failed exactly the guarding leg, restored green. db-ui 15 suites / 58 tests green (13/54 pre-existing; tablesPageMobile + recordFormPageMobile new, recordTablePageMobile rewritten to the ruling). Live proof at 375x812 in both themes on an isolated dev estate: all three surfaces full-bleed under the back-to-home row with real rows; desktop cards byte-identical. ([f7b9c8f](https://github.com/proteinjs/db/commit/f7b9c8f83b0650173d285c16af423055e0291d0e))
 
 
 
@@ -136,7 +136,7 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ### Features
 
-* unbounded text on record forms + admin scroll affordances (founder rulings, admin round 3) — AR-1: StringColumn drops the MAX-implies-ui.hidden default (the form renders any length safely now: multiline field, bounded preview + expand past the inline bound — a migration's failure stack is what the form gets opened to read); the record TABLE's default pick excludes unbounded plain text at the pick itself (explicit columns still honored, Object columns exempt), and an author's explicit ui.hidden still hides everywhere (data_encryption_key.wrapped_key declares it — key material, not prose). AR-2: the admin record scrollers adopt the house scroll-container behavior — TopScrollFade + ScrollTopButton on the record table page and the Tables browser via one adminScrollAffordances owner, with the back-to-top button reading the consumer theme's customShadows tokens (framework default when absent); db-ui floors @proteinjs/ui ^4.14.0 (topScrollFade). Red-before-green: StringColumnUiDefaults (2 red pre-fix), recordFormUnboundedText form legs (2 red pre-fix), table-pick exclusion verified red at the mid-state ([15b5419](https://github.com/proteinjs/db/commit/15b5419880f098a3b671c617a79466f1febd5c02))
+* unbounded text on record forms + admin scroll affordances — AR-1: StringColumn drops the MAX-implies-ui.hidden default (the form renders any length safely now: multiline field, bounded preview + expand past the inline bound — a migration's failure stack is what the form gets opened to read); the record TABLE's default pick excludes unbounded plain text at the pick itself (explicit columns still honored, Object columns exempt), and an author's explicit ui.hidden still hides everywhere (data_encryption_key.wrapped_key declares it — key material, not prose). AR-2: the admin record scrollers adopt the house scroll-container behavior — TopScrollFade + ScrollTopButton on the record table page and the Tables browser via one adminScrollAffordances owner, with the back-to-top button reading the consumer theme's customShadows tokens (framework default when absent); db-ui floors @proteinjs/ui ^4.14.0 (topScrollFade). Red-before-green: StringColumnUiDefaults (2 red pre-fix), recordFormUnboundedText form legs (2 red pre-fix), table-pick exclusion verified red at the mid-state ([15b5419](https://github.com/proteinjs/db/commit/15b5419880f098a3b671c617a79466f1febd5c02))
 
 
 
@@ -879,7 +879,7 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 **Note:** Version bump only for package @proteinjs/db-ui
 
-## [1.0.2](https://github.com/brentbahry/db/compare/@proteinjs/db-ui@1.0.1...@proteinjs/db-ui@1.0.2) (2024-04-19)
+## [1.0.2](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.0.1...@proteinjs/db-ui@1.0.2) (2024-04-19)
 
 **Note:** Version bump only for package @proteinjs/db-ui
 

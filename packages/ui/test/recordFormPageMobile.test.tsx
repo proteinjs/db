@@ -1,7 +1,7 @@
 /**
  * @jest-environment jsdom
  *
- * RecordFormPage's phone layout (founder ruling 2026-08-31: admin forms take the full mobile
+ * RecordFormPage's phone layout (admin forms take the full mobile
  * view). Below the phone line the page is FULL-BLEED: no FormPage card, no page gutters — the
  * form spans the shell's page column full-height and scrolls itself, keeping only its own
  * content inset (fields never touch the glass; the card's inset was the only thing keeping
@@ -115,7 +115,7 @@ describe('RecordFormPage phone layout', () => {
   it('phone: full-bleed — no card, no gutters; the form spans the page column and scrolls itself', async () => {
     phoneMode = true;
     await mount();
-    // No card chrome anywhere on the page (the founder's cards-on-mobile defect).
+    // No card chrome anywhere on the page (the cards-on-mobile defect).
     expect(document.querySelector('.MuiPaper-root')).toBeNull();
     const host = document.querySelector('[data-phone-fullbleed]') as HTMLElement;
     expect(host).toBeTruthy();
