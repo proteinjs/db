@@ -215,13 +215,15 @@ describe('Batched DDL', () => {
     await expect(spannerDriver.runUpdateSchema(statements)).rejects.toThrow(/uniqueness violation/);
 
     // The failure LOG must carry the backend's reason too. Apply-phase LRO errors put it in
-    // `error.message` and leave `error.details` UNDEFINED — logging details alone records an
-    // empty reason for exactly the failure class that leaves partial schema state behind.
+    // `error.message` and leave `error.details` UNDEFINED — a cause summary read from details
+    // alone would record an empty reason for exactly the failure class that leaves partial
+    // schema state behind.
     const failureLog = logErrorSpy.mock.calls.find(
       ([entry]) => entry.message === 'Failed when executing schema update'
     );
     expect(failureLog).toBeDefined();
-    expect(String((failureLog![0].obj as { errorDetails?: unknown }).errorDetails)).toMatch(/uniqueness violation/);
+    const cause = (failureLog![0].obj as { cause?: { message?: unknown } }).cause;
+    expect(String(cause?.message)).toMatch(/uniqueness violation/);
 
     // Honest partial-failure semantics of the apply phase: NOT atomic. Statement 1 stays
     // applied; statement 3, ordered after the failure, is cancelled.

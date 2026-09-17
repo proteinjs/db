@@ -19,14 +19,18 @@ export const GRPC_STATUS_NAMES: { [code: number]: string } = {
   16: 'UNAUTHENTICATED',
 };
 
-export type SpannerOperationKind = 'query' | 'dml';
+export type SpannerOperationKind = 'query' | 'dml' | 'schema update';
 
 /**
  * The SHAPE of a statement — its verb and the table it acts on, never a value — the only
  * statement facts a failure log or error message carries at error level (row values ride the
- * DEBUG line beside the op, never a log line that leaves the process at ERROR).
+ * DEBUG line beside the op, never a log line that leaves the process at ERROR). For DDL the verb
+ * is the whole leading keyword (`CREATE UNIQUE INDEX`, `ALTER TABLE`, `DROP TABLE`) and `table`
+ * the schema object it names — a table, an index, a sequence. A schema update applies a LIST of
+ * statements as one operation: its shape is the first statement's, with `statementCount` the
+ * size of the batch.
  */
-export type StatementShape = { operation: string; table?: string };
+export type StatementShape = { operation: string; table?: string; statementCount?: number };
 
 /** The underlying failure, summarized for a log line: the gRPC code, its name, the vendor message (values masked). */
 export type OperationCauseSummary = { code?: number; status?: string; message: string };
@@ -35,8 +39,8 @@ export type OperationCauseSummary = { code?: number; status?: string; message: s
 const MAX_MESSAGE_CHARS = 300;
 
 /**
- * A failed Spanner data operation — what `SpannerDriver.runQuery` / `runDml` throw when the
- * vendor client rejects. The vendor error rides as `cause` (its `code`, `details` and `metadata`
+ * A failed Spanner operation — what `SpannerDriver.runQuery` / `runDml` / `runUpdateSchema` throw
+ * when the vendor client rejects. The vendor error rides as `cause` (its `code`, `details` and `metadata`
  * are ALSO copied onto this error, so callers branching on the gRPC status — an ALREADY_EXISTS
  * adopt-the-winner path checking `error.code === 6` — keep working unchanged); the message names
  * the status and the statement's shape; the stack is the CALLER's (captured where the driver was
@@ -118,8 +122,9 @@ export class SpannerOperationError extends Error {
 
   /**
    * The verb and table of a statement (`INSERT INTO \`flow_case\` (...)` → INSERT · flow_case;
-   * `SELECT ... FROM \`chat\` ...` → SELECT · chat). Never a value: the parse stops at the table
-   * name. An unrecognized statement keeps its first word as the operation and no table.
+   * `SELECT ... FROM \`chat\` ...` → SELECT · chat; `CREATE UNIQUE INDEX \`chat_title\` ON ...` →
+   * CREATE UNIQUE INDEX · chat_title). Never a value: the parse stops at the table (object) name.
+   * An unrecognized statement keeps its first word as the operation and no table.
    */
   static statementShape(sql: string): StatementShape {
     const text = String(sql ?? '').trim();
@@ -133,6 +138,10 @@ export class SpannerOperationError extends Error {
           : verb.split(/\s+/)[0];
       return { operation, table: dml[2] };
     }
+    const ddl = SpannerOperationError.DDL_SHAPE.exec(text);
+    if (ddl) {
+      return { operation: ddl[1].toUpperCase().replace(/\s+/g, ' '), table: ddl[2] };
+    }
     if (/^(SELECT|WITH)\b/i.test(text)) {
       const from = /\bFROM\s+`?([\w.]+)`?/i.exec(text);
       return { operation: 'SELECT', ...(from ? { table: from[1] } : {}) };
@@ -141,10 +150,19 @@ export class SpannerOperationError extends Error {
     return { operation: firstWord ? firstWord.toUpperCase() : 'UNKNOWN' };
   }
 
+  /**
+   * DDL's leading keyword and the object it names: `CREATE [OR REPLACE] [UNIQUE] [NULL_FILTERED] <kind>`,
+   * `ALTER <kind>`, `DROP <kind>`, an optional `IF [NOT] EXISTS`, then the name (backticks optional).
+   */
+  private static readonly DDL_SHAPE =
+    /^((?:CREATE(?:\s+OR\s+REPLACE)?(?:\s+(?:UNIQUE|NULL_FILTERED))*|ALTER|DROP)\s+(?:TABLE|INDEX|SEQUENCE|VIEW|DATABASE|ROLE|CHANGE\s+STREAM))(?:\s+IF(?:\s+NOT)?\s+EXISTS)?\s+`?([\w.]+)`?/i;
+
   private static describe(operation: SpannerOperationKind, statement: StatementShape, cause: unknown): string {
     const summary = SpannerOperationError.summarize(cause);
     const status = summary.status ? ` (${summary.status}, code ${summary.code})` : '';
-    const target = statement.table ? `${statement.operation} ${statement.table}` : statement.operation;
-    return `Failed when executing ${operation}${status} on ${target}: ${summary.message}`;
+    const named = statement.table ? `${statement.operation} ${statement.table}` : statement.operation;
+    const batch =
+      statement.statementCount && statement.statementCount > 1 ? ` (+${statement.statementCount - 1} more)` : '';
+    return `Failed when executing ${operation}${status} on ${named}${batch}: ${summary.message}`;
   }
 }

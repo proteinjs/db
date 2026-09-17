@@ -908,6 +908,7 @@ export class SpannerDriver implements DbDriver {
    */
   async runUpdateSchema(statements: string | string[]): Promise<void> {
     const statementList = Array.isArray(statements) ? statements : [statements];
+    const callSiteStack = this.callSiteStack(this.runUpdateSchema);
     const startTime = process.hrtime.bigint();
     try {
       this.logger.debug({ message: `Executing schema update`, obj: { statements: statementList } });
@@ -918,16 +919,42 @@ export class SpannerDriver implements DbDriver {
         message: `Schema update executed`,
         obj: { statementCount: statementList.length, durationMs },
       });
-    } catch (error: any) {
+    } catch (error) {
       const durationMs = Number(process.hrtime.bigint() - startTime) / 1_000_000;
-      this.logger.error({
-        message: `Failed when executing schema update`,
-        // Apply-phase LRO failures carry their reason only in `message` (`details` is
-        // undefined there); validation-phase gRPC errors carry both.
-        obj: { statements: statementList, errorDetails: error.details ?? String(error), durationMs },
-      });
-      // DDL is exempt from withDeadline, so it carries its own env-token auth translation.
-      throw this.translateAuthFailure(error);
+      throw this.schemaUpdateFailure(statementList, error, durationMs, callSiteStack);
     }
+  }
+
+  /**
+   * A schema update's failure, logged ONCE with its cause and rethrown as the driver's typed error
+   * — the data-op contract (operationFailure) for DDL: the vendor error as `cause`, its gRPC `code`
+   * copied (the concurrent-reconcile classification keeps reading it), the CALLER's stack, the
+   * status and the batch's shape (the first statement's verb and object, the statement count) in
+   * the message. The cause summary reads the vendor `message`, not `details`: apply-phase
+   * long-running-operation failures carry their reason only in `message` (`details` is undefined
+   * there); validation-phase gRPC errors carry both. DDL carries no row values, so the statement
+   * list itself rides the log line — neither phase reports a positional index, and the backend's
+   * reason names the offending OBJECT; the two together locate the statement. DDL is exempt from
+   * withDeadline, so the env-token auth translation happens here: a translated auth error is
+   * logged the same way and passes through as is, like every driver-typed error on the data path.
+   */
+  private schemaUpdateFailure(
+    statements: string[],
+    error: unknown,
+    durationMs: number,
+    callSiteStack: string | undefined
+  ): Error {
+    const statement = { ...SpannerOperationError.statementShape(statements[0]), statementCount: statements.length };
+    const translated = this.translateAuthFailure(error);
+    const failure =
+      translated instanceof SpannerEnvTokenAuthError
+        ? translated
+        : new SpannerOperationError('schema update', statement, error, callSiteStack);
+    this.logger.error({
+      message: `Failed when executing schema update`,
+      error: failure,
+      obj: { statement, cause: SpannerOperationError.summarize(error), statements, durationMs },
+    });
+    return failure;
   }
 }
