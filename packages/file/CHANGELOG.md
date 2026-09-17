@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.8.0](https://github.com/proteinjs/db/compare/@proteinjs/db-file@1.7.22...@proteinjs/db-file@1.8.0) (2026-09-17)
+
+
+### Features
+
+* **file:** the rights record on a web-saved copy — licence, licence URL and attribution columns on File ([cf25660](https://github.com/proteinjs/db/commit/cf25660501212b0d78a0a029e03526bce9231c29))
+
+
+
+
+
 ## [1.7.22](https://github.com/proteinjs/db/compare/@proteinjs/db-file@1.7.21...@proteinjs/db-file@1.7.22) (2026-09-16)
 
 **Note:** Version bump only for package @proteinjs/db-file
