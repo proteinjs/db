@@ -115,9 +115,9 @@ jobs:
           # on a miss, so only the delta is fetched.
           cache-dependency-path: '**/package-lock.json'
 
-      - name: CI glue self-test (VerifiedTree.js)
+      - name: CI glue self-test (VerifiedTree.js, LockFloors.js)
         # node:test, needs no install; fails the job before any minute is spent on install/build.
-        run: node --test .github/scripts/VerifiedTree.test.js
+        run: node --test .github/scripts/VerifiedTree.test.js .github/scripts/LockFloors.test.js
 
       - name: Install root package
         run: npm i
