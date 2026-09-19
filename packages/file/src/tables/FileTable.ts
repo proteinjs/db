@@ -49,6 +49,15 @@ export interface File extends ScopedRecord {
    * an integrity fact. Absent for files written before the column existed.
    */
   contentHash?: string;
+  /**
+   * Producer attribution — HOW these bytes came to exist (e.g. a user upload, a browser
+   * capture, model generation, a rendered mockup). Same layer ruling as `width`/`height`:
+   * provenance is a generic file fact consumers need without a join — e.g. evidence surfaces
+   * that must refuse non-capture media as proof. Set by ingest paths that know their producer;
+   * absent for everything else. Values are the producing domain's vocabulary, not enumerated
+   * here.
+   */
+  origin?: string;
 }
 
 export class FileTable extends Table<File> {
@@ -80,6 +89,7 @@ export class FileTable extends Table<File> {
     licenseUrl: new StringColumn('license_url', {}, 'MAX'),
     attribution: new StringColumn('attribution', {}, 'MAX'),
     contentHash: new StringColumn('content_hash', {}, 64),
+    origin: new StringColumn('origin', undefined, 50),
   });
   // Dedup lookup path: find the caller's existing copy of these bytes (content_hash is only
   // ever queried per-user — createScopedIndex prefixes the scope column).
