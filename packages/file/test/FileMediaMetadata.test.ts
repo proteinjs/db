@@ -60,6 +60,22 @@ describe('File media metadata columns', () => {
     expect(row.durationMs).toEqual(24_500);
   });
 
+  it('round-trips the producer attribution — how the bytes came to exist (`origin`)', async () => {
+    const file = await new FileStorage().createFile(
+      { name: 'frame.png', type: 'image/png', size: 4, width: 1440, height: 900, origin: 'mockup' } as File,
+      Buffer.from('png!').toString('base64')
+    );
+
+    const row = await getDbAsSystem().get(tables.File, { id: file.id });
+    expect(row.origin).toEqual('mockup');
+    // Absent for everything that does not state its producer (a NULL column reads back empty).
+    const plain = await new FileStorage().createFile(
+      { name: 'note.txt', type: 'text/plain', size: 2 } as File,
+      Buffer.from('hi').toString('base64')
+    );
+    expect((await getDbAsSystem().get(tables.File, { id: plain.id })).origin).toBeFalsy();
+  });
+
   it('round-trips the rights record on a web-saved copy — licence name, deed URL and the credit sentence', async () => {
     const file = await new FileStorage().createFile(
       {
