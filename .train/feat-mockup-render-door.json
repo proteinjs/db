@@ -1,0 +1,10 @@
+{
+  "branch": "feat/mockup-render-door",
+  "packages": [
+    "file"
+  ],
+  "suites": [
+    "packages/file/test/FileMediaMetadata.test.ts"
+  ],
+  "removes": []
+}
