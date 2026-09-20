@@ -1,0 +1,11 @@
+{
+  "branch": "fix/gcs-overwrite-keeps-object-metadata",
+  "packages": ["file-storage-drivers/google-cloud-storage"],
+  "suites": [
+    "packages/file-storage-drivers/google-cloud-storage/test/GoogleCloudStorageDriverOverwriteMetadata.test.ts",
+    "packages/file-storage-drivers/google-cloud-storage/test/GoogleCloudStorageDriverByteEncoding.test.ts",
+    "packages/file-storage-drivers/google-cloud-storage/test/GoogleCloudStorageDriverDeleteFile.test.ts",
+    "packages/file-storage-drivers/google-cloud-storage/test/GoogleCloudStorageDriverSignedUrl.test.ts"
+  ],
+  "removes": []
+}
