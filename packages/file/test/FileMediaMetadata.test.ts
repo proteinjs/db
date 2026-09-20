@@ -76,6 +76,33 @@ describe('File media metadata columns', () => {
     expect((await getDbAsSystem().get(tables.File, { id: plain.id })).origin).toBeFalsy();
   });
 
+  it('round-trips the model beside the producer — which model made the bytes (`originModel`), only where one did', async () => {
+    const made = await new FileStorage().createFile(
+      {
+        name: 'mark.png',
+        type: 'image/png',
+        size: 4,
+        width: 1024,
+        height: 1024,
+        origin: 'generation',
+        originModel: 'example-image-model-1',
+      } as File,
+      Buffer.from('mark').toString('base64')
+    );
+    const madeRow = await getDbAsSystem().get(tables.File, { id: made.id });
+    expect(madeRow.origin).toEqual('generation');
+    expect(madeRow.originModel).toEqual('example-image-model-1');
+
+    // A producer that is not a model states its kind and no model: the two columns are independent.
+    const uploaded = await new FileStorage().createFile(
+      { name: 'photo.jpg', type: 'image/jpeg', size: 5, origin: 'upload' } as File,
+      Buffer.from('photo').toString('base64')
+    );
+    const uploadedRow = await getDbAsSystem().get(tables.File, { id: uploaded.id });
+    expect(uploadedRow.origin).toEqual('upload');
+    expect(uploadedRow.originModel).toBeFalsy();
+  });
+
   it('round-trips the rights record on a web-saved copy — licence name, deed URL and the credit sentence', async () => {
     const file = await new FileStorage().createFile(
       {
@@ -113,5 +140,6 @@ describe('File media metadata columns', () => {
     expect(row.durationMs ?? undefined).toBeUndefined();
     expect(row.license ?? undefined).toBeUndefined();
     expect(row.attribution ?? undefined).toBeUndefined();
+    expect(row.originModel ?? undefined).toBeUndefined();
   });
 });

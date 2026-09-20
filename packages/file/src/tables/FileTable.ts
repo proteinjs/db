@@ -91,6 +91,12 @@ export interface File extends ScopedRecord {
    * here.
    */
   origin?: string;
+  /**
+   * The id of the model that made the bytes, when a model did — `origin` names the KIND of
+   * producer, this names the one. Absent for every other producer. Read by a consumer that
+   * labels a made file with what made it, without a join.
+   */
+  originModel?: string;
 }
 
 export class FileTable extends Table<File> {
@@ -129,6 +135,7 @@ export class FileTable extends Table<File> {
     attribution: new StringColumn('attribution', {}, 'MAX'),
     contentHash: new StringColumn('content_hash', {}, 64),
     origin: new StringColumn('origin', undefined, 50),
+    originModel: new StringColumn('origin_model', undefined, 200),
   });
   // Dedup lookup path: find the caller's existing copy of these bytes (content_hash is only
   // ever queried per-user — createScopedIndex prefixes the scope column).
