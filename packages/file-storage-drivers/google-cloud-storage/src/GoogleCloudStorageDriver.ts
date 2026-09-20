@@ -45,8 +45,29 @@ export class GoogleCloudStorageDriver implements FileStorageDriver {
   }
 
   async updateFileData(fileId: string, data: string): Promise<void> {
-    const file = this.storage.bucket(this.bucketName).file(fileId);
-    await file.save(Buffer.from(data, 'base64'));
+    const gcsFile = this.storage.bucket(this.bucketName).file(fileId);
+    const bytes = Buffer.from(data, 'base64');
+
+    // Writing an object's bytes creates a new generation, and a new generation holds only the
+    // metadata sent with that write. The object is named by file id, so there is no extension to
+    // infer a content type from: an overwrite that sends none is served as
+    // `application/octet-stream`, and a browser following `GET /file/:id` downloads a picture
+    // instead of showing it. So the overwrite restates what the object already says about
+    // itself. `contentEncoding` is left out on purpose — it describes the bytes being replaced.
+    const [existing] = await gcsFile.getMetadata();
+    await gcsFile.save(bytes, {
+      metadata: {
+        contentType: existing.contentType,
+        cacheControl: existing.cacheControl,
+        contentDisposition: existing.contentDisposition,
+        contentLanguage: existing.contentLanguage,
+        metadata: { ...existing.metadata, fileSize: bytes.length.toString() },
+      },
+      // The metadata read and the byte write are two requests. Pinning the write to the
+      // generation that was read makes the pair one decision: an overwrite that raced another
+      // writer fails loudly instead of restating metadata that is no longer the object's.
+      preconditionOpts: { ifGenerationMatch: existing.generation },
+    });
   }
 
   async updateFile(file: File): Promise<void> {
