@@ -25,9 +25,10 @@ import '../generated/test/index';
  * logger at debug level, and judged as the text a writer would print: the message, the inspected
  * `obj`, and the error — its message, its stack, its serialized form and its `util.inspect`
  * rendering. The last is what `console.*` and the default dev log writer print, and it follows a
- * `cause` even when the property is not enumerable: the typed error renders itself (its stack and
- * its enumerable facts), so the vendor error's raw message — which quotes the offending row key —
- * never rides a line through it.
+ * `cause` even when the property is not enumerable: the typed error carries the vendor error
+ * behind its `vendorError` accessor instead — never as `cause`, never as a property of the
+ * instance — so the vendor's raw message, which quotes the offending row key, never rides a line
+ * through it (BackendMessageNeverPrinted.test.ts holds the backend's message itself off the line).
  */
 
 interface CredentialRow extends Record {
@@ -149,7 +150,7 @@ describe('A bound value never reaches a log line (emulator)', () => {
     }
     // …and neither does the error the caller catches, however it is printed.
     expect(printed(outcome)).not.toContain(row.id);
-    expect(((outcome as SpannerOperationError).cause as Error).message).toContain(row.id);
+    expect(((outcome as SpannerOperationError).vendorError as Error).message).toContain(row.id);
     const [failure] = failures;
     expect(failure.obj.sql).toContain('@token');
     expect(failure.obj.params).toEqual({

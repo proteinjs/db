@@ -12,6 +12,7 @@ import {
 import { SpannerConfig } from './SpannerConfig';
 import { SpannerEnvTokenAuth, SpannerEnvTokenAuthError, SPANNER_ENV_TOKEN_VAR } from './SpannerEnvTokenAuth';
 import { SpannerOperationError, SpannerOperationKind } from './SpannerOperationError';
+import { OperationCauseSummary, SpannerFailureText } from './SpannerFailureText';
 import { SpannerLivenessMonitor, type SpannerSessionPoolStats } from './SpannerLivenessMonitor';
 import { Logger } from '@proteinjs/logger';
 import { ParamType, Statement } from '@proteinjs/db-query';
@@ -387,12 +388,14 @@ export class SpannerDriver implements DbDriver {
 
   /**
    * A data op's failure, logged ONCE with its cause and rethrown as the driver's typed error
-   * (`SpannerOperationError`: the vendor error as `cause`, its gRPC `code` copied, the CALLER's
-   * stack). The log line names what actually failed — the underlying status and message, the
-   * statement's verb and table, the SQL text, the duration — and never a bound value: the
-   * parameters are DESCRIBED (describeParams: names, types, lengths), here exactly as on the debug
-   * line beside the op. A rejection that is already one of the driver's own typed errors (the
-   * env-token auth translation, an earlier wrap) is logged the same way and passes through as is.
+   * (`SpannerOperationError`: the gRPC `code` copied, the CALLER's stack, the vendor error behind
+   * its `vendorError` accessor). The log line names what actually failed — the status, the class
+   * the failure was recognized as and the driver's sentence for it (SpannerFailureText — the
+   * backend's own message never rides a line: it echoes the value it choked on), the statement's
+   * verb and table, the SQL text, the duration — and never a bound value: the parameters are
+   * DESCRIBED (describeParams: names, types, lengths), here exactly as on the debug line beside
+   * the op. A rejection that is already one of the driver's own typed errors (the env-token auth
+   * translation, an earlier wrap) is logged the same way and passes through as is.
    *
    * A statement ABORTED (gRPC code 10) inside a transaction the runner drives is not a failure
    * but the runner's retry signal — Spanner's wound-wait aborted the loser of a lock conflict at
@@ -411,39 +414,46 @@ export class SpannerDriver implements DbDriver {
     runner: Database | Transaction
   ): Error {
     const statement = SpannerOperationError.statementShape(sql);
-    const failure =
-      error instanceof SpannerOperationError || error instanceof SpannerEnvTokenAuthError
-        ? error
-        : new SpannerOperationError(operation, statement, error, callSiteStack);
+    const failure = this.typedFailure(operation, statement, error, callSiteStack, namedParams?.params);
+    const cause = this.causeSummary(failure);
     const params = this.describeParams(namedParams);
     const retried = this.retriedAbort(runner, error);
     if (retried) {
       this.logger.debug({
         message: `Transaction aborted at ${operation}; the transaction runner retries it`,
-        obj: {
-          attempt: retried.attempt,
-          statement,
-          cause: SpannerOperationError.summarize(error),
-          sql,
-          params,
-          durationMs,
-        },
+        obj: { attempt: retried.attempt, statement, cause, sql, params, durationMs },
       });
       return failure;
     }
     this.logger.error({
       message: `Failed when executing ${operation}`,
       error: failure,
-      obj: {
-        statement,
-        cause: SpannerOperationError.summarize(error),
-        sql,
-        params,
-        durationMs,
-      },
+      obj: { statement, cause, sql, params, durationMs },
     });
     SpannerDriver.LIVENESS_MONITOR.reportError(error);
     return failure;
+  }
+
+  /**
+   * Any rejection as the error the driver throws: one of its own typed errors passes through as
+   * is; everything else — the vendor client's rejection — becomes a `SpannerOperationError`, so a
+   * vendor error never leaves the driver through a statement, a commit or a schema update.
+   */
+  private typedFailure(
+    operation: SpannerOperationKind,
+    statement: { operation: string; table?: string },
+    error: unknown,
+    callSiteStack?: string,
+    boundValues?: { [param: string]: unknown }
+  ): SpannerOperationError | SpannerEnvTokenAuthError {
+    return error instanceof SpannerOperationError || error instanceof SpannerEnvTokenAuthError
+      ? error
+      : new SpannerOperationError(operation, statement, error, callSiteStack, boundValues);
+  }
+
+  /** A failure as a log line carries it (SpannerFailureText owns the wording). */
+  private causeSummary(failure: unknown): OperationCauseSummary {
+    return failure instanceof SpannerOperationError ? failure.causeSummary() : SpannerFailureText.summarize(failure);
   }
 
   /**
@@ -528,7 +538,7 @@ export class SpannerDriver implements DbDriver {
             attempts: attempt,
             budgetMs,
             statement: lastAbort instanceof SpannerOperationError ? lastAbort.statement : undefined,
-            cause: SpannerOperationError.summarize(lastAbort),
+            cause: this.causeSummary(lastAbort),
             durationMs: Number(process.hrtime.bigint() - startTime) / 1_000_000,
           },
         });
@@ -543,11 +553,19 @@ export class SpannerDriver implements DbDriver {
    * only releases the session once the run function settles).
    */
   private async commit(transaction: Transaction): Promise<void> {
-    await this.withDeadline(
-      'spanner commit',
-      '(commit)',
-      transaction.commit({ gaxOptions: { timeout: this.operationDeadlineMs() } })
-    );
+    try {
+      await this.withDeadline(
+        'spanner commit',
+        '(commit)',
+        transaction.commit({ gaxOptions: { timeout: this.operationDeadlineMs() } })
+      );
+    } catch (error) {
+      // Typed like a statement's failure, so the vendor's text (an abort names the key range it
+      // conflicted on) never leaves the driver; the code rides along, which is what the runner's
+      // retry keys on. Not logged here: an aborted commit is the runner's retry signal, and a
+      // commit that fails for good is the caller's error to report.
+      throw this.typedFailure('commit', { operation: 'COMMIT' }, error);
+    }
   }
 
   /**
@@ -571,7 +589,10 @@ export class SpannerDriver implements DbDriver {
         transaction.rollback({ timeout: this.operationDeadlineMs() })
       );
     } catch (rollbackError: any) {
-      this.logger.debug({ message: `Rollback after transaction error failed`, obj: { rollbackError } });
+      this.logger.debug({
+        message: `Rollback after transaction error failed`,
+        obj: { cause: this.causeSummary(rollbackError) },
+      });
     }
   }
 
@@ -634,7 +655,7 @@ export class SpannerDriver implements DbDriver {
         // escalation stays owned by genuine grpc errors; hang-shaped death is owned by the
         // recycle counter.
         reject(
-          new Error(
+          SpannerFailureText.houseError(
             `Spanner op exceeded its ${deadlineMs}ms deadline: ${op} (configure via SpannerConfig.operationDeadlineMs)`
           )
         );
@@ -739,7 +760,7 @@ export class SpannerDriver implements DbDriver {
     }
     SpannerDriver.ENV_TOKEN_AUTH.invalidate();
     return new SpannerEnvTokenAuthError(
-      `Spanner rejected the env-delivered access token (${SPANNER_ENV_TOKEN_VAR}): ${error.message}. The token has ` +
+      `Spanner rejected the env-delivered access token (${SPANNER_ENV_TOKEN_VAR}): ${SpannerFailureText.summarize(error).message}. The token has ` +
         `likely expired; the driver dropped it and will re-read the env / re-invoke SpannerConfig.envTokenRefreshHook ` +
         `on the next op. Rotate the token (re-configure the runtime env and restart, or provide envTokenRefreshHook); ` +
         `the driver never falls back to application-default credentials.`,
@@ -917,8 +938,9 @@ export class SpannerDriver implements DbDriver {
    *   statements BEFORE the failing one stay applied; the failing one and everything after are
    *   cancelled — the serial path's semantics.
    * Neither phase reports a positional statement index: the backend error names the offending
-   * OBJECT (table/index/column). The failure log below carries the full statement list plus
-   * that reason, which together locate the statement.
+   * OBJECT (table/index/column). The failure log below carries the full statement list plus the
+   * failure's class and the object it names (SpannerFailureText), which together locate the
+   * statement. The throw is the typed `SpannerOperationError` ('schema update'), like a data op's.
    */
   async runUpdateSchema(statements: string | string[]): Promise<void> {
     const statementList = Array.isArray(statements) ? statements : [statements];
@@ -932,16 +954,19 @@ export class SpannerDriver implements DbDriver {
         message: `Schema update executed`,
         obj: { statementCount: statementList.length, durationMs },
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       const durationMs = Number(process.hrtime.bigint() - startTime) / 1_000_000;
+      // DDL is exempt from withDeadline, so it carries its own env-token auth translation.
+      const failure = this.typedFailure('schema update', { operation: 'DDL' }, this.translateAuthFailure(error));
       this.logger.error({
         message: `Failed when executing schema update`,
-        // Apply-phase LRO failures carry their reason only in `message` (`details` is
-        // undefined there); validation-phase gRPC errors carry both.
-        obj: { statements: statementList, errorDetails: error.details ?? String(error), durationMs },
+        error: failure,
+        // The reason is the driver's sentence for the failure's class (SpannerFailureText), never
+        // the backend's text: an apply-phase failure — a unique-index backfill over duplicate
+        // rows — prints the duplicate ROW VALUE in it.
+        obj: { statements: statementList, cause: this.causeSummary(failure), durationMs },
       });
-      // DDL is exempt from withDeadline, so it carries its own env-token auth translation.
-      throw this.translateAuthFailure(error);
+      throw failure;
     }
   }
 

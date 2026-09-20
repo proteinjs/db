@@ -1,98 +1,122 @@
-/** gRPC status names by code — what a vendor error's `code` means, spelled for humans and logs. */
-export const GRPC_STATUS_NAMES: { [code: number]: string } = {
-  0: 'OK',
-  1: 'CANCELLED',
-  2: 'UNKNOWN',
-  3: 'INVALID_ARGUMENT',
-  4: 'DEADLINE_EXCEEDED',
-  5: 'NOT_FOUND',
-  6: 'ALREADY_EXISTS',
-  7: 'PERMISSION_DENIED',
-  8: 'RESOURCE_EXHAUSTED',
-  9: 'FAILED_PRECONDITION',
-  10: 'ABORTED',
-  11: 'OUT_OF_RANGE',
-  12: 'UNIMPLEMENTED',
-  13: 'INTERNAL',
-  14: 'UNAVAILABLE',
-  15: 'DATA_LOSS',
-  16: 'UNAUTHENTICATED',
-};
+import { OperationCauseSummary, SpannerFailureText } from './SpannerFailureText';
 
-export type SpannerOperationKind = 'query' | 'dml';
+export type SpannerOperationKind = 'query' | 'dml' | 'commit' | 'schema update';
 
 /**
  * The SHAPE of a statement — its verb and the table it acts on, never a value — the statement
  * facts an error message carries. No log line at any level carries a row value: beside the shape
  * and the SQL text, the driver's lines DESCRIBE the bound parameters (names, types, lengths —
- * SpannerDriver.describeParams).
+ * SpannerDriver.describeParams) and name the failure in the driver's own words
+ * (SpannerFailureText).
  */
 export type StatementShape = { operation: string; table?: string };
 
-/** The underlying failure, summarized for a log line: the gRPC code, its name, the vendor message (values masked). */
-export type OperationCauseSummary = { code?: number; status?: string; message: string };
+/** The key of the one metadata entry the typed error passes on: the backend's retry delay. */
+const RETRY_INFO_KEY = 'google.rpc.retryinfo-bin';
 
-/** Free text that reaches a log line or an error message is one line and bounded. */
-const MAX_MESSAGE_CHARS = 300;
+/** The vendor client's gRPC metadata, as far as this file reads it. */
+type VendorMetadata = {
+  clone(): VendorMetadata;
+  getMap(): { [key: string]: unknown };
+  remove(key: string): void;
+};
 
 /**
- * A failed Spanner data operation — what `SpannerDriver.runQuery` / `runDml` throw when the
- * vendor client rejects. The vendor error rides as `cause` (its `code`, `details` and `metadata`
- * are ALSO copied onto this error, so callers branching on the gRPC status — an ALREADY_EXISTS
- * adopt-the-winner path checking `error.code === 6` — keep working unchanged); the message names
- * the status and the statement's shape; the stack is the CALLER's (captured where the driver was
- * entered, before the vendor client's own frames take over), so an error report through this
- * driver locates the application code that issued the statement instead of a client-library
- * frame every failure shares.
+ * A failed Spanner operation — what `SpannerDriver.runQuery` / `runDml` / `runUpdateSchema` throw
+ * when the vendor client rejects, and what a failed commit throws inside `runTransaction`.
+ *
+ * Its message, its stack and every property a printer can reach are value-free: the message names
+ * the gRPC status, the statement's shape and the driver's sentence for the failure's class
+ * (`failureClass` — SpannerFailureText owns both); the backend's own message is NOT in it, because
+ * that text echoes whatever value it choked on. The gRPC `code` is copied, so callers branching on
+ * the status — an ALREADY_EXISTS adopt-the-winner path checking `error.code === 6` — keep working
+ * unchanged. The stack is the CALLER's (captured where the driver was entered, before the vendor
+ * client's own frames take over), so an error report through this driver locates the application
+ * code that issued the statement instead of a client-library frame every failure shares.
+ *
+ * The vendor error itself is `vendorError` — for a caller that asks for it by name, and for
+ * nothing else. It is deliberately NOT the standard `cause`: whatever prints an error follows
+ * `cause` whether or not it is enumerable (`util.inspect` — so `console.*` and any log writer built
+ * on it — appends `[cause]`; error reporters and generic handlers walk `error.cause.message`), and
+ * this vendor error quotes row content. It is not a property of the instance at all (an accessor
+ * on the prototype over a private map), so no serializer and no own-property walk reaches it, and
+ * the error renders itself under `util.inspect`, whatever the options. Read the backend's raw
+ * `message` and `details` there, knowing they can carry row values. `metadata` passes on the ONE entry the client library's transaction runner
+ * reads off a thrown error — the backend's retry delay — and nothing else of the vendor's trailers
+ * (their status-details entry repeats the raw message).
  */
 export class SpannerOperationError extends Error {
+  /** Each error's vendor error and summary — held beside the instance, never on it (see the class doc). */
+  private static readonly FAILURES = new WeakMap<
+    SpannerOperationError,
+    { vendorError: unknown; summary: OperationCauseSummary }
+  >();
   readonly code?: number;
   readonly status?: string;
-  /** The vendor error's `details` — for callers; NOT enumerable, so a serialized error carries no raw value. */
-  readonly details?: string;
-  /** The vendor error's `metadata` — for callers; not enumerable, like `details`. */
-  readonly metadata?: unknown;
-  /** The vendor error itself — for callers; not enumerable: its raw message may quote a row key. */
-  readonly cause: unknown;
+  /** The class SpannerFailureText recognized the failure as (`unclassified` when it is none of them). */
+  readonly failureClass: string;
 
+  /**
+   * @param boundValues the failed statement's parameter values — struck out of anything the
+   * failure's sentence keeps (SpannerFailureText); never stored.
+   */
   constructor(
     readonly operation: SpannerOperationKind,
     readonly statement: StatementShape,
-    cause: unknown,
-    callSiteStack?: string
+    vendorError: unknown,
+    callSiteStack?: string,
+    boundValues?: { [param: string]: unknown }
   ) {
-    super(SpannerOperationError.describe(operation, statement, cause));
+    const summary = SpannerFailureText.summarize(vendorError, boundValues);
+    super(SpannerOperationError.describe(operation, statement, summary));
     this.name = 'SpannerOperationError';
     Object.setPrototypeOf(this, SpannerOperationError.prototype);
-    const vendor = cause as { code?: unknown; details?: unknown; metadata?: unknown } | null | undefined;
-    if (typeof vendor?.code === 'number') {
-      this.code = vendor.code;
-      this.status = GRPC_STATUS_NAMES[vendor.code];
+    if (summary.code !== undefined) {
+      this.code = summary.code;
+      this.status = summary.status;
     }
-    // Raw vendor fields ride for callers only: a structured log writer that serializes the error's
-    // enumerable properties must never see a row key through them (the values law).
-    Object.defineProperty(this, 'cause', { value: cause, enumerable: false, writable: false });
-    if (typeof vendor?.details === 'string') {
-      Object.defineProperty(this, 'details', { value: vendor.details, enumerable: false, writable: false });
-    }
-    if (vendor?.metadata !== undefined) {
-      Object.defineProperty(this, 'metadata', { value: vendor.metadata, enumerable: false, writable: false });
-    }
+    this.failureClass = summary.failureClass;
+    SpannerOperationError.FAILURES.set(this, { vendorError, summary });
     if (callSiteStack) {
       this.stack = `${this.name}: ${this.message}\n${callSiteStack}`;
     }
   }
 
-  /** The underlying failure as a log line carries it. */
+  /** The vendor error itself — raw; its `message` and `details` can quote row values. */
+  get vendorError(): unknown {
+    return SpannerOperationError.FAILURES.get(this)?.vendorError;
+  }
+
+  /** The backend's retry delay (gRPC `RetryInfo`), when it sent one — what a transaction runner backs off by. */
+  get metadata(): unknown {
+    const metadata = (this.vendorError as { metadata?: Partial<VendorMetadata> } | null | undefined)?.metadata;
+    if (
+      typeof metadata?.clone !== 'function' ||
+      typeof metadata.getMap !== 'function' ||
+      typeof metadata.remove !== 'function'
+    ) {
+      return undefined;
+    }
+    const retryInfoOnly = metadata.clone();
+    for (const key of Object.keys(retryInfoOnly.getMap())) {
+      if (key !== RETRY_INFO_KEY) {
+        retryInfoOnly.remove(key);
+      }
+    }
+    return retryInfoOnly;
+  }
+
+  /** The underlying failure as a log line carries it: code, status, class and the driver's sentence. */
   causeSummary(): OperationCauseSummary {
-    return SpannerOperationError.summarize(this.cause);
+    return { ...(SpannerOperationError.FAILURES.get(this) as { summary: OperationCauseSummary }).summary };
   }
 
   /**
    * What `util.inspect` prints for this error — so what `console.*` and any log writer built on it
-   * (the default dev writer) print. The stock rendering appends `[cause]` even though the property
-   * is not enumerable, and the vendor error's raw message quotes the offending row key; this
-   * rendering is the stack and the enumerable facts, nothing else. Callers still read `cause`.
+   * (the default dev writer) print: the stack and the enumerable facts, nothing else. The stock
+   * rendering would not print `vendorError` either, but an inspection configured to show hidden
+   * properties and run getters walks the prototype's accessors and would; this rendering is the
+   * same under every option.
    */
   [Symbol.for('nodejs.util.inspect.custom')](
     _depth: number,
@@ -102,35 +126,6 @@ export class SpannerOperationError extends Error {
     const facts = { ...this };
     const header = this.stack ?? `${this.name}: ${this.message}`;
     return `${header} ${inspect ? inspect(facts, options) : JSON.stringify(facts)}`;
-  }
-
-  /**
-   * `{ code, status, message }` of any thrown value — the vendor error, a typed driver error, a
-   * string — with the message's VALUES masked: the backend quotes the offending row key or index
-   * key in its text (`primary key ({pk#id:"…"})`, `index key [...]`), and a unique index over a
-   * personal column would print that value into every error log line.
-   */
-  static summarize(cause: unknown): OperationCauseSummary {
-    const vendor = cause as { code?: unknown; message?: unknown } | null | undefined;
-    const code = typeof vendor?.code === 'number' ? vendor.code : undefined;
-    const raw = typeof vendor?.message === 'string' ? vendor.message : String(cause);
-    return {
-      ...(code !== undefined ? { code, status: GRPC_STATUS_NAMES[code] ?? `code ${code}` } : {}),
-      message: SpannerOperationError.maskValues(raw),
-    };
-  }
-
-  /** Quoted strings, bracketed/braced keys and long numbers → placeholders; one bounded line. */
-  static maskValues(text: string): string {
-    return String(text ?? '')
-      .replace(/"(?:[^"\\]|\\.)*"/g, '"…"')
-      .replace(/'(?:[^'\\]|\\.)*'/g, "'…'")
-      .replace(/\{[^{}\n]{1,300}\}/g, '{…}')
-      .replace(/\[[^\]\n]{1,300}\]/g, '[…]')
-      .replace(/\b\d{4,}\b/g, '<n>')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, MAX_MESSAGE_CHARS);
   }
 
   /**
@@ -158,10 +153,15 @@ export class SpannerOperationError extends Error {
     return { operation: firstWord ? firstWord.toUpperCase() : 'UNKNOWN' };
   }
 
-  private static describe(operation: SpannerOperationKind, statement: StatementShape, cause: unknown): string {
-    const summary = SpannerOperationError.summarize(cause);
+  private static describe(
+    operation: SpannerOperationKind,
+    statement: StatementShape,
+    summary: OperationCauseSummary
+  ): string {
     const status = summary.status ? ` (${summary.status}, code ${summary.code})` : '';
     const target = statement.table ? `${statement.operation} ${statement.table}` : statement.operation;
-    return `Failed when executing ${operation}${status} on ${target}: ${summary.message}`;
+    // A statement has a verb and a table worth naming; a commit and a schema update do not.
+    const on = operation === 'query' || operation === 'dml' ? ` on ${target}` : '';
+    return `Failed when executing ${operation}${status}${on}: ${summary.message}`;
   }
 }

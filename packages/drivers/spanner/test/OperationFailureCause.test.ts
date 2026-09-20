@@ -1,6 +1,6 @@
 import { Db, Record, StatementFactory, StringColumn, Table, tableByName, withRecordColumns } from '@proteinjs/db';
 import { TransactionContext } from '@proteinjs/db-transaction-context';
-import { SpannerDriver, SpannerOperationError } from '@proteinjs/db-driver-spanner';
+import { SpannerDriver, SpannerFailureText, SpannerOperationError } from '@proteinjs/db-driver-spanner';
 import { registerTestUser, clearTestUser } from '@proteinjs/db/test';
 import { SourceRepository } from '@proteinjs/reflection';
 import { getDropTestTable } from './util/getDropTestTable';
@@ -15,11 +15,12 @@ import '../generated/test/index';
  * failed, where, or why (the 2026-09-13 ops finding — "insufficient evidence to classify without
  * the underlying cause or a stack through app code").
  *
- * The contract: the throw is a `SpannerOperationError` — the vendor error as `cause`, its gRPC
- * `code` copied (an ALREADY_EXISTS adopt-the-winner path keeps branching on `error.code === 6`),
- * the status and the statement's shape in the message, the CALLER's frames as the stack — and the
- * one error log line names the cause (code + status + message) and the statement shape, never
- * the bound values.
+ * The contract: the throw is a `SpannerOperationError` — the vendor error behind its `vendorError`
+ * accessor, its gRPC `code` copied (an ALREADY_EXISTS adopt-the-winner path keeps branching on
+ * `error.code === 6`), the status, the statement's shape and the driver's sentence for the
+ * failure's class in the message, the CALLER's frames as the stack — and the one error log line
+ * names the cause (code + status + class + that sentence) and the statement shape, never the bound
+ * values and never the backend's own message (SpannerFailureText; FailureText.test.ts).
  */
 
 interface CauseRow extends Record {
@@ -66,14 +67,18 @@ describe('SpannerOperationError.statementShape — the verb and table, never a v
     expect(SpannerOperationError.statementShape(sql)).toEqual(expected);
   });
 
-  test('summarize names the gRPC status of a coded error and falls back to the message of anything else', () => {
-    expect(SpannerOperationError.summarize(Object.assign(new Error('Row already exists'), { code: 6 }))).toEqual({
+  test('summarize names the gRPC status and the recognized class of a coded error, and withholds the message of anything else', () => {
+    expect(
+      SpannerFailureText.summarize(Object.assign(new Error('Row [k] in table t already exists'), { code: 6 }))
+    ).toEqual({
       code: 6,
       status: 'ALREADY_EXISTS',
-      message: 'Row already exists',
+      failureClass: 'row already exists',
+      message: 'a row with this primary key already exists',
     });
-    expect(SpannerOperationError.summarize(new Error('deadline'))).toEqual({ message: 'deadline' });
-    expect(SpannerOperationError.summarize('boom')).toEqual({ message: 'boom' });
+    expect(SpannerFailureText.summarize(new Error('deadline')).failureClass).toBe('unclassified');
+    expect(SpannerFailureText.summarize(new Error('deadline')).message).not.toContain('deadline');
+    expect(SpannerFailureText.summarize('boom').message).not.toContain('boom');
   });
 });
 
@@ -109,7 +114,7 @@ describe('Data-op failures carry their cause (emulator)', () => {
     errorLogSpy.mockRestore();
   });
 
-  test('a duplicate-key insert throws the typed error: status + statement in the message, the vendor error as cause, its code kept', async () => {
+  test('a duplicate-key insert throws the typed error: status + statement + the failure`s class in the message, the vendor error behind vendorError, its code kept', async () => {
     const row = await db.insert(table, { name: 'first' });
 
     const outcome = await settle(spannerDriver.runDml(duplicateInsert(row.id)));
@@ -119,10 +124,12 @@ describe('Data-op failures carry their cause (emulator)', () => {
     expect(failure.operation).toBe('dml');
     expect(failure.code).toBe(6);
     expect(failure.status).toBe('ALREADY_EXISTS');
-    expect((failure.cause as { code?: number }).code).toBe(6);
+    expect((failure.vendorError as { code?: number }).code).toBe(6);
+    expect('cause' in failure).toBe(false);
+    expect(failure.failureClass).toBe('row already exists');
     expect(failure.statement).toEqual({ operation: 'INSERT', table: table.name });
-    expect(failure.message).toMatch(
-      /^Failed when executing dml \(ALREADY_EXISTS, code 6\) on INSERT db_test_operation_failure_cause: /
+    expect(failure.message).toBe(
+      'Failed when executing dml (ALREADY_EXISTS, code 6) on INSERT db_test_operation_failure_cause: a row with this primary key already exists'
     );
     // The message never carries a bound value.
     expect(failure.message).not.toContain('again');
@@ -144,8 +151,12 @@ describe('Data-op failures carry their cause (emulator)', () => {
     const [log] = dmlFailures;
     expect(log.error).toBeInstanceOf(SpannerOperationError);
     expect(log.obj.statement).toEqual({ operation: 'INSERT', table: table.name });
-    expect(log.obj.cause).toEqual(expect.objectContaining({ code: 6, status: 'ALREADY_EXISTS' }));
-    expect(typeof log.obj.cause.message).toBe('string');
+    expect(log.obj.cause).toEqual({
+      code: 6,
+      status: 'ALREADY_EXISTS',
+      failureClass: 'row already exists',
+      message: 'a row with this primary key already exists',
+    });
     // The parameters are described — a type per name, a length for strings — never quoted.
     const described = Object.values(log.obj.params as { [name: string]: { type: string; length?: number } });
     expect(described).toContainEqual({ type: 'string', length: 'again'.length });
@@ -180,7 +191,7 @@ describe('Data-op failures carry their cause (emulator)', () => {
     expect(failure.statement).toEqual({ operation: 'SELECT', table: 'db_test_no_such_table' });
     expect(typeof failure.code).toBe('number');
     expect(failure.status).toBeDefined();
-    expect((failure.cause as { code?: number }).code).toBe(failure.code);
+    expect((failure.vendorError as { code?: number }).code).toBe(failure.code);
     const queryFailures = errorLogSpy.mock.calls
       .map((call) => call[0] as { message: string; obj?: any })
       .filter((log) => log.message === 'Failed when executing query');

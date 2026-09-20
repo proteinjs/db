@@ -184,6 +184,10 @@ describe('Spanner env-token auth', () => {
 
       await expect(driver.runQuery(generateStatement)).rejects.toThrow(SpannerEnvTokenAuthError);
       await expect(driver.runQuery(generateStatement)).rejects.toThrow(new RegExp(SPANNER_ENV_TOKEN_VAR));
+      // The rejection rides in the typed error's text as the driver's sentence for its status —
+      // the backend's own message is never part of an error message the driver writes.
+      await expect(driver.runQuery(generateStatement)).rejects.toThrow(/the backend rejected the credentials/);
+      await expect(driver.runQuery(generateStatement)).rejects.not.toThrow(/invalid authentication credentials/);
 
       // The failure dropped the cached token: the next mint re-reads the (rotated) env.
       process.env[SPANNER_ENV_TOKEN_VAR] = 'fresh-token';
@@ -202,18 +206,18 @@ describe('Spanner env-token auth', () => {
       );
     });
 
-    test('an UNAUTHENTICATED op in ADC mode passes through untranslated — the typed op error carries the vendor error as cause; translation only exists in env-token mode', async () => {
+    test('an UNAUTHENTICATED op in ADC mode passes through untranslated — the typed op error carries the vendor error behind vendorError; translation only exists in env-token mode', async () => {
       const driver = makeDriver();
       internals(driver).getSpanner(); // no env token: ADC, no env auth installed
       const dead = unauthenticated();
       statics.SPANNER_DB = { run: () => Promise.reject(dead) };
       statics.LIVENESS_MONITOR = fakeMonitor;
 
-      await expect(driver.runQuery(generateStatement)).rejects.toMatchObject({ code: 16, cause: dead });
+      await expect(driver.runQuery(generateStatement)).rejects.toMatchObject({ code: 16, vendorError: dead });
       await expect(driver.runQuery(generateStatement)).rejects.not.toBeInstanceOf(SpannerEnvTokenAuthError);
     });
 
-    test('non-auth errors in env-token mode pass through untranslated (the vendor error rides as cause, its code kept)', async () => {
+    test('non-auth errors in env-token mode pass through untranslated (the vendor error rides behind vendorError, its code kept)', async () => {
       process.env[SPANNER_ENV_TOKEN_VAR] = 'live-token';
       const driver = makeDriver();
       internals(driver).getSpanner();
@@ -221,7 +225,7 @@ describe('Spanner env-token auth', () => {
       statics.SPANNER_DB = { run: () => Promise.reject(unavailable) };
       statics.LIVENESS_MONITOR = fakeMonitor;
 
-      await expect(driver.runQuery(generateStatement)).rejects.toMatchObject({ code: 14, cause: unavailable });
+      await expect(driver.runQuery(generateStatement)).rejects.toMatchObject({ code: 14, vendorError: unavailable });
       await expect(driver.runQuery(generateStatement)).rejects.not.toBeInstanceOf(SpannerEnvTokenAuthError);
     });
   });

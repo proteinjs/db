@@ -214,14 +214,18 @@ describe('Batched DDL', () => {
     const logErrorSpy = jest.spyOn(Logger.prototype, 'error');
     await expect(spannerDriver.runUpdateSchema(statements)).rejects.toThrow(/uniqueness violation/);
 
-    // The failure LOG must carry the backend's reason too. Apply-phase LRO errors put it in
-    // `error.message` and leave `error.details` UNDEFINED — logging details alone records an
-    // empty reason for exactly the failure class that leaves partial schema state behind.
+    // The failure LOG must carry the reason too — as the driver's sentence for the failure's class
+    // (the backend's own message prints the duplicate ROW VALUE: BackendMessageNeverPrinted.test.ts).
+    // Apply-phase LRO errors put their reason in `error.message` and leave `error.details`
+    // UNDEFINED — reading details alone records an empty reason for exactly the failure class
+    // that leaves partial schema state behind.
     const failureLog = logErrorSpy.mock.calls.find(
       ([entry]) => entry.message === 'Failed when executing schema update'
     );
     expect(failureLog).toBeDefined();
-    expect(String((failureLog![0].obj as { errorDetails?: unknown }).errorDetails)).toMatch(/uniqueness violation/);
+    const cause = (failureLog![0].obj as { cause?: { failureClass?: string; message?: string } }).cause;
+    expect(cause?.failureClass).toBe('unique index backfill found duplicates');
+    expect(String(cause?.message)).toMatch(/uniqueness violation.*db_test_batchddl_parent_dup_unique/);
 
     // Honest partial-failure semantics of the apply phase: NOT atomic. Statement 1 stays
     // applied; statement 3, ordered after the failure, is cancelled.

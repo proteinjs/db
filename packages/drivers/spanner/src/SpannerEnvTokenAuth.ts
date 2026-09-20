@@ -1,4 +1,5 @@
 import { OAuth2Client } from 'google-auth-library';
+import { SpannerFailureText } from './SpannerFailureText';
 
 /**
  * The conventional env var for an env-delivered GCP access token — `gcloud`'s own
@@ -98,6 +99,9 @@ export class SpannerEnvTokenAuthError extends Error {
   ) {
     super(message);
     this.name = 'SpannerEnvTokenAuthError';
+    // The driver wrote this text (a vendor rejection rides in it only as the driver's sentence for
+    // its status), so a failure summary keeps it.
+    SpannerFailureText.markHouseAuthored(this);
     // target es5: re-point the prototype so `instanceof SpannerEnvTokenAuthError` holds
     Object.setPrototypeOf(this, SpannerEnvTokenAuthError.prototype);
   }

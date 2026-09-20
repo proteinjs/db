@@ -9,6 +9,8 @@ import {
 } from '@proteinjs/db';
 import { SpannerDriver } from './SpannerDriver';
 import { SpannerColumnTypeFactory } from './SpannerColumnTypeFactory';
+import { SpannerOperationError } from './SpannerOperationError';
+import { SpannerFailureText } from './SpannerFailureText';
 
 const getEnvVar = (key: string): string | undefined =>
   typeof process !== 'undefined' && process.env ? process.env[key] : undefined;
@@ -46,12 +48,12 @@ export class SpannerSchemaOperations implements SchemaOperations {
       return false;
     }
 
-    const message = String((error as { message?: unknown } | undefined)?.message ?? '');
-    return (
-      /Duplicate column name/i.test(message) ||
-      /Duplicate name in schema/i.test(message) ||
-      /already exists/i.test(message)
-    );
+    // The message class is SpannerFailureText's to recognize — the one reader of the backend's
+    // text. A schema update's failure arrives as the driver's typed error, whose own message is
+    // the driver's sentence, so its class rides on it; a raw vendor error is recognized here.
+    const failureClass =
+      error instanceof SpannerOperationError ? error.failureClass : SpannerFailureText.summarize(error).failureClass;
+    return failureClass === SpannerFailureText.SCHEMA_OBJECT_ALREADY_EXISTS;
   }
 
   /**

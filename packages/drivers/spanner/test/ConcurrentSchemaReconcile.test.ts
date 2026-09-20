@@ -1,5 +1,5 @@
 import { IntegerColumn, Record, StringColumn, Table, TableChanges, withRecordColumns } from '@proteinjs/db';
-import { SpannerDriver } from '@proteinjs/db-driver-spanner';
+import { SpannerDriver, SpannerOperationError } from '@proteinjs/db-driver-spanner';
 import { getDropTestTable } from './util/getDropTestTable';
 import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
 import '../generated/test/index';
@@ -301,5 +301,26 @@ describe('Concurrent schema reconcile', () => {
       false
     );
     expect(classifier(tableManager).isAlreadyExistsError(undefined)).toBe(false);
+
+    // A schema update's failure arrives as the driver's TYPED error, whose message is the driver's
+    // sentence, not the backend's: the class it was recognized as rides on it, and only that is read —
+    // a row-level "already exists" is not the schema class, whatever its sentence says.
+    const typed = (operation: 'dml' | 'schema update', code: number, message: string) =>
+      new SpannerOperationError(operation, { operation: 'DDL' }, { code, message });
+    expect(
+      classifier(tableManager).isAlreadyExistsError(
+        typed('schema update', 9, '9 FAILED_PRECONDITION: Duplicate name in schema: db_test.')
+      )
+    ).toBe(true);
+    expect(
+      classifier(tableManager).isAlreadyExistsError(
+        typed('dml', 6, '6 ALREADY_EXISTS: Row [k] in table db_test already exists')
+      )
+    ).toBe(false);
+    expect(
+      classifier(tableManager).isAlreadyExistsError(
+        typed('schema update', 9, 'Found uniqueness violation on index db_test_idx,  duplicate key: {String("k")}')
+      )
+    ).toBe(false);
   });
 });

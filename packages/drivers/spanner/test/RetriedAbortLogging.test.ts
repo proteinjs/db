@@ -1,4 +1,5 @@
 import { randomBytes } from 'crypto';
+import { inspect } from 'util';
 import {
   Db,
   QueryBuilderFactory,
@@ -31,7 +32,8 @@ import '../generated/test/index';
  * with its attempt number, never at error, and is never reported to the liveness monitor; only the
  * runner giving up — its retry budget spent — logs at error, once, with the last abort as its
  * cause. Every other failure (a unique violation inside the same transaction) logs at error
- * exactly as before.
+ * exactly as before. The retried-abort line is a line about a statement like any other: it
+ * DESCRIBES the bound parameters (names, types, lengths) and never carries a value.
  *
  * Forcing an abort on the emulator ("only supports one transaction at a time"): a COMPETITOR
  * read-write transaction is held open (an uncommitted write), so a victim that writes while it is
@@ -223,7 +225,7 @@ describe('Retried aborts log at debug; the exhausted retry budget logs at error 
     reportErrorSpy.mockRestore();
   });
 
-  const assertRetriedAbortsAtDebug = (aborts: LogLine[]) => {
+  const assertRetriedAbortsAtDebug = (aborts: LogLine[], mine: string) => {
     expect(aborts.length).toBeGreaterThanOrEqual(1);
     // Attempt numbers run 1, 2, … in order — one per aborted attempt.
     expect(aborts.map((line) => line.obj.attempt)).toEqual(aborts.map((_, index) => index + 1));
@@ -235,6 +237,16 @@ describe('Retried aborts log at debug; the exhausted retry budget logs at error 
         })
       );
       expect(typeof abort.obj.durationMs).toBe('number');
+      // The parameters are DESCRIBED — the row's id (`mine`, a bound value) by its type and length —
+      // and nothing on the line quotes it.
+      expect(abort.obj.params).toBeDefined();
+      const described = Object.values(abort.obj.params as { [name: string]: { type: string; length?: number } });
+      expect(described).toContainEqual({ type: 'string', length: mine.length });
+      for (const description of described) {
+        expect(Object.keys(description).filter((key) => !['type', 'length', 'null'].includes(key))).toEqual([]);
+      }
+      expect(inspect(abort.obj, { depth: 10, maxStringLength: null })).not.toContain(mine);
+      expect(JSON.stringify(abort.obj)).not.toContain(mine);
     }
   };
 
@@ -247,7 +259,7 @@ describe('Retried aborts log at debug; the exhausted retry budget logs at error 
     });
 
     // Each aborted attempt reached the log at debug; the committed attempt did not.
-    assertRetriedAbortsAtDebug(aborts);
+    assertRetriedAbortsAtDebug(aborts, mine);
     // Never at error, never reported to the liveness monitor: a retried abort is not a failure.
     expect(failureLines(errorLogSpy)).toHaveLength(0);
     expect(errorLogSpy).not.toHaveBeenCalled();
@@ -265,7 +277,7 @@ describe('Retried aborts log at debug; the exhausted retry budget logs at error 
     });
 
     // The implicit transaction retried its aborted attempt(s) at debug, never at error.
-    assertRetriedAbortsAtDebug(aborts);
+    assertRetriedAbortsAtDebug(aborts, mine);
     expect(failureLines(errorLogSpy)).toHaveLength(0);
     expect(errorLogSpy).not.toHaveBeenCalled();
     expect(reportErrorSpy).not.toHaveBeenCalled();
@@ -289,7 +301,7 @@ describe('Retried aborts log at debug; the exhausted retry budget logs at error 
     expect((failure.errors?.[0] as SpannerOperationError).code).toBe(10);
     // The one attempt's abort logged at debug; the budget's exhaustion is the ONE error line.
     expect(aborts).toHaveLength(1);
-    assertRetriedAbortsAtDebug(aborts);
+    assertRetriedAbortsAtDebug(aborts, mine);
     expect(failureLines(errorLogSpy)).toHaveLength(0);
     const budgetLines = lines(errorLogSpy, 'Transaction retry budget exhausted: spanner transaction');
     expect(budgetLines).toHaveLength(1);
@@ -320,7 +332,7 @@ describe('Retried aborts log at debug; the exhausted retry budget logs at error 
     expect(failure.code).toBe(4);
     expect((failure.errors?.[0] as SpannerOperationError).code).toBe(10);
     expect(aborts).toHaveLength(1);
-    assertRetriedAbortsAtDebug(aborts);
+    assertRetriedAbortsAtDebug(aborts, mine);
     expect(failureLines(errorLogSpy)).toHaveLength(0);
     const budgetLines = lines(errorLogSpy, 'Transaction retry budget exhausted: spanner dml transaction');
     expect(budgetLines).toHaveLength(1);
