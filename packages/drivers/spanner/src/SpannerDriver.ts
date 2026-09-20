@@ -23,6 +23,9 @@ import { SpannerSchemaMetadata } from './SpannerSchemaMetadata';
 /** A bound parameter as a log line carries it (see SpannerDriver.describeParams): never its value. */
 type ParamDescription = { type: string; length?: number; null?: true };
 
+/** A statement's parameters as a log line carries them: by name — or the one word for a params map that could not be read at all. */
+type ParamsDescription = { [param: string]: ParamDescription } | 'unreadable';
+
 /**
  * Google Spanner driver for ProteinJs Db
  */
@@ -290,7 +293,9 @@ export class SpannerDriver implements DbDriver {
     const startTime = process.hrtime.bigint();
 
     try {
-      this.logger.debug({ message: `Executing query`, obj: { sql, ...this.loggedParams(namedParams) } });
+      this.writeStatementLine(() =>
+        this.logger.debug({ message: `Executing query`, obj: { sql, ...this.loggedParams(namedParams) } })
+      );
       const wire = this.wireParams(namedParams);
       const [rows] = await this.withDeadline(
         'spanner query',
@@ -353,7 +358,9 @@ export class SpannerDriver implements DbDriver {
     const startTime = process.hrtime.bigint();
 
     try {
-      this.logger.debug({ message: `Executing dml`, obj: { sql, ...this.loggedParams(namedParams) } });
+      this.writeStatementLine(() =>
+        this.logger.debug({ message: `Executing dml`, obj: { sql, ...this.loggedParams(namedParams) } })
+      );
       // DML rides the unary ExecuteBatchDml RPC (`batchUpdate`), never streaming `runUpdate`
       // (ExecuteStreamingSql). The client's streaming transport TRANSPARENTLY RE-SENDS a DML
       // whose response was lost: gax wraps every server-streaming call in retry-request, which
@@ -397,9 +404,10 @@ export class SpannerDriver implements DbDriver {
    * translation, an earlier wrap) is logged the same way and passes through as is.
    *
    * What is THROWN is untouched by any of that: the parameters reach the log lines and nothing
-   * else. The cause summary is the backend's own message with quoted, braced and bracketed spans
-   * masked (SpannerOperationError.summarize); a value the backend echoes OUTSIDE such a span
-   * still reads there and in the thrown error's message.
+   * else, and the lines are written through writeStatementLine, so a line that cannot be built
+   * or written never becomes what is thrown. The cause summary is the backend's own message with
+   * quoted, braced and bracketed spans masked (SpannerOperationError.summarize); a value the
+   * backend echoes OUTSIDE such a span still reads there and in the thrown error's message.
    *
    * A statement ABORTED (gRPC code 10) inside a transaction the runner drives is not a failure
    * but the runner's retry signal — Spanner's wound-wait aborted the loser of a lock conflict at
@@ -424,30 +432,34 @@ export class SpannerDriver implements DbDriver {
         : new SpannerOperationError(operation, statement, error, callSiteStack);
     const retried = this.retriedAbort(runner, error);
     if (retried) {
-      this.logger.debug({
-        message: `Transaction aborted at ${operation}; the transaction runner retries it`,
+      this.writeStatementLine(() =>
+        this.logger.debug({
+          message: `Transaction aborted at ${operation}; the transaction runner retries it`,
+          obj: {
+            attempt: retried.attempt,
+            statement,
+            cause: SpannerOperationError.summarize(error),
+            sql,
+            ...this.loggedParams(namedParams),
+            durationMs,
+          },
+        })
+      );
+      return failure;
+    }
+    this.writeStatementLine(() =>
+      this.logger.error({
+        message: `Failed when executing ${operation}`,
+        error: failure,
         obj: {
-          attempt: retried.attempt,
           statement,
           cause: SpannerOperationError.summarize(error),
           sql,
           ...this.loggedParams(namedParams),
           durationMs,
         },
-      });
-      return failure;
-    }
-    this.logger.error({
-      message: `Failed when executing ${operation}`,
-      error: failure,
-      obj: {
-        statement,
-        cause: SpannerOperationError.summarize(error),
-        sql,
-        ...this.loggedParams(namedParams),
-        durationMs,
-      },
-    });
+      })
+    );
     SpannerDriver.LIVENESS_MONITOR.reportError(error);
     return failure;
   }
@@ -952,15 +964,42 @@ export class SpannerDriver implements DbDriver {
   }
 
   /**
+   * The ONE door a statement's log line is written through — the owner of the rule that writing
+   * a line can NEVER change what the driver throws, or whether a statement runs. A statement
+   * line is written on the way to an RPC or to a `throw`, so whatever goes wrong while building
+   * or writing it — a log writer that is down, a serializer meeting a value it cannot print (a
+   * bigint or a throwing `toJSON`, under the values switch), a helper meeting a shape nobody
+   * foresaw — is caught HERE and reported as one FIXED line that carries nothing of the
+   * statement; the caller then goes on exactly as it was going to. If the logger itself is what
+   * failed, the fixed line fails too and is dropped: nothing is left to write with.
+   */
+  private writeStatementLine(write: () => void): void {
+    try {
+      write();
+    } catch {
+      try {
+        this.logger.error({ message: `Failed to write a statement log line` });
+      } catch {
+        // The logger itself is what failed: nothing is left to write with, and nothing here may throw.
+      }
+    }
+  }
+
+  /**
    * What a statement's log line carries for its bound parameters — every line the driver writes
    * about a statement, at every level: `params`, the DESCRIPTION (describeParams), and — only
-   * behind the dev-only switch (SpannerLogValues) — `paramValues`, the values as bound.
+   * behind the dev-only switch (SpannerLogValues) — `paramValues`, the values as bound. Total: a
+   * statement whose params cannot even be reached is the one word `unreadable`.
    */
   private loggedParams(namedParams?: Statement['namedParams']): {
-    params?: { [param: string]: ParamDescription };
+    params?: ParamsDescription;
     paramValues?: { [param: string]: unknown };
   } {
-    return { params: this.describeParams(namedParams), ...SpannerLogValues.ofStatement(namedParams?.params) };
+    try {
+      return { params: this.describeParams(namedParams), ...SpannerLogValues.ofStatement(namedParams?.params) };
+    } catch {
+      return { params: 'unreadable' };
+    }
   }
 
   /**
@@ -974,15 +1013,42 @@ export class SpannerDriver implements DbDriver {
    * The type is the statement's DECLARED type (the column type the statement factory stamped; an
    * array renders as `array<child>`); a parameter with no declared type — a hand-written statement
    * with no types map — is described by the KIND of its value instead (paramKind).
+   *
+   * TOTAL, for any input — a hand-written statement can carry anything: a parameter that cannot
+   * be read is described as `unreadable` (describeParam), and a params map that cannot even be
+   * walked is the one word `unreadable`.
    */
-  private describeParams(namedParams?: Statement['namedParams']): { [param: string]: ParamDescription } | undefined {
-    if (!namedParams?.params) {
-      return undefined;
+  private describeParams(namedParams?: Statement['namedParams']): ParamsDescription | undefined {
+    try {
+      if (!namedParams?.params) {
+        return undefined;
+      }
+      const params: { [param: string]: unknown } = namedParams.params;
+      const types: { [param: string]: ParamType | undefined } = namedParams.types ?? {};
+      const described: { [param: string]: ParamDescription } = {};
+      for (const name of Object.keys(params)) {
+        described[name] = this.describeParam(
+          () => params[name],
+          () => types[name]
+        );
+      }
+      return described;
+    } catch {
+      return 'unreadable';
     }
-    const types: { [param: string]: ParamType | undefined } = namedParams.types ?? {};
-    const described: { [param: string]: ParamDescription } = {};
-    for (const [name, value] of Object.entries(namedParams.params)) {
-      const declared = types[name];
+  }
+
+  /**
+   * One parameter, described: its declared type (or the kind of its value), a length for
+   * strings, arrays and bytes, null named. The value and its declared type are READ in here, so
+   * a read that throws — an accessor, a revoked proxy, a type nobody can print — is described as
+   * `unreadable` and its neighbours still are described. A length that is not a number is no
+   * length: nothing a value says about itself rides the line but that one number.
+   */
+  private describeParam(read: () => unknown, readDeclared: () => ParamType | undefined): ParamDescription {
+    try {
+      const value = read();
+      const declared = readDeclared();
       const description: ParamDescription = {
         type: !declared
           ? this.paramKind(value)
@@ -991,14 +1057,18 @@ export class SpannerDriver implements DbDriver {
             : `${declared.type}<${declared.child?.type ?? 'unknown'}>`,
       };
       if (typeof value === 'string' || Array.isArray(value) || value instanceof Uint8Array) {
-        description.length = value.length;
+        const length: unknown = value.length;
+        if (typeof length === 'number') {
+          description.length = length;
+        }
       }
       if (value === null || value === undefined) {
         description.null = true;
       }
-      described[name] = description;
+      return description;
+    } catch {
+      return { type: 'unreadable' };
     }
-    return described;
   }
 
   /** The kind of a bound value, for a parameter with no declared type — a word, never the value. */
