@@ -34,7 +34,7 @@ export const crudTests = (
           name: 'Veronican',
           department: 'Cake Factory',
           object:
-            '{"cookie":{"originalMaxAge":5184000000,"expires":"2024-07-08T06:16:07.134Z","httpOnly":true,"path":"/"},"passport":{"user":"brent@n3xa.io"}}',
+            '{"cookie":{"originalMaxAge":5184000000,"expires":"2024-07-08T06:16:07.134Z","httpOnly":true,"path":"/"},"passport":{"user":"someone@example.com"}}',
         },
         { id: insertedEmployee.id }
       );

@@ -24,8 +24,8 @@ describe('SearchTokenizer', () => {
   });
 
   test('normalization: case folds, punctuation splits words, numbers are word characters', () => {
-    const tokens = tokenizer.tokensForValue('N3xa-Dev NOTES');
-    expect(tokens).toContain('w:n3xa');
+    const tokens = tokenizer.tokensForValue('Utf8-Dev NOTES');
+    expect(tokens).toContain('w:utf8');
     expect(tokens).toContain('w:dev');
     expect(tokens).toContain('w:notes');
   });

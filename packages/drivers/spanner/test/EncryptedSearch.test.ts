@@ -73,7 +73,7 @@ describe('Encrypted search: exact contains/prefix, equality, shared-scope OR', (
     await seed(OWNER_A, 'Pancake factory notes');
     await seed(OWNER_A, 'cake factory shift plan');
     await seed(OWNER_A, 'Therapy notes — divorce');
-    await seed(OWNER_A, 'n3xa notes');
+    await seed(OWNER_A, 'next notes');
     await seed(OWNER_A, null, 'tag-null-title');
     await seed(OWNER_A, 'Once and future factories');
     // holds every fragment of "cake factory" NON-contiguously — a token-cover candidate the
@@ -134,7 +134,7 @@ describe('Encrypted search: exact contains/prefix, equality, shared-scope OR', (
   });
 
   test('1-2 character queries behave as word-prefix search (the documented narrowing)', async () => {
-    // 'n' finds "n3xa notes" (word start), and also "notes" words — anything with an n-starting word
+    // 'n' finds "next notes" (word start), and also "notes" words — anything with an n-starting word
     const rows = await db.query(docTable, titleLike('%n%'));
     for (const row of rows) {
       expect(
@@ -144,9 +144,9 @@ describe('Encrypted search: exact contains/prefix, equality, shared-scope OR', (
           .some((word) => word.startsWith('n'))
       ).toBe(true);
     }
-    expect(titlesOf(rows)).toContain('n3xa notes');
+    expect(titlesOf(rows)).toContain('next notes');
 
-    // a 1-2 char MID-WORD substring is documented unsupported: 'x' inside 'n3xa' does not match
+    // a 1-2 char MID-WORD substring is documented unsupported: 'x' inside 'next' does not match
     const midWord = await db.query(docTable, titleLike('%x%'));
     expect(titlesOf(midWord)).toEqual([]);
   });

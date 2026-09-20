@@ -26,7 +26,7 @@ class UserTable extends Table<User> {
   });
 }
 
-const rows: User[] = [{ id: 'u-1', email: 'a@n3xa.io' } as User];
+const rows: User[] = [{ id: 'u-1', email: 'a@example.com' } as User];
 
 const mockDb = {
   query: jest.fn(async () => rows),
@@ -138,7 +138,7 @@ describe('RecordTablePage phone layout', () => {
     expect(hostCss).not.toContain('padding');
     expect(document.querySelector('[data-table-phone-face]')).toBeTruthy();
     expect(document.querySelector('table')).toBeNull();
-    expect(document.body.textContent).toContain('a@n3xa.io');
+    expect(document.body.textContent).toContain('a@example.com');
   });
 
   it('desktop: the floating fit-content card and the table face stay unchanged', async () => {

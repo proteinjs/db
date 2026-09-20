@@ -61,7 +61,7 @@ describe('Session pool at max=1 (wedge designed out; real exhaustion documented)
   const txnDb = new Db(spannerDriver, getTable, new TransactionContext());
 
   beforeAll(async () => {
-    // Fail-closed auth needs an explicit identity (the suite predates the flip — n3xa4 side).
+    // Fail-closed auth needs an explicit identity (the suite predates the flip).
     registerTestUser();
     // HERMETIC single-table world: the delete path's reverse-cascade scan walks getTables();
     // scoping the registry to the local table keeps this suite from querying other suites'

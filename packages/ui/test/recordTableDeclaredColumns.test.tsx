@@ -74,7 +74,7 @@ class UndeclaredInviteTable extends Table<Invite> {
 }
 
 const rows: Invite[] = [
-  { id: 'i-1', email: 'a@n3xa.io', token: 'tok-secret-a1b2c3', invitedBy: 'founder@n3xa.io' } as Invite,
+  { id: 'i-1', email: 'a@example.com', token: 'tok-secret-a1b2c3', invitedBy: 'owner@example.com' } as Invite,
 ];
 
 describe('RecordTable — declared row columns', () => {
@@ -107,12 +107,12 @@ describe('RecordTable — declared row columns', () => {
         </QueryClientProvider>
       );
     });
-    for (let i = 0; i < 5 && !document.body.textContent?.includes('a@n3xa.io'); i++) {
+    for (let i = 0; i < 5 && !document.body.textContent?.includes('a@example.com'); i++) {
       await act(async () => {
         await Promise.resolve();
       });
     }
-    expect(document.body.textContent).toContain('a@n3xa.io');
+    expect(document.body.textContent).toContain('a@example.com');
   };
 
   const headerTexts = () =>

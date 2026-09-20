@@ -81,7 +81,7 @@ class GenericFormTable extends Table<Account> {
   });
 }
 
-const rows: Account[] = [{ id: 'acct-1', email: 'a@n3xa.io' } as Account];
+const rows: Account[] = [{ id: 'acct-1', email: 'a@example.com' } as Account];
 
 /** Reads the router's live location out into the DOM so a click's outcome is assertable. */
 const LocationProbe = () => {
@@ -128,12 +128,12 @@ describe('RecordTable — the record-link seam', () => {
         </QueryClientProvider>
       );
     });
-    for (let i = 0; i < 5 && !document.body.textContent?.includes('a@n3xa.io'); i++) {
+    for (let i = 0; i < 5 && !document.body.textContent?.includes('a@example.com'); i++) {
       await act(async () => {
         await Promise.resolve();
       });
     }
-    expect(document.body.textContent).toContain('a@n3xa.io');
+    expect(document.body.textContent).toContain('a@example.com');
   };
 
   /** The row-click gesture the base Table expects: a pointerdown that anchors the click intent, then the click. */
@@ -201,7 +201,7 @@ describe('RecordTable — the record-link seam', () => {
         </QueryClientProvider>
       );
     });
-    for (let i = 0; i < 5 && !document.body.textContent?.includes('a@n3xa.io'); i++) {
+    for (let i = 0; i < 5 && !document.body.textContent?.includes('a@example.com'); i++) {
       await act(async () => {
         await Promise.resolve();
       });
