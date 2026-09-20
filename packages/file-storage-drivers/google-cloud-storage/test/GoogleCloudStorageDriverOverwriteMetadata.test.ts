@@ -125,13 +125,21 @@ describe('GoogleCloudStorageDriver.updateFileData keeps the object metadata', ()
       objects.set(name, { ...current, bytes: otherWritersBytes, generation: nextGeneration++ });
     };
 
-    await expect(driver.updateFileData('file-4', nextBytes.toString('base64'))).rejects.toThrow('conditionNotMet');
+    await expect(driver.updateFileData('file-4', nextBytes.toString('base64'))).rejects.toMatchObject({
+      name: 'FileStorageError',
+      code: 'precondition-failed',
+      status: 412,
+    });
 
     expect(Buffer.compare(objects.get('file-4')!.bytes, otherWritersBytes)).toBe(0);
   });
 
   it('overwriting an object that does not exist fails loudly and creates nothing', async () => {
-    await expect(driver.updateFileData('file-5', nextBytes.toString('base64'))).rejects.toThrow('No such object');
+    await expect(driver.updateFileData('file-5', nextBytes.toString('base64'))).rejects.toMatchObject({
+      name: 'FileStorageError',
+      code: 'not-found',
+      status: 404,
+    });
 
     expect(objects.has('file-5')).toBe(false);
   });
