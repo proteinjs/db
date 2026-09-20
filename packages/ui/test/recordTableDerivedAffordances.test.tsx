@@ -16,6 +16,8 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from 'react-query';
 import { StaticTableLoader } from '@proteinjs/ui';
 import { Record, StringColumn, Table, withRecordColumns } from '@proteinjs/db';
+// The reflection graph: the record table resolves its table's RecordTableCustomization from it.
+import '../generated';
 import { RecordTable } from '../src/table/RecordTable';
 
 declare global {

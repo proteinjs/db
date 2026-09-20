@@ -1,4 +1,6 @@
 export * from './src/table/RecordTable';
+export * from './src/table/RecordTableCustomization';
+export * from './src/table/RowChipTableLoader';
 export * from './src/table/ReferenceCellValue';
 export * from './src/table/QueryTableLoader';
 export * from './src/table/QueryCursorLoader';

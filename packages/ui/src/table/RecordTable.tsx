@@ -34,6 +34,9 @@ import { recordTableLink } from '../pages/RecordTablePage';
 import { tableDisplayName } from '../tableDisplayName';
 import { isStructuredValue } from '../structuredValue';
 import { ReferenceArrayCellValue, ReferenceCellValue } from './ReferenceCellValue';
+import { getRecordTableCustomization } from './RecordTableCustomization';
+import { RowChipTableLoader } from './RowChipTableLoader';
+import { IdentityCellValue } from './IdentityCellValue';
 import { isInstanceOf } from '@proteinjs/util';
 import {
   IntegerColumn,
@@ -208,7 +211,12 @@ export function defaultRecordTableColumns<T extends Record>(table: Table<T>): (k
 }
 
 export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
-  const { ...passthrough } = props;
+  // What this component computes is never passed through raw: the loader may be wrapped (a
+  // customized table's pages arrive with their chips), and the column config is the MERGED one.
+  const { tableLoader: _tableLoader, columnConfig: _columnConfig, ...passthrough } = props;
+  // The table's customization, when one is loaded (RecordTableCustomization — the table twin of
+  // the record form's): its chips are asked for once per loaded page and ride the rows.
+  const customization = getRecordTableCustomization(props.table.name);
   function defaultColumns() {
     return defaultRecordTableColumns(props.table);
   }
@@ -328,6 +336,27 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
       }
     }
 
+    // A customized table's rows wear their chips after the IDENTITY — the first column — on both
+    // faces. The column keeps whatever presents its value (the consumer's renderer, a type
+    // default, or the base text grammar); the chips the page loaded with follow it.
+    const identityColumn = columns[0];
+    if (customization && identityColumn !== undefined) {
+      const presents = defaultConfig[identityColumn]?.renderer as CustomRenderer<T, any> | undefined;
+      defaultConfig[identityColumn] = {
+        ...defaultConfig[identityColumn],
+        renderer: ((value: any, row: T) => (
+          <IdentityCellValue
+            value={value}
+            rendered={presents ? presents(value, row) : undefined}
+            chips={RowChipTableLoader.chipsOf(row)}
+            chipIcon={(chip) => customization.getChipIcon(chip)}
+          />
+        )) as CustomRenderer<T, any>,
+        // Value-driven: a row with no identity value has no identity line on a card.
+        omitEmptyOnCard: true,
+      };
+    }
+
     return defaultConfig;
   }
 
@@ -338,6 +367,12 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
   function defaultTableLoader() {
     const declaredSort = props.table.ui?.recordTable?.sort;
     return new QueryTableLoader(props.table, undefined, declaredSort ?? [{ field: 'updated', desc: true }]);
+  }
+
+  /** The rows' loader — wrapped, for a customized table, so each page arrives with its chips. */
+  function tableLoader() {
+    const loader = props.tableLoader ? props.tableLoader : defaultTableLoader();
+    return customization ? new RowChipTableLoader(loader, customization) : loader;
   }
 
   /**
@@ -414,7 +449,7 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
       title={props.title ? props.title : tableDisplayName(props.table)}
       columns={props.columns ? props.columns : defaultColumns()}
       columnConfig={mergeColumnConfigs()}
-      tableLoader={props.tableLoader ? props.tableLoader : defaultTableLoader()}
+      tableLoader={tableLoader()}
       rowOnClick={props.rowOnClick ? props.rowOnClick : defaultRowOnClickRedirectUrl}
       buttons={buttons()}
       {...passthrough}

@@ -29,6 +29,8 @@ import {
   Table,
   withRecordColumns,
 } from '@proteinjs/db';
+// The reflection graph: the record table resolves its table's RecordTableCustomization from it.
+import '../generated';
 import { RecordTable, defaultRecordTableColumns } from '../src/table/RecordTable';
 import { clearReferenceNameCache } from '../src/table/ReferenceCellValue';
 

@@ -47,6 +47,8 @@ jest.mock('@proteinjs/db', () => ({
 }));
 
 // import AFTER the mock so the page module binds the mocked db seams
+// The reflection graph: the record table resolves its table's RecordTableCustomization from it.
+import '../generated';
 import { recordTablePage } from '../src/pages/RecordTablePage';
 
 declare global {
