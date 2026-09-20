@@ -3,6 +3,23 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.31.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.30.2...@proteinjs/db-driver-spanner@1.31.0) (2026-09-20)
+
+
+### Bug Fixes
+
+* **db-driver-spanner:** statement log lines describe the bound parameters — names, types, lengths — and never carry a value ([5f44a8a](https://github.com/proteinjs/db/commit/5f44a8aa545ae7fcdb3c13be866478b8927afb11))
+* **db-driver-spanner:** writing a statement line can never change what is thrown, or whether a statement runs — the param description is total, and every statement line goes through one guarded door ([905dc85](https://github.com/proteinjs/db/commit/905dc8537e4e29cfb7b5c658f9fcc6988bfde433))
+
+
+### Features
+
+* **db-driver-spanner:** a dev-only switch puts the real values back on the statement lines — DEVELOPMENT set AND DB_LOG_PARAM_VALUES=1 ([fdf1693](https://github.com/proteinjs/db/commit/fdf16932591aa133487ced6c4a7ed2b6fe4dd20b))
+
+
+
+
+
 ## [1.30.2](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.30.1...@proteinjs/db-driver-spanner@1.30.2) (2026-09-16)
 
 

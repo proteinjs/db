@@ -3,6 +3,23 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.14.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.13.9...@proteinjs/db-driver-knex@1.14.0) (2026-09-20)
+
+
+### Bug Fixes
+
+* **db-driver-knex:** the failure line describes the bound parameters and summarizes the failure — the vendor error, which carries every binding, no longer rides it ([79c9517](https://github.com/proteinjs/db/commit/79c95177f5362f23acb710932c51cae02a9d79e5))
+* **db-driver-knex:** writing the failure line can never change what is thrown — a bindings dictionary is described by entry name, the line's helpers are total, and the line goes through one guarded door ([0d4ade6](https://github.com/proteinjs/db/commit/0d4ade699acc547b9ddcddfc581d731739e5df35))
+
+
+### Features
+
+* **db-driver-knex:** a dev-only switch puts the real values back on the failure line — DEVELOPMENT set AND DB_LOG_PARAM_VALUES=1 ([b907f87](https://github.com/proteinjs/db/commit/b907f87ffadfe2a1a2c58be54ac8eece1cc95eb2))
+
+
+
+
+
 ## [1.13.9](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.13.8...@proteinjs/db-driver-knex@1.13.9) (2026-09-14)
 
 **Note:** Version bump only for package @proteinjs/db-driver-knex
