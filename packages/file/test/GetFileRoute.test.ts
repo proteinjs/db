@@ -5,6 +5,7 @@ import { UserAuth, UserRepo, guestUser, User } from '@proteinjs/user';
 import { File } from '../src/tables/FileTable';
 import { FileStorage } from '../src/FileStorage';
 import { FileStorageDriver } from '../src/FileStorageDriver';
+import { DbFileStorageDriver } from '../src/DbFileStorageDriver';
 import { getFile } from '../src/routes/getFile';
 import { FileTestEnvironment } from './FileTestEnvironment';
 
@@ -254,6 +255,24 @@ describe('GET /file/:id — proxy serving (driver without signed URLs)', () => {
         expect(Buffer.compare(response.body as Buffer, rawBytes)).toBe(0);
       }
     });
+  });
+
+  it('404s when the row is there and its bytes are not — the driver’s not-found, never a 500', async () => {
+    testEnv.setDriver(new DbFileStorageDriver());
+    try {
+      const file = await new FileStorage().createFile(
+        { name: 'lost.png', type: 'image/png', size: rawBytes.length } as File,
+        rawBytes.toString('base64')
+      );
+      await FileStorage.getDriver().deleteFile(file.id);
+
+      const response = await invokeRoute(file.id);
+
+      expect(response.statusCode).toEqual(404);
+      expect(response.body).toEqual('File not found');
+    } finally {
+      testEnv.setDriver(driver);
+    }
   });
 });
 

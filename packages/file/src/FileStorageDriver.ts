@@ -1,4 +1,5 @@
 import { File } from './tables/FileTable';
+import type { FileStorageError } from './FileStorageError';
 
 /**
  * Byte store behind `FileStorage`.
@@ -7,6 +8,17 @@ import { File } from './tables/FileTable';
  * file's true bytes — for text and binary files alike. Drivers own their at-rest representation,
  * with one hard requirement: a driver that serves blobs directly to clients (`getSignedUrl`)
  * MUST store the true bytes at rest, because clients read its objects without any decode step.
+ *
+ * Error contract: a failed byte operation throws a {@link FileStorageError} — a code, a plain
+ * message and the store's HTTP status where it has one — and NEVER the store client's own error
+ * object or anything hanging off one (a request config, a request, a response, headers, a signed
+ * URL): a client's error holds the request it made, and that request holds the driver's
+ * credentials, so an application logging what it caught would write a live credential. Bytes that
+ * are not there are reported as the `not-found` code on every read and overwrite, so callers
+ * branch on one thing whichever driver is behind them (`deleteFile` alone treats missing bytes as
+ * success — see its contract). A driver whose store IS the application's database
+ * (`DbFileStorageDriver`) lets the database layer's own errors through unchanged: they are
+ * already that layer's owned errors, and a transaction runner must see them to retry.
  */
 export interface FileStorageDriver {
   createFile(file: File, fileData: string): Promise<void>;

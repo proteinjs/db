@@ -1,5 +1,6 @@
 import { Route } from '@proteinjs/server-api';
 import { getFileStorage } from '../FileStorage';
+import { FileStorageError } from '../FileStorageError';
 import { UserAuth } from '@proteinjs/user';
 import { resolveByteRange } from './byteRange';
 
@@ -64,6 +65,11 @@ export const getFile: Route = {
       }
       response.send(bytes);
     } catch (error) {
+      if (FileStorageError.isNotFound(error)) {
+        // The row is there and its bytes are not: the same answer as a row that is not there.
+        response.status(404).send('File not found');
+        return;
+      }
       console.error(`Error fetching file (${fileId}):`, error);
       response.status(500).send('Internal Server Error');
     }
