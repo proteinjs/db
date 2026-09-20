@@ -19,6 +19,9 @@ import { SpannerSchemaOperations } from './SpannerSchemaOperations';
 import { SpannerColumnTypeFactory } from './SpannerColumnTypeFactory';
 import { SpannerSchemaMetadata } from './SpannerSchemaMetadata';
 
+/** A bound parameter as a log line carries it (see SpannerDriver.describeParams): never its value. */
+type ParamDescription = { type: string; length?: number; null?: true };
+
 /**
  * Google Spanner driver for ProteinJs Db
  */
@@ -286,7 +289,7 @@ export class SpannerDriver implements DbDriver {
     const startTime = process.hrtime.bigint();
 
     try {
-      this.logger.debug({ message: `Executing query`, obj: { sql, params: namedParams } });
+      this.logger.debug({ message: `Executing query`, obj: { sql, ...this.loggedParams(namedParams) } });
       const wire = this.wireParams(namedParams);
       const [rows] = await this.withDeadline(
         'spanner query',
@@ -309,7 +312,7 @@ export class SpannerDriver implements DbDriver {
       return rows.map((row) => row.toJSON());
     } catch (error: any) {
       const durationMs = Number(process.hrtime.bigint() - startTime) / 1_000_000;
-      throw this.operationFailure('query', sql, error, durationMs, callSiteStack, runner);
+      throw this.operationFailure('query', sql, namedParams, error, durationMs, callSiteStack, runner);
     }
   }
 
@@ -349,7 +352,7 @@ export class SpannerDriver implements DbDriver {
     const startTime = process.hrtime.bigint();
 
     try {
-      this.logger.debug({ message: `Executing dml`, obj: { sql, params: namedParams } });
+      this.logger.debug({ message: `Executing dml`, obj: { sql, ...this.loggedParams(namedParams) } });
       // DML rides the unary ExecuteBatchDml RPC (`batchUpdate`), never streaming `runUpdate`
       // (ExecuteStreamingSql). The client's streaming transport TRANSPARENTLY RE-SENDS a DML
       // whose response was lost: gax wraps every server-streaming call in retry-request, which
@@ -378,7 +381,7 @@ export class SpannerDriver implements DbDriver {
       return rowCount;
     } catch (error: any) {
       const durationMs = Number(process.hrtime.bigint() - startTime) / 1_000_000;
-      throw this.operationFailure('dml', sql, error, durationMs, callSiteStack, runner);
+      throw this.operationFailure('dml', sql, namedParams, error, durationMs, callSiteStack, runner);
     }
   }
 
@@ -386,9 +389,15 @@ export class SpannerDriver implements DbDriver {
    * A data op's failure, logged ONCE with its cause and rethrown as the driver's typed error
    * (`SpannerOperationError`: the vendor error as `cause`, its gRPC `code` copied, the CALLER's
    * stack). The log line names what actually failed — the underlying status and message, the
-   * statement's verb and table, the duration — and never the bound values: those ride the DEBUG
-   * line beside the op only. A rejection that is already one of the driver's own typed errors (the
+   * statement's verb and table, the SQL text, the duration — and never a bound value: the
+   * parameters are DESCRIBED (loggedParams: names, types, lengths), here exactly as on the debug
+   * line beside the op. A rejection that is already one of the driver's own typed errors (the
    * env-token auth translation, an earlier wrap) is logged the same way and passes through as is.
+   *
+   * What is THROWN is untouched by any of that: the parameters reach the log lines and nothing
+   * else. The cause summary is the backend's own message with quoted, braced and bracketed spans
+   * masked (SpannerOperationError.summarize); a value the backend echoes OUTSIDE such a span
+   * still reads there and in the thrown error's message.
    *
    * A statement ABORTED (gRPC code 10) inside a transaction the runner drives is not a failure
    * but the runner's retry signal — Spanner's wound-wait aborted the loser of a lock conflict at
@@ -400,6 +409,7 @@ export class SpannerDriver implements DbDriver {
   private operationFailure(
     operation: SpannerOperationKind,
     sql: string,
+    namedParams: Statement['namedParams'],
     error: unknown,
     durationMs: number,
     callSiteStack: string | undefined,
@@ -414,7 +424,14 @@ export class SpannerDriver implements DbDriver {
     if (retried) {
       this.logger.debug({
         message: `Transaction aborted at ${operation}; the transaction runner retries it`,
-        obj: { attempt: retried.attempt, statement, cause: SpannerOperationError.summarize(error), sql, durationMs },
+        obj: {
+          attempt: retried.attempt,
+          statement,
+          cause: SpannerOperationError.summarize(error),
+          sql,
+          ...this.loggedParams(namedParams),
+          durationMs,
+        },
       });
       return failure;
     }
@@ -425,6 +442,7 @@ export class SpannerDriver implements DbDriver {
         statement,
         cause: SpannerOperationError.summarize(error),
         sql,
+        ...this.loggedParams(namedParams),
         durationMs,
       },
     });
@@ -929,5 +947,68 @@ export class SpannerDriver implements DbDriver {
       // DDL is exempt from withDeadline, so it carries its own env-token auth translation.
       throw this.translateAuthFailure(error);
     }
+  }
+
+  /**
+   * What a statement's log line carries for its bound parameters — every line the driver writes
+   * about a statement, at every level: `params`, the DESCRIPTION (describeParams).
+   */
+  private loggedParams(namedParams?: Statement['namedParams']): { params?: { [param: string]: ParamDescription } } {
+    return { params: this.describeParams(namedParams) };
+  }
+
+  /**
+   * A statement's bound parameters as a LOG LINE carries them — the one owner of that form: each
+   * parameter's NAME, its TYPE and, for strings, arrays and bytes, its LENGTH. Never a value: a
+   * parameter is row content (a presented token, a credential hash, an address), and a log line
+   * outlives and out-travels the row it came from. The SQL text beside it carries placeholders
+   * only, so name + type + length is what locates a failure (which parameter was null, which was
+   * oversized) without quoting it.
+   *
+   * The type is the statement's DECLARED type (the column type the statement factory stamped; an
+   * array renders as `array<child>`); a parameter with no declared type — a hand-written statement
+   * with no types map — is described by the KIND of its value instead (paramKind).
+   */
+  private describeParams(namedParams?: Statement['namedParams']): { [param: string]: ParamDescription } | undefined {
+    if (!namedParams?.params) {
+      return undefined;
+    }
+    const types: { [param: string]: ParamType | undefined } = namedParams.types ?? {};
+    const described: { [param: string]: ParamDescription } = {};
+    for (const [name, value] of Object.entries(namedParams.params)) {
+      const declared = types[name];
+      const description: ParamDescription = {
+        type: !declared
+          ? this.paramKind(value)
+          : typeof declared === 'string'
+            ? declared
+            : `${declared.type}<${declared.child?.type ?? 'unknown'}>`,
+      };
+      if (typeof value === 'string' || Array.isArray(value) || value instanceof Uint8Array) {
+        description.length = value.length;
+      }
+      if (value === null || value === undefined) {
+        description.null = true;
+      }
+      described[name] = description;
+    }
+    return described;
+  }
+
+  /** The kind of a bound value, for a parameter with no declared type — a word, never the value. */
+  private paramKind(value: unknown): string {
+    if (value === null || value === undefined) {
+      return 'null';
+    }
+    if (Array.isArray(value)) {
+      return 'array';
+    }
+    if (value instanceof Date) {
+      return 'date';
+    }
+    if (value instanceof Uint8Array) {
+      return 'bytes';
+    }
+    return typeof value;
   }
 }

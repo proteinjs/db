@@ -22,9 +22,10 @@ export const GRPC_STATUS_NAMES: { [code: number]: string } = {
 export type SpannerOperationKind = 'query' | 'dml';
 
 /**
- * The SHAPE of a statement — its verb and the table it acts on, never a value — the only
- * statement facts a failure log or error message carries at error level (row values ride the
- * DEBUG line beside the op, never a log line that leaves the process at ERROR).
+ * The SHAPE of a statement — its verb and the table it acts on, never a value — the statement
+ * facts an error message carries. Beside the shape and the SQL text, the driver's log lines
+ * DESCRIBE the bound parameters (names, types, lengths — SpannerDriver.describeParams); their
+ * values ride a line at no level.
  */
 export type StatementShape = { operation: string; table?: string };
 
