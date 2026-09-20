@@ -140,3 +140,7 @@ export class DbDriverFactory implements DefaultDbDriverFactory {
   }
 }
 ```
+
+# What the driver's log lines carry
+
+No line the driver writes carries a bound parameter's value or the backend's own error message, at any level. A statement's lines (`Executing query`, `Executing dml`, `Failed when executing …`) carry the SQL text (placeholders only) and a description of each parameter (its name, type and length); a failure's lines carry the gRPC code and status, the class the driver recognized the failure as, and the driver's own sentence for that class. The error the driver throws (`SpannerOperationError`) says the same and nothing more; the raw vendor error is behind its `vendorError()` method, for a caller that asks for it by name. To debug against an emulator or a local dev database with the real values, set `DB_LOG_PARAM_VALUES=1` in a process that also has `DEVELOPMENT` set (failure lines are written at error, statement lines at debug): the statement lines then add `paramValues` (the parameters as bound) and the failure lines add `vendorMessage` (the backend's message as it arrived). With either variable unset the lines never carry them, and the thrown error never does.

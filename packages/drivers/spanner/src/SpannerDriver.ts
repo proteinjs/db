@@ -13,6 +13,7 @@ import { SpannerConfig } from './SpannerConfig';
 import { SpannerEnvTokenAuth, SpannerEnvTokenAuthError, SPANNER_ENV_TOKEN_VAR } from './SpannerEnvTokenAuth';
 import { SpannerOperationError, SpannerOperationKind } from './SpannerOperationError';
 import { OperationCauseSummary, SpannerFailureText } from './SpannerFailureText';
+import { SpannerLogValues } from './SpannerLogValues';
 import { SpannerLivenessMonitor, type SpannerSessionPoolStats } from './SpannerLivenessMonitor';
 import { Logger } from '@proteinjs/logger';
 import { ParamType, Statement } from '@proteinjs/db-query';
@@ -290,7 +291,10 @@ export class SpannerDriver implements DbDriver {
     const startTime = process.hrtime.bigint();
 
     try {
-      this.logger.debug({ message: `Executing query`, obj: { sql, params: this.describeParams(namedParams) } });
+      this.logger.debug({
+        message: `Executing query`,
+        obj: { sql, params: this.describeParams(namedParams), ...SpannerLogValues.ofStatement(namedParams?.params) },
+      });
       const wire = this.wireParams(namedParams);
       const [rows] = await this.withDeadline(
         'spanner query',
@@ -353,7 +357,10 @@ export class SpannerDriver implements DbDriver {
     const startTime = process.hrtime.bigint();
 
     try {
-      this.logger.debug({ message: `Executing dml`, obj: { sql, params: this.describeParams(namedParams) } });
+      this.logger.debug({
+        message: `Executing dml`,
+        obj: { sql, params: this.describeParams(namedParams), ...SpannerLogValues.ofStatement(namedParams?.params) },
+      });
       // DML rides the unary ExecuteBatchDml RPC (`batchUpdate`), never streaming `runUpdate`
       // (ExecuteStreamingSql). The client's streaming transport TRANSPARENTLY RE-SENDS a DML
       // whose response was lost: gax wraps every server-streaming call in retry-request, which
@@ -389,13 +396,16 @@ export class SpannerDriver implements DbDriver {
   /**
    * A data op's failure, logged ONCE with its cause and rethrown as the driver's typed error
    * (`SpannerOperationError`: the gRPC `code` copied, the CALLER's stack, the vendor error behind
-   * its `vendorError` accessor). The log line names what actually failed — the status, the class
+   * its `vendorError()` method). The log line names what actually failed — the status, the class
    * the failure was recognized as and the driver's sentence for it (SpannerFailureText — the
    * backend's own message never rides a line: it echoes the value it choked on), the statement's
    * verb and table, the SQL text, the duration — and never a bound value: the parameters are
    * DESCRIBED (describeParams: names, types, lengths), here exactly as on the debug line beside
-   * the op. A rejection that is already one of the driver's own typed errors (the env-token auth
-   * translation, an earlier wrap) is logged the same way and passes through as is.
+   * the op. The one exception is the dev-only switch (SpannerLogValues: `DEVELOPMENT` set AND
+   * `DB_LOG_PARAM_VALUES=1`), under which these lines add the bound values and the backend's
+   * message; the thrown error never does. A rejection that is already one of the driver's own
+   * typed errors (the env-token auth translation, an earlier wrap) is logged the same way and
+   * passes through as is.
    *
    * A statement ABORTED (gRPC code 10) inside a transaction the runner drives is not a failure
    * but the runner's retry signal — Spanner's wound-wait aborted the loser of a lock conflict at
@@ -417,18 +427,20 @@ export class SpannerDriver implements DbDriver {
     const failure = this.typedFailure(operation, statement, error, callSiteStack, namedParams?.params);
     const cause = this.causeSummary(failure);
     const params = this.describeParams(namedParams);
+    // Real values ride these lines only under the dev-only switch (SpannerLogValues); else nothing.
+    const values = { ...SpannerLogValues.ofStatement(namedParams?.params), ...SpannerLogValues.ofFailure(failure) };
     const retried = this.retriedAbort(runner, error);
     if (retried) {
       this.logger.debug({
         message: `Transaction aborted at ${operation}; the transaction runner retries it`,
-        obj: { attempt: retried.attempt, statement, cause, sql, params, durationMs },
+        obj: { attempt: retried.attempt, statement, cause, sql, params, durationMs, ...values },
       });
       return failure;
     }
     this.logger.error({
       message: `Failed when executing ${operation}`,
       error: failure,
-      obj: { statement, cause, sql, params, durationMs },
+      obj: { statement, cause, sql, params, durationMs, ...values },
     });
     SpannerDriver.LIVENESS_MONITOR.reportError(error);
     return failure;
@@ -540,6 +552,7 @@ export class SpannerDriver implements DbDriver {
             statement: lastAbort instanceof SpannerOperationError ? lastAbort.statement : undefined,
             cause: this.causeSummary(lastAbort),
             durationMs: Number(process.hrtime.bigint() - startTime) / 1_000_000,
+            ...SpannerLogValues.ofFailure(lastAbort),
           },
         });
       }
@@ -591,7 +604,7 @@ export class SpannerDriver implements DbDriver {
     } catch (rollbackError: any) {
       this.logger.debug({
         message: `Rollback after transaction error failed`,
-        obj: { cause: this.causeSummary(rollbackError) },
+        obj: { cause: this.causeSummary(rollbackError), ...SpannerLogValues.ofFailure(rollbackError) },
       });
     }
   }
@@ -964,7 +977,12 @@ export class SpannerDriver implements DbDriver {
         // The reason is the driver's sentence for the failure's class (SpannerFailureText), never
         // the backend's text: an apply-phase failure — a unique-index backfill over duplicate
         // rows — prints the duplicate ROW VALUE in it.
-        obj: { statements: statementList, cause: this.causeSummary(failure), durationMs },
+        obj: {
+          statements: statementList,
+          cause: this.causeSummary(failure),
+          durationMs,
+          ...SpannerLogValues.ofFailure(failure),
+        },
       });
       throw failure;
     }

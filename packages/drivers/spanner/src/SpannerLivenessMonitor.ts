@@ -2,6 +2,7 @@ import { Database, SessionPool } from '@google-cloud/spanner';
 import { DetachedDbOps } from '@proteinjs/db';
 import { Logger } from '@proteinjs/logger';
 import { SpannerFailureText } from './SpannerFailureText';
+import { SpannerLogValues } from './SpannerLogValues';
 
 /** grpc status codes that indicate connectivity trouble rather than an application error */
 const CONNECTIVITY_GRPC_CODES = [4 /* DEADLINE_EXCEEDED */, 14 /* UNAVAILABLE */];
@@ -55,7 +56,11 @@ export class SpannerLivenessMonitor {
       this.logger.warn({
         message: `Spanner session pool emitted a background error; verifying db connectivity`,
         // The failure in the driver's words (SpannerFailureText) — the backend's text never rides a line.
-        obj: { cause: SpannerFailureText.summarize(error), pool: this.poolStats() },
+        obj: {
+          cause: SpannerFailureText.summarize(error),
+          pool: this.poolStats(),
+          ...SpannerLogValues.ofFailure(error),
+        },
       });
       // Deliberately detached (the pool's error listener must return immediately) — routed
       // through the one detachment owner so a rejection can never become process death.
@@ -149,7 +154,11 @@ export class SpannerLivenessMonitor {
         } catch (error: any) {
           this.logger.warn({
             message: `Db connectivity probe failed`,
-            obj: { attempt: attempt + 1, cause: SpannerFailureText.summarize(error) },
+            obj: {
+              attempt: attempt + 1,
+              cause: SpannerFailureText.summarize(error),
+              ...SpannerLogValues.ofFailure(error),
+            },
           });
         }
       }
