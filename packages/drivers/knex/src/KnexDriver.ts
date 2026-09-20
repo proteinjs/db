@@ -14,6 +14,12 @@ import { Statement } from '@proteinjs/db-query';
 import { KnexSchemaOperations } from './KnexSchemaOperations';
 import { KnexColumnTypeFactory } from './KnexColumnTypeFactory';
 
+/** A bound parameter as a log line carries it (see KnexDriver.describeParams): never its value. */
+type ParamDescription = { type: string; length?: number; null?: true };
+
+/** A failure as the log line carries it: the error's name, the vendor's codes and the server's own message. */
+type FailureCauseSummary = { name?: string; code?: string; errno?: number; sqlState?: string; sqlMessage?: string };
+
 /**
  * Knex driver (configured for MariaDb) for ProteinJs Db
  */
@@ -160,8 +166,8 @@ export class KnexDriver implements DbDriver {
     try {
       const runner = transaction || this.getKnex();
       return (await runner.raw(sql, params as any))[0]; // returns 2 arrays, first is records, second is metadata per record
-    } catch (error: any) {
-      this.logger.error({ message: `Failed when executing sql`, obj: { sql }, error });
+    } catch (error: unknown) {
+      this.logFailure(sql, params, error);
       throw error;
     }
   }
@@ -184,5 +190,81 @@ export class KnexDriver implements DbDriver {
       const result = await fn(trx);
       return result;
     });
+  }
+
+  /**
+   * The one line a failed statement writes. What is THROWN is the vendor's error itself, untouched
+   * (runQuery rethrows it); this is only what the driver PRINTS of it.
+   *
+   * The vendor error is not safe to print as it is: the query layer rewrites a failed query's
+   * `message` to the SQL with its bindings INTERPOLATED, and the client library's error carries
+   * the same formatted text as `sql` — every bound value of the statement, on any line the error
+   * reaches. So the line carries the SQL text (placeholders only), the parameters DESCRIBED
+   * (describeParams) and a summary of the failure: the error's name, the vendor's codes and the
+   * server's own message (`sqlMessage` — which can itself quote a value, e.g. a colliding key; the
+   * driver prints it as it always has). The vendor error itself no longer rides the line.
+   */
+  private logFailure(sql: string, params: Statement['params'], error: unknown): void {
+    this.logger.error({
+      message: `Failed when executing sql`,
+      obj: {
+        sql,
+        params: this.describeParams(params),
+        cause: this.causeSummary(error),
+      },
+    });
+  }
+
+  /** The name, codes and server message of any thrown value — never the query layer's rewritten `message` or `sql`. */
+  private causeSummary(error: unknown): FailureCauseSummary {
+    const vendor = error as { [fact: string]: unknown } | null | undefined;
+    return {
+      ...(typeof vendor?.name === 'string' ? { name: vendor.name } : {}),
+      ...(typeof vendor?.code === 'string' ? { code: vendor.code } : {}),
+      ...(typeof vendor?.errno === 'number' ? { errno: vendor.errno } : {}),
+      ...(typeof vendor?.sqlState === 'string' ? { sqlState: vendor.sqlState } : {}),
+      ...(typeof vendor?.sqlMessage === 'string' ? { sqlMessage: vendor.sqlMessage } : {}),
+    };
+  }
+
+  /**
+   * A statement's bound parameters as a LOG LINE carries them — the one owner of that form: by
+   * position, the KIND of each value and, for strings, arrays and bytes, its LENGTH. Never a
+   * value: a parameter is row content (a presented token, a credential hash, an address), and a
+   * log line outlives and out-travels the row it came from. The SQL text beside it carries `?`
+   * placeholders only, so position + kind + length is what locates a failure (which parameter was
+   * null, which was oversized) without quoting it.
+   */
+  private describeParams(params?: Statement['params']): ParamDescription[] | undefined {
+    if (!params) {
+      return undefined;
+    }
+    return params.map((value) => {
+      const description: ParamDescription = { type: this.paramKind(value) };
+      if (typeof value === 'string' || Array.isArray(value) || value instanceof Uint8Array) {
+        description.length = value.length;
+      }
+      if (value === null || value === undefined) {
+        description.null = true;
+      }
+      return description;
+    });
+  }
+
+  /** The kind of a bound value — a word, never the value. */
+  private paramKind(value: unknown): string {
+    if (value === null || value === undefined) {
+      return 'null';
+    }
+    if (Array.isArray(value)) {
+      return 'array';
+    }
+    if (value instanceof Date) {
+      return 'date';
+    }
+    if (value instanceof Uint8Array) {
+      return 'bytes';
+    }
+    return typeof value;
   }
 }
