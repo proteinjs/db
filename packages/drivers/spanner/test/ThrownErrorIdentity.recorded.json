@@ -1,0 +1,971 @@
+{
+  "source": "2c9cdbd7",
+  "clientLibrary": "7.5.0",
+  "doors": {
+    "query: refused (an unknown column)": {
+      "backendSaid": "3 INVALID_ARGUMENT: Unrecognized name: no_such_column [at 1:50]\nSELECT `id` FROM `db_test_thrown_identity` WHERE `no_such_column` = @n\n                                                 ^",
+      "transactionBodyRuns": 0,
+      "thrown": {
+        "class": "SpannerOperationError",
+        "classChain": [
+          "SpannerOperationError",
+          "Error"
+        ],
+        "name": "SpannerOperationError",
+        "message": "Failed when executing query (INVALID_ARGUMENT, code 3) on SELECT db_test_thrown_identity: 3 INVALID_ARGUMENT: Unrecognized name: no_such_column […] SELECT `id` FROM `db_test_thrown_identity` WHERE `no_such_column` = @n ^",
+        "code": 3,
+        "own": {
+          "cause": {
+            "enumerable": false,
+            "writable": false,
+            "value": {
+              "class": "Error",
+              "classChain": [
+                "Error"
+              ],
+              "name": "Error",
+              "message": "3 INVALID_ARGUMENT: Unrecognized name: no_such_column [at 1:50]\nSELECT `id` FROM `db_test_thrown_identity` WHERE `no_such_column` = @n\n                                                 ^",
+              "code": 3,
+              "own": {
+                "code": {
+                  "enumerable": true,
+                  "writable": true,
+                  "value": 3
+                },
+                "details": {
+                  "enumerable": true,
+                  "writable": true,
+                  "value": "Unrecognized name: no_such_column [at 1:50]\nSELECT `id` FROM `db_test_thrown_identity` WHERE `no_such_column` = @n\n                                                 ^"
+                },
+                "message": {
+                  "enumerable": false,
+                  "writable": true,
+                  "value": "3 INVALID_ARGUMENT: Unrecognized name: no_such_column [at 1:50]\nSELECT `id` FROM `db_test_thrown_identity` WHERE `no_such_column` = @n\n                                                 ^"
+                },
+                "metadata": {
+                  "enumerable": true,
+                  "writable": true,
+                  "value": {
+                    "class": "Metadata",
+                    "keys": [
+                      "content-type",
+                      "grpc-status-details-bin"
+                    ]
+                  }
+                },
+                "stack": {
+                  "enumerable": false,
+                  "value": "(see stack)"
+                }
+              },
+              "stack": {
+                "opensWithNameAndMessage": true,
+                "firstFrame": "a dependency"
+              }
+            }
+          },
+          "code": {
+            "enumerable": true,
+            "writable": true,
+            "value": 3
+          },
+          "details": {
+            "enumerable": false,
+            "writable": false,
+            "value": "Unrecognized name: no_such_column [at 1:50]\nSELECT `id` FROM `db_test_thrown_identity` WHERE `no_such_column` = @n\n                                                 ^"
+          },
+          "message": {
+            "enumerable": false,
+            "writable": true,
+            "value": "Failed when executing query (INVALID_ARGUMENT, code 3) on SELECT db_test_thrown_identity: 3 INVALID_ARGUMENT: Unrecognized name: no_such_column […] SELECT `id` FROM `db_test_thrown_identity` WHERE `no_such_column` = @n ^"
+          },
+          "metadata": {
+            "enumerable": false,
+            "writable": false,
+            "value": {
+              "class": "Metadata",
+              "keys": [
+                "content-type",
+                "grpc-status-details-bin"
+              ]
+            }
+          },
+          "name": {
+            "enumerable": true,
+            "writable": true,
+            "value": "SpannerOperationError"
+          },
+          "operation": {
+            "enumerable": true,
+            "writable": true,
+            "value": "query"
+          },
+          "stack": {
+            "enumerable": false,
+            "value": "(see stack)"
+          },
+          "statement": {
+            "enumerable": true,
+            "writable": true,
+            "value": {
+              "operation": "SELECT",
+              "table": "db_test_thrown_identity"
+            }
+          },
+          "status": {
+            "enumerable": true,
+            "writable": true,
+            "value": "INVALID_ARGUMENT"
+          }
+        },
+        "stack": {
+          "opensWithNameAndMessage": true,
+          "firstFrame": "the caller (this file)"
+        }
+      }
+    },
+    "stream: a query whose failure arrives while its rows are evaluated": {
+      "backendSaid": "11 OUT_OF_RANGE: Bad int64 value: not a number",
+      "transactionBodyRuns": 0,
+      "thrown": {
+        "class": "SpannerOperationError",
+        "classChain": [
+          "SpannerOperationError",
+          "Error"
+        ],
+        "name": "SpannerOperationError",
+        "message": "Failed when executing query (OUT_OF_RANGE, code 11) on SELECT db_test_thrown_identity: 11 OUT_OF_RANGE: Bad int64 value: not a number",
+        "code": 11,
+        "own": {
+          "cause": {
+            "enumerable": false,
+            "writable": false,
+            "value": {
+              "class": "Error",
+              "classChain": [
+                "Error"
+              ],
+              "name": "Error",
+              "message": "11 OUT_OF_RANGE: Bad int64 value: not a number",
+              "code": 11,
+              "own": {
+                "code": {
+                  "enumerable": true,
+                  "writable": true,
+                  "value": 11
+                },
+                "details": {
+                  "enumerable": true,
+                  "writable": true,
+                  "value": "Bad int64 value: not a number"
+                },
+                "message": {
+                  "enumerable": false,
+                  "writable": true,
+                  "value": "11 OUT_OF_RANGE: Bad int64 value: not a number"
+                },
+                "metadata": {
+                  "enumerable": true,
+                  "writable": true,
+                  "value": {
+                    "class": "Metadata",
+                    "keys": [
+                      "content-type",
+                      "grpc-status-details-bin"
+                    ]
+                  }
+                },
+                "stack": {
+                  "enumerable": false,
+                  "value": "(see stack)"
+                }
+              },
+              "stack": {
+                "opensWithNameAndMessage": true,
+                "firstFrame": "a dependency"
+              }
+            }
+          },
+          "code": {
+            "enumerable": true,
+            "writable": true,
+            "value": 11
+          },
+          "details": {
+            "enumerable": false,
+            "writable": false,
+            "value": "Bad int64 value: not a number"
+          },
+          "message": {
+            "enumerable": false,
+            "writable": true,
+            "value": "Failed when executing query (OUT_OF_RANGE, code 11) on SELECT db_test_thrown_identity: 11 OUT_OF_RANGE: Bad int64 value: not a number"
+          },
+          "metadata": {
+            "enumerable": false,
+            "writable": false,
+            "value": {
+              "class": "Metadata",
+              "keys": [
+                "content-type",
+                "grpc-status-details-bin"
+              ]
+            }
+          },
+          "name": {
+            "enumerable": true,
+            "writable": true,
+            "value": "SpannerOperationError"
+          },
+          "operation": {
+            "enumerable": true,
+            "writable": true,
+            "value": "query"
+          },
+          "stack": {
+            "enumerable": false,
+            "value": "(see stack)"
+          },
+          "statement": {
+            "enumerable": true,
+            "writable": true,
+            "value": {
+              "operation": "SELECT",
+              "table": "db_test_thrown_identity"
+            }
+          },
+          "status": {
+            "enumerable": true,
+            "writable": true,
+            "value": "OUT_OF_RANGE"
+          }
+        },
+        "stack": {
+          "opensWithNameAndMessage": true,
+          "firstFrame": "the caller (this file)"
+        }
+      }
+    },
+    "dml: the driver`s own transaction (a duplicate key)": {
+      "backendSaid": "Failed to insert row with primary key ({pk#id:\"identity-row-1\"}) due to previously existing row",
+      "transactionBodyRuns": 0,
+      "thrown": {
+        "class": "SpannerOperationError",
+        "classChain": [
+          "SpannerOperationError",
+          "Error"
+        ],
+        "name": "SpannerOperationError",
+        "message": "Failed when executing dml (ALREADY_EXISTS, code 6) on INSERT db_test_thrown_identity: Failed to insert row with primary key ({…}) due to previously existing row",
+        "code": 6,
+        "own": {
+          "cause": {
+            "enumerable": false,
+            "writable": false,
+            "value": {
+              "class": "Error",
+              "classChain": [
+                "Error"
+              ],
+              "name": "Error",
+              "message": "Failed to insert row with primary key ({pk#id:\"identity-row-1\"}) due to previously existing row",
+              "code": 6,
+              "own": {
+                "code": {
+                  "enumerable": true,
+                  "writable": true,
+                  "value": 6
+                },
+                "message": {
+                  "enumerable": false,
+                  "writable": true,
+                  "value": "Failed to insert row with primary key ({pk#id:\"identity-row-1\"}) due to previously existing row"
+                },
+                "metadata": {
+                  "enumerable": true,
+                  "writable": true,
+                  "value": {
+                    "class": "Metadata",
+                    "keys": []
+                  }
+                },
+                "rowCounts": {
+                  "enumerable": true,
+                  "writable": true,
+                  "value": []
+                },
+                "stack": {
+                  "enumerable": false,
+                  "value": "(see stack)"
+                }
+              },
+              "stack": {
+                "opensWithNameAndMessage": true,
+                "firstFrame": "a dependency"
+              }
+            }
+          },
+          "code": {
+            "enumerable": true,
+            "writable": true,
+            "value": 6
+          },
+          "message": {
+            "enumerable": false,
+            "writable": true,
+            "value": "Failed when executing dml (ALREADY_EXISTS, code 6) on INSERT db_test_thrown_identity: Failed to insert row with primary key ({…}) due to previously existing row"
+          },
+          "metadata": {
+            "enumerable": false,
+            "writable": false,
+            "value": {
+              "class": "Metadata",
+              "keys": []
+            }
+          },
+          "name": {
+            "enumerable": true,
+            "writable": true,
+            "value": "SpannerOperationError"
+          },
+          "operation": {
+            "enumerable": true,
+            "writable": true,
+            "value": "dml"
+          },
+          "stack": {
+            "enumerable": false,
+            "value": "(see stack)"
+          },
+          "statement": {
+            "enumerable": true,
+            "writable": true,
+            "value": {
+              "operation": "INSERT",
+              "table": "db_test_thrown_identity"
+            }
+          },
+          "status": {
+            "enumerable": true,
+            "writable": true,
+            "value": "ALREADY_EXISTS"
+          }
+        },
+        "stack": {
+          "opensWithNameAndMessage": true,
+          "firstFrame": "the caller (this file)"
+        }
+      }
+    },
+    "batch: the rpc rejected outright (a dml on a transaction already rolled back)": {
+      "backendSaid": "9 FAILED_PRECONDITION: Cannot read or query using a transaction after it has been committed or rolledback.",
+      "transactionBodyRuns": 1,
+      "thrown": {
+        "class": "SpannerOperationError",
+        "classChain": [
+          "SpannerOperationError",
+          "Error"
+        ],
+        "name": "SpannerOperationError",
+        "message": "Failed when executing dml (FAILED_PRECONDITION, code 9) on INSERT db_test_thrown_identity: 9 FAILED_PRECONDITION: Cannot read or query using a transaction after it has been committed or rolledback.",
+        "code": 9,
+        "own": {
+          "cause": {
+            "enumerable": false,
+            "writable": false,
+            "value": {
+              "class": "Error",
+              "classChain": [
+                "Error"
+              ],
+              "name": "Error",
+              "message": "9 FAILED_PRECONDITION: Cannot read or query using a transaction after it has been committed or rolledback.",
+              "code": 9,
+              "own": {
+                "code": {
+                  "enumerable": true,
+                  "writable": true,
+                  "value": 9
+                },
+                "details": {
+                  "enumerable": true,
+                  "writable": true,
+                  "value": "Cannot read or query using a transaction after it has been committed or rolledback."
+                },
+                "message": {
+                  "enumerable": false,
+                  "writable": true,
+                  "value": "9 FAILED_PRECONDITION: Cannot read or query using a transaction after it has been committed or rolledback."
+                },
+                "metadata": {
+                  "enumerable": true,
+                  "writable": true,
+                  "value": {
+                    "class": "Metadata",
+                    "keys": [
+                      "content-type",
+                      "grpc-status-details-bin"
+                    ]
+                  }
+                },
+                "rowCounts": {
+                  "enumerable": true,
+                  "writable": true,
+                  "value": []
+                },
+                "stack": {
+                  "enumerable": false,
+                  "value": "(see stack)"
+                }
+              },
+              "stack": {
+                "opensWithNameAndMessage": true,
+                "firstFrame": "a dependency"
+              }
+            }
+          },
+          "code": {
+            "enumerable": true,
+            "writable": true,
+            "value": 9
+          },
+          "details": {
+            "enumerable": false,
+            "writable": false,
+            "value": "Cannot read or query using a transaction after it has been committed or rolledback."
+          },
+          "message": {
+            "enumerable": false,
+            "writable": true,
+            "value": "Failed when executing dml (FAILED_PRECONDITION, code 9) on INSERT db_test_thrown_identity: 9 FAILED_PRECONDITION: Cannot read or query using a transaction after it has been committed or rolledback."
+          },
+          "metadata": {
+            "enumerable": false,
+            "writable": false,
+            "value": {
+              "class": "Metadata",
+              "keys": [
+                "content-type",
+                "grpc-status-details-bin"
+              ]
+            }
+          },
+          "name": {
+            "enumerable": true,
+            "writable": true,
+            "value": "SpannerOperationError"
+          },
+          "operation": {
+            "enumerable": true,
+            "writable": true,
+            "value": "dml"
+          },
+          "stack": {
+            "enumerable": false,
+            "value": "(see stack)"
+          },
+          "statement": {
+            "enumerable": true,
+            "writable": true,
+            "value": {
+              "operation": "INSERT",
+              "table": "db_test_thrown_identity"
+            }
+          },
+          "status": {
+            "enumerable": true,
+            "writable": true,
+            "value": "FAILED_PRECONDITION"
+          }
+        },
+        "stack": {
+          "opensWithNameAndMessage": true,
+          "firstFrame": "the caller (this file)"
+        }
+      }
+    },
+    "transaction dml: a caller`s transaction (a duplicate key)": {
+      "backendSaid": "Failed to insert row with primary key ({pk#id:\"identity-row-1\"}) due to previously existing row",
+      "transactionBodyRuns": 1,
+      "thrown": {
+        "class": "SpannerOperationError",
+        "classChain": [
+          "SpannerOperationError",
+          "Error"
+        ],
+        "name": "SpannerOperationError",
+        "message": "Failed when executing dml (ALREADY_EXISTS, code 6) on INSERT db_test_thrown_identity: Failed to insert row with primary key ({…}) due to previously existing row",
+        "code": 6,
+        "own": {
+          "cause": {
+            "enumerable": false,
+            "writable": false,
+            "value": {
+              "class": "Error",
+              "classChain": [
+                "Error"
+              ],
+              "name": "Error",
+              "message": "Failed to insert row with primary key ({pk#id:\"identity-row-1\"}) due to previously existing row",
+              "code": 6,
+              "own": {
+                "code": {
+                  "enumerable": true,
+                  "writable": true,
+                  "value": 6
+                },
+                "message": {
+                  "enumerable": false,
+                  "writable": true,
+                  "value": "Failed to insert row with primary key ({pk#id:\"identity-row-1\"}) due to previously existing row"
+                },
+                "metadata": {
+                  "enumerable": true,
+                  "writable": true,
+                  "value": {
+                    "class": "Metadata",
+                    "keys": []
+                  }
+                },
+                "rowCounts": {
+                  "enumerable": true,
+                  "writable": true,
+                  "value": []
+                },
+                "stack": {
+                  "enumerable": false,
+                  "value": "(see stack)"
+                }
+              },
+              "stack": {
+                "opensWithNameAndMessage": true,
+                "firstFrame": "a dependency"
+              }
+            }
+          },
+          "code": {
+            "enumerable": true,
+            "writable": true,
+            "value": 6
+          },
+          "message": {
+            "enumerable": false,
+            "writable": true,
+            "value": "Failed when executing dml (ALREADY_EXISTS, code 6) on INSERT db_test_thrown_identity: Failed to insert row with primary key ({…}) due to previously existing row"
+          },
+          "metadata": {
+            "enumerable": false,
+            "writable": false,
+            "value": {
+              "class": "Metadata",
+              "keys": []
+            }
+          },
+          "name": {
+            "enumerable": true,
+            "writable": true,
+            "value": "SpannerOperationError"
+          },
+          "operation": {
+            "enumerable": true,
+            "writable": true,
+            "value": "dml"
+          },
+          "stack": {
+            "enumerable": false,
+            "value": "(see stack)"
+          },
+          "statement": {
+            "enumerable": true,
+            "writable": true,
+            "value": {
+              "operation": "INSERT",
+              "table": "db_test_thrown_identity"
+            }
+          },
+          "status": {
+            "enumerable": true,
+            "writable": true,
+            "value": "ALREADY_EXISTS"
+          }
+        },
+        "stack": {
+          "opensWithNameAndMessage": true,
+          "firstFrame": "the caller (this file)"
+        }
+      }
+    },
+    "transaction query: a caller`s transaction (an unknown column)": {
+      "backendSaid": "3 INVALID_ARGUMENT: Unrecognized name: no_such_column [at 1:50]\nSELECT `id` FROM `db_test_thrown_identity` WHERE `no_such_column` = @n\n                                                 ^",
+      "transactionBodyRuns": 1,
+      "thrown": {
+        "class": "SpannerOperationError",
+        "classChain": [
+          "SpannerOperationError",
+          "Error"
+        ],
+        "name": "SpannerOperationError",
+        "message": "Failed when executing query (INVALID_ARGUMENT, code 3) on SELECT db_test_thrown_identity: 3 INVALID_ARGUMENT: Unrecognized name: no_such_column […] SELECT `id` FROM `db_test_thrown_identity` WHERE `no_such_column` = @n ^",
+        "code": 3,
+        "own": {
+          "cause": {
+            "enumerable": false,
+            "writable": false,
+            "value": {
+              "class": "Error",
+              "classChain": [
+                "Error"
+              ],
+              "name": "Error",
+              "message": "3 INVALID_ARGUMENT: Unrecognized name: no_such_column [at 1:50]\nSELECT `id` FROM `db_test_thrown_identity` WHERE `no_such_column` = @n\n                                                 ^",
+              "code": 3,
+              "own": {
+                "code": {
+                  "enumerable": true,
+                  "writable": true,
+                  "value": 3
+                },
+                "details": {
+                  "enumerable": true,
+                  "writable": true,
+                  "value": "Unrecognized name: no_such_column [at 1:50]\nSELECT `id` FROM `db_test_thrown_identity` WHERE `no_such_column` = @n\n                                                 ^"
+                },
+                "message": {
+                  "enumerable": false,
+                  "writable": true,
+                  "value": "3 INVALID_ARGUMENT: Unrecognized name: no_such_column [at 1:50]\nSELECT `id` FROM `db_test_thrown_identity` WHERE `no_such_column` = @n\n                                                 ^"
+                },
+                "metadata": {
+                  "enumerable": true,
+                  "writable": true,
+                  "value": {
+                    "class": "Metadata",
+                    "keys": [
+                      "content-type",
+                      "grpc-status-details-bin"
+                    ]
+                  }
+                },
+                "stack": {
+                  "enumerable": false,
+                  "value": "(see stack)"
+                }
+              },
+              "stack": {
+                "opensWithNameAndMessage": true,
+                "firstFrame": "a dependency"
+              }
+            }
+          },
+          "code": {
+            "enumerable": true,
+            "writable": true,
+            "value": 3
+          },
+          "details": {
+            "enumerable": false,
+            "writable": false,
+            "value": "Unrecognized name: no_such_column [at 1:50]\nSELECT `id` FROM `db_test_thrown_identity` WHERE `no_such_column` = @n\n                                                 ^"
+          },
+          "message": {
+            "enumerable": false,
+            "writable": true,
+            "value": "Failed when executing query (INVALID_ARGUMENT, code 3) on SELECT db_test_thrown_identity: 3 INVALID_ARGUMENT: Unrecognized name: no_such_column […] SELECT `id` FROM `db_test_thrown_identity` WHERE `no_such_column` = @n ^"
+          },
+          "metadata": {
+            "enumerable": false,
+            "writable": false,
+            "value": {
+              "class": "Metadata",
+              "keys": [
+                "content-type",
+                "grpc-status-details-bin"
+              ]
+            }
+          },
+          "name": {
+            "enumerable": true,
+            "writable": true,
+            "value": "SpannerOperationError"
+          },
+          "operation": {
+            "enumerable": true,
+            "writable": true,
+            "value": "query"
+          },
+          "stack": {
+            "enumerable": false,
+            "value": "(see stack)"
+          },
+          "statement": {
+            "enumerable": true,
+            "writable": true,
+            "value": {
+              "operation": "SELECT",
+              "table": "db_test_thrown_identity"
+            }
+          },
+          "status": {
+            "enumerable": true,
+            "writable": true,
+            "value": "INVALID_ARGUMENT"
+          }
+        },
+        "stack": {
+          "opensWithNameAndMessage": true,
+          "firstFrame": "the caller (this file)"
+        }
+      }
+    },
+    "commit: refused by the backend (a buffered duplicate row)": {
+      "backendSaid": "6 ALREADY_EXISTS: Table db_test_thrown_identity: Row {String(\"identity-row-1\")} already exists.",
+      "transactionBodyRuns": 1,
+      "thrown": {
+        "class": "Error",
+        "classChain": [
+          "Error"
+        ],
+        "name": "Error",
+        "message": "6 ALREADY_EXISTS: Table db_test_thrown_identity: Row {String(\"identity-row-1\")} already exists.",
+        "code": 6,
+        "own": {
+          "code": {
+            "enumerable": true,
+            "writable": true,
+            "value": 6
+          },
+          "details": {
+            "enumerable": true,
+            "writable": true,
+            "value": "Table db_test_thrown_identity: Row {String(\"identity-row-1\")} already exists."
+          },
+          "message": {
+            "enumerable": false,
+            "writable": true,
+            "value": "6 ALREADY_EXISTS: Table db_test_thrown_identity: Row {String(\"identity-row-1\")} already exists."
+          },
+          "metadata": {
+            "enumerable": true,
+            "writable": true,
+            "value": {
+              "class": "Metadata",
+              "keys": [
+                "content-type",
+                "grpc-status-details-bin"
+              ]
+            }
+          },
+          "note": {
+            "enumerable": true,
+            "writable": true,
+            "value": "Exception occurred in retry method that was not classified as transient"
+          },
+          "stack": {
+            "enumerable": false,
+            "value": "(see stack)"
+          }
+        },
+        "stack": {
+          "opensWithNameAndMessage": true,
+          "firstFrame": "a dependency"
+        }
+      }
+    },
+    "commit: after the body rolled the transaction back": {
+      "backendSaid": "9 FAILED_PRECONDITION: Cannot commit a transaction after it has been rolled back.",
+      "transactionBodyRuns": 1,
+      "thrown": {
+        "class": "Error",
+        "classChain": [
+          "Error"
+        ],
+        "name": "Error",
+        "message": "9 FAILED_PRECONDITION: Cannot commit a transaction after it has been rolled back.",
+        "code": 9,
+        "own": {
+          "code": {
+            "enumerable": true,
+            "writable": true,
+            "value": 9
+          },
+          "details": {
+            "enumerable": true,
+            "writable": true,
+            "value": "Cannot commit a transaction after it has been rolled back."
+          },
+          "message": {
+            "enumerable": false,
+            "writable": true,
+            "value": "9 FAILED_PRECONDITION: Cannot commit a transaction after it has been rolled back."
+          },
+          "metadata": {
+            "enumerable": true,
+            "writable": true,
+            "value": {
+              "class": "Metadata",
+              "keys": [
+                "content-type",
+                "grpc-status-details-bin"
+              ]
+            }
+          },
+          "note": {
+            "enumerable": true,
+            "writable": true,
+            "value": "Exception occurred in retry method that was not classified as transient"
+          },
+          "stack": {
+            "enumerable": false,
+            "value": "(see stack)"
+          }
+        },
+        "stack": {
+          "opensWithNameAndMessage": true,
+          "firstFrame": "a dependency"
+        }
+      }
+    },
+    "schema update: refused at validation (a duplicate table)": {
+      "backendSaid": "9 FAILED_PRECONDITION: Duplicate name in schema: db_test_thrown_identity.",
+      "transactionBodyRuns": 0,
+      "thrown": {
+        "class": "Error",
+        "classChain": [
+          "Error"
+        ],
+        "name": "Error",
+        "message": "9 FAILED_PRECONDITION: Duplicate name in schema: db_test_thrown_identity.",
+        "code": 9,
+        "own": {
+          "code": {
+            "enumerable": true,
+            "writable": true,
+            "value": 9
+          },
+          "details": {
+            "enumerable": true,
+            "writable": true,
+            "value": "Duplicate name in schema: db_test_thrown_identity."
+          },
+          "message": {
+            "enumerable": false,
+            "writable": true,
+            "value": "9 FAILED_PRECONDITION: Duplicate name in schema: db_test_thrown_identity."
+          },
+          "metadata": {
+            "enumerable": true,
+            "writable": true,
+            "value": {
+              "class": "Metadata",
+              "keys": [
+                "content-type",
+                "grpc-status-details-bin"
+              ]
+            }
+          },
+          "note": {
+            "enumerable": true,
+            "writable": true,
+            "value": "Exception occurred in retry method that was not classified as transient"
+          },
+          "stack": {
+            "enumerable": false,
+            "value": "(see stack)"
+          }
+        },
+        "stack": {
+          "opensWithNameAndMessage": true,
+          "firstFrame": "a dependency"
+        }
+      }
+    },
+    "schema update: failed while applying (a unique index over duplicate rows)": {
+      "backendSaid": "Found uniqueness violation on index db_test_thrown_identity_dupes_ix,  duplicate key: {String(\"the same\")}",
+      "transactionBodyRuns": 0,
+      "thrown": {
+        "class": "GoogleError",
+        "classChain": [
+          "GoogleError",
+          "Error"
+        ],
+        "name": "Error",
+        "message": "Found uniqueness violation on index db_test_thrown_identity_dupes_ix,  duplicate key: {String(\"the same\")}",
+        "code": 9,
+        "own": {
+          "code": {
+            "enumerable": true,
+            "writable": true,
+            "value": 9
+          },
+          "message": {
+            "enumerable": false,
+            "writable": true,
+            "value": "Found uniqueness violation on index db_test_thrown_identity_dupes_ix,  duplicate key: {String(\"the same\")}"
+          },
+          "stack": {
+            "enumerable": false,
+            "value": "(see stack)"
+          }
+        },
+        "stack": {
+          "opensWithNameAndMessage": true,
+          "firstFrame": "a dependency"
+        }
+      }
+    },
+    "schema update: issued inside a transaction body": {
+      "backendSaid": "9 FAILED_PRECONDITION: Duplicate name in schema: db_test_thrown_identity.",
+      "transactionBodyRuns": 1,
+      "thrown": {
+        "class": "Error",
+        "classChain": [
+          "Error"
+        ],
+        "name": "Error",
+        "message": "9 FAILED_PRECONDITION: Duplicate name in schema: db_test_thrown_identity.",
+        "code": 9,
+        "own": {
+          "code": {
+            "enumerable": true,
+            "writable": true,
+            "value": 9
+          },
+          "details": {
+            "enumerable": true,
+            "writable": true,
+            "value": "Duplicate name in schema: db_test_thrown_identity."
+          },
+          "message": {
+            "enumerable": false,
+            "writable": true,
+            "value": "9 FAILED_PRECONDITION: Duplicate name in schema: db_test_thrown_identity."
+          },
+          "metadata": {
+            "enumerable": true,
+            "writable": true,
+            "value": {
+              "class": "Metadata",
+              "keys": [
+                "content-type",
+                "grpc-status-details-bin"
+              ]
+            }
+          },
+          "note": {
+            "enumerable": true,
+            "writable": true,
+            "value": "Exception occurred in retry method that was not classified as transient"
+          },
+          "stack": {
+            "enumerable": false,
+            "value": "(see stack)"
+          }
+        },
+        "stack": {
+          "opensWithNameAndMessage": true,
+          "firstFrame": "a dependency"
+        }
+      }
+    }
+  }
+}
