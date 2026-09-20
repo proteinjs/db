@@ -10,6 +10,7 @@ import {
 } from '@proteinjs/db';
 import { KnexConfig } from './KnexConfig';
 import { KnexOperationError } from './KnexOperationError';
+import { KnexLogValues } from './KnexLogValues';
 import { Logger } from '@proteinjs/logger';
 import { Statement } from '@proteinjs/db-query';
 import { KnexSchemaOperations } from './KnexSchemaOperations';
@@ -200,18 +201,27 @@ export class KnexDriver implements DbDriver {
 
   /**
    * A statement's failure, logged ONCE and rethrown as the driver's typed error
-   * (`KnexOperationError`: the vendor's codes copied, the vendor error behind its `vendorError`
-   * accessor). The vendor error never reaches the logger or the caller as is — its message
+   * (`KnexOperationError`: the vendor's codes copied, the vendor error behind its `vendorError()`
+   * method). The vendor error never reaches the logger or the caller as is — its message
    * is the SQL with the bindings interpolated (see KnexOperationError) — so the line carries the
    * SQL text (placeholders only), the parameters DESCRIBED (describeParams) and the failure's
-   * codes, and never a bound value.
+   * codes, and never a bound value. The one exception is the dev-only switch (KnexLogValues:
+   * `DEVELOPMENT` set AND `DB_LOG_PARAM_VALUES=1`), under which the line adds the bound values and
+   * the vendor's message; the thrown error never does.
    */
   private operationFailure(sql: string, params: Statement['params'], error: unknown): KnexOperationError {
     const failure = error instanceof KnexOperationError ? error : new KnexOperationError(error);
     this.logger.error({
       message: `Failed when executing sql`,
       error: failure,
-      obj: { sql, params: this.describeParams(params), cause: failure.causeSummary() },
+      obj: {
+        sql,
+        params: this.describeParams(params),
+        cause: failure.causeSummary(),
+        // Real values ride this line only under the dev-only switch (KnexLogValues); else nothing.
+        ...KnexLogValues.ofStatement(params),
+        ...KnexLogValues.ofFailure(failure),
+      },
     });
     return failure;
   }
