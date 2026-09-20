@@ -146,7 +146,11 @@ describe('Data-op failures carry their cause (emulator)', () => {
     expect(log.obj.statement).toEqual({ operation: 'INSERT', table: table.name });
     expect(log.obj.cause).toEqual(expect.objectContaining({ code: 6, status: 'ALREADY_EXISTS' }));
     expect(typeof log.obj.cause.message).toBe('string');
-    expect(log.obj.params).toBeUndefined();
+    // The parameters are described — a type per name, a length for strings — never quoted.
+    const described = Object.values(log.obj.params as { [name: string]: { type: string; length?: number } });
+    expect(described).toContainEqual({ type: 'string', length: 'again'.length });
+    expect(described).toContainEqual({ type: 'string', length: row.id.length });
+    expect(JSON.stringify(log.obj)).not.toContain('again');
     expect(JSON.stringify(log.obj)).not.toContain(row.id);
     expect(typeof log.obj.durationMs).toBe('number');
   }, 30000);

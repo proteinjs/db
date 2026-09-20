@@ -22,9 +22,10 @@ export const GRPC_STATUS_NAMES: { [code: number]: string } = {
 export type SpannerOperationKind = 'query' | 'dml';
 
 /**
- * The SHAPE of a statement — its verb and the table it acts on, never a value — the only
- * statement facts a failure log or error message carries at error level (row values ride the
- * DEBUG line beside the op, never a log line that leaves the process at ERROR).
+ * The SHAPE of a statement — its verb and the table it acts on, never a value — the statement
+ * facts an error message carries. No log line at any level carries a row value: beside the shape
+ * and the SQL text, the driver's lines DESCRIBE the bound parameters (names, types, lengths —
+ * SpannerDriver.describeParams).
  */
 export type StatementShape = { operation: string; table?: string };
 
@@ -85,6 +86,22 @@ export class SpannerOperationError extends Error {
   /** The underlying failure as a log line carries it. */
   causeSummary(): OperationCauseSummary {
     return SpannerOperationError.summarize(this.cause);
+  }
+
+  /**
+   * What `util.inspect` prints for this error — so what `console.*` and any log writer built on it
+   * (the default dev writer) print. The stock rendering appends `[cause]` even though the property
+   * is not enumerable, and the vendor error's raw message quotes the offending row key; this
+   * rendering is the stack and the enumerable facts, nothing else. Callers still read `cause`.
+   */
+  [Symbol.for('nodejs.util.inspect.custom')](
+    _depth: number,
+    options: object,
+    inspect?: (value: unknown, options?: object) => string
+  ): string {
+    const facts = { ...this };
+    const header = this.stack ?? `${this.name}: ${this.message}`;
+    return `${header} ${inspect ? inspect(facts, options) : JSON.stringify(facts)}`;
   }
 
   /**
