@@ -1,0 +1,11 @@
+{
+  "branch": "fix/record-table-loads-a-page-once",
+  "packages": ["ui"],
+  "suites": [
+    "packages/ui/test/recordTableLoadsAPageOnce.test.tsx",
+    "packages/ui/test/recordFormPageKeepsItsForm.test.tsx",
+    "packages/ui/test/recordTablePageMobile.test.tsx",
+    "packages/ui/test/recordFormPageMobile.test.tsx"
+  ],
+  "removes": []
+}
