@@ -11,6 +11,7 @@
     "packages/drivers/spanner/test/ConcurrentSchemaReconcile.test.ts",
     "packages/drivers/spanner/test/DmlRetrySafety.test.ts",
     "packages/drivers/spanner/test/EnvTokenAuth.test.ts",
+    "packages/drivers/spanner/test/TransactionRetrySignal.test.ts",
     "packages/drivers/knex/test/StatementParamLogging.test.ts",
     "packages/drivers/knex/test/VendorTextNeverPrinted.test.ts"
   ],
