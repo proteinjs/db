@@ -7,10 +7,7 @@
       "transactionBodyRuns": 0,
       "thrown": {
         "class": "SpannerOperationError",
-        "classChain": [
-          "SpannerOperationError",
-          "Error"
-        ],
+        "classChain": ["SpannerOperationError", "Error"],
         "name": "SpannerOperationError",
         "message": "Failed when executing query (INVALID_ARGUMENT, code 3) on SELECT db_test_thrown_identity: 3 INVALID_ARGUMENT: Unrecognized name: no_such_column […] SELECT `id` FROM `db_test_thrown_identity` WHERE `no_such_column` = @n ^",
         "code": 3,
@@ -20,9 +17,7 @@
             "writable": false,
             "value": {
               "class": "Error",
-              "classChain": [
-                "Error"
-              ],
+              "classChain": ["Error"],
               "name": "Error",
               "message": "3 INVALID_ARGUMENT: Unrecognized name: no_such_column [at 1:50]\nSELECT `id` FROM `db_test_thrown_identity` WHERE `no_such_column` = @n\n                                                 ^",
               "code": 3,
@@ -47,10 +42,7 @@
                   "writable": true,
                   "value": {
                     "class": "Metadata",
-                    "keys": [
-                      "content-type",
-                      "grpc-status-details-bin"
-                    ]
+                    "keys": ["content-type", "grpc-status-details-bin"]
                   }
                 },
                 "stack": {
@@ -84,10 +76,7 @@
             "writable": false,
             "value": {
               "class": "Metadata",
-              "keys": [
-                "content-type",
-                "grpc-status-details-bin"
-              ]
+              "keys": ["content-type", "grpc-status-details-bin"]
             }
           },
           "name": {
@@ -129,10 +118,7 @@
       "transactionBodyRuns": 0,
       "thrown": {
         "class": "SpannerOperationError",
-        "classChain": [
-          "SpannerOperationError",
-          "Error"
-        ],
+        "classChain": ["SpannerOperationError", "Error"],
         "name": "SpannerOperationError",
         "message": "Failed when executing query (OUT_OF_RANGE, code 11) on SELECT db_test_thrown_identity: 11 OUT_OF_RANGE: Bad int64 value: not a number",
         "code": 11,
@@ -142,9 +128,7 @@
             "writable": false,
             "value": {
               "class": "Error",
-              "classChain": [
-                "Error"
-              ],
+              "classChain": ["Error"],
               "name": "Error",
               "message": "11 OUT_OF_RANGE: Bad int64 value: not a number",
               "code": 11,
@@ -169,10 +153,7 @@
                   "writable": true,
                   "value": {
                     "class": "Metadata",
-                    "keys": [
-                      "content-type",
-                      "grpc-status-details-bin"
-                    ]
+                    "keys": ["content-type", "grpc-status-details-bin"]
                   }
                 },
                 "stack": {
@@ -206,10 +187,7 @@
             "writable": false,
             "value": {
               "class": "Metadata",
-              "keys": [
-                "content-type",
-                "grpc-status-details-bin"
-              ]
+              "keys": ["content-type", "grpc-status-details-bin"]
             }
           },
           "name": {
@@ -251,10 +229,7 @@
       "transactionBodyRuns": 0,
       "thrown": {
         "class": "SpannerOperationError",
-        "classChain": [
-          "SpannerOperationError",
-          "Error"
-        ],
+        "classChain": ["SpannerOperationError", "Error"],
         "name": "SpannerOperationError",
         "message": "Failed when executing dml (ALREADY_EXISTS, code 6) on INSERT db_test_thrown_identity: Failed to insert row with primary key ({…}) due to previously existing row",
         "code": 6,
@@ -264,9 +239,7 @@
             "writable": false,
             "value": {
               "class": "Error",
-              "classChain": [
-                "Error"
-              ],
+              "classChain": ["Error"],
               "name": "Error",
               "message": "Failed to insert row with primary key ({pk#id:\"identity-row-1\"}) due to previously existing row",
               "code": 6,
@@ -362,10 +335,7 @@
       "transactionBodyRuns": 1,
       "thrown": {
         "class": "SpannerOperationError",
-        "classChain": [
-          "SpannerOperationError",
-          "Error"
-        ],
+        "classChain": ["SpannerOperationError", "Error"],
         "name": "SpannerOperationError",
         "message": "Failed when executing dml (FAILED_PRECONDITION, code 9) on INSERT db_test_thrown_identity: 9 FAILED_PRECONDITION: Cannot read or query using a transaction after it has been committed or rolledback.",
         "code": 9,
@@ -375,9 +345,7 @@
             "writable": false,
             "value": {
               "class": "Error",
-              "classChain": [
-                "Error"
-              ],
+              "classChain": ["Error"],
               "name": "Error",
               "message": "9 FAILED_PRECONDITION: Cannot read or query using a transaction after it has been committed or rolledback.",
               "code": 9,
@@ -402,10 +370,7 @@
                   "writable": true,
                   "value": {
                     "class": "Metadata",
-                    "keys": [
-                      "content-type",
-                      "grpc-status-details-bin"
-                    ]
+                    "keys": ["content-type", "grpc-status-details-bin"]
                   }
                 },
                 "rowCounts": {
@@ -444,10 +409,7 @@
             "writable": false,
             "value": {
               "class": "Metadata",
-              "keys": [
-                "content-type",
-                "grpc-status-details-bin"
-              ]
+              "keys": ["content-type", "grpc-status-details-bin"]
             }
           },
           "name": {
@@ -489,10 +451,7 @@
       "transactionBodyRuns": 1,
       "thrown": {
         "class": "SpannerOperationError",
-        "classChain": [
-          "SpannerOperationError",
-          "Error"
-        ],
+        "classChain": ["SpannerOperationError", "Error"],
         "name": "SpannerOperationError",
         "message": "Failed when executing dml (ALREADY_EXISTS, code 6) on INSERT db_test_thrown_identity: Failed to insert row with primary key ({…}) due to previously existing row",
         "code": 6,
@@ -502,9 +461,7 @@
             "writable": false,
             "value": {
               "class": "Error",
-              "classChain": [
-                "Error"
-              ],
+              "classChain": ["Error"],
               "name": "Error",
               "message": "Failed to insert row with primary key ({pk#id:\"identity-row-1\"}) due to previously existing row",
               "code": 6,
@@ -600,10 +557,7 @@
       "transactionBodyRuns": 1,
       "thrown": {
         "class": "SpannerOperationError",
-        "classChain": [
-          "SpannerOperationError",
-          "Error"
-        ],
+        "classChain": ["SpannerOperationError", "Error"],
         "name": "SpannerOperationError",
         "message": "Failed when executing query (INVALID_ARGUMENT, code 3) on SELECT db_test_thrown_identity: 3 INVALID_ARGUMENT: Unrecognized name: no_such_column […] SELECT `id` FROM `db_test_thrown_identity` WHERE `no_such_column` = @n ^",
         "code": 3,
@@ -613,9 +567,7 @@
             "writable": false,
             "value": {
               "class": "Error",
-              "classChain": [
-                "Error"
-              ],
+              "classChain": ["Error"],
               "name": "Error",
               "message": "3 INVALID_ARGUMENT: Unrecognized name: no_such_column [at 1:50]\nSELECT `id` FROM `db_test_thrown_identity` WHERE `no_such_column` = @n\n                                                 ^",
               "code": 3,
@@ -640,10 +592,7 @@
                   "writable": true,
                   "value": {
                     "class": "Metadata",
-                    "keys": [
-                      "content-type",
-                      "grpc-status-details-bin"
-                    ]
+                    "keys": ["content-type", "grpc-status-details-bin"]
                   }
                 },
                 "stack": {
@@ -677,10 +626,7 @@
             "writable": false,
             "value": {
               "class": "Metadata",
-              "keys": [
-                "content-type",
-                "grpc-status-details-bin"
-              ]
+              "keys": ["content-type", "grpc-status-details-bin"]
             }
           },
           "name": {
@@ -722,9 +668,7 @@
       "transactionBodyRuns": 1,
       "thrown": {
         "class": "Error",
-        "classChain": [
-          "Error"
-        ],
+        "classChain": ["Error"],
         "name": "Error",
         "message": "6 ALREADY_EXISTS: Table db_test_thrown_identity: Row {String(\"identity-row-1\")} already exists.",
         "code": 6,
@@ -749,10 +693,7 @@
             "writable": true,
             "value": {
               "class": "Metadata",
-              "keys": [
-                "content-type",
-                "grpc-status-details-bin"
-              ]
+              "keys": ["content-type", "grpc-status-details-bin"]
             }
           },
           "note": {
@@ -776,9 +717,7 @@
       "transactionBodyRuns": 1,
       "thrown": {
         "class": "Error",
-        "classChain": [
-          "Error"
-        ],
+        "classChain": ["Error"],
         "name": "Error",
         "message": "9 FAILED_PRECONDITION: Cannot commit a transaction after it has been rolled back.",
         "code": 9,
@@ -803,10 +742,7 @@
             "writable": true,
             "value": {
               "class": "Metadata",
-              "keys": [
-                "content-type",
-                "grpc-status-details-bin"
-              ]
+              "keys": ["content-type", "grpc-status-details-bin"]
             }
           },
           "note": {
@@ -830,9 +766,7 @@
       "transactionBodyRuns": 0,
       "thrown": {
         "class": "Error",
-        "classChain": [
-          "Error"
-        ],
+        "classChain": ["Error"],
         "name": "Error",
         "message": "9 FAILED_PRECONDITION: Duplicate name in schema: db_test_thrown_identity.",
         "code": 9,
@@ -857,10 +791,7 @@
             "writable": true,
             "value": {
               "class": "Metadata",
-              "keys": [
-                "content-type",
-                "grpc-status-details-bin"
-              ]
+              "keys": ["content-type", "grpc-status-details-bin"]
             }
           },
           "note": {
@@ -884,10 +815,7 @@
       "transactionBodyRuns": 0,
       "thrown": {
         "class": "GoogleError",
-        "classChain": [
-          "GoogleError",
-          "Error"
-        ],
+        "classChain": ["GoogleError", "Error"],
         "name": "Error",
         "message": "Found uniqueness violation on index db_test_thrown_identity_dupes_ix,  duplicate key: {String(\"the same\")}",
         "code": 9,
@@ -918,9 +846,7 @@
       "transactionBodyRuns": 1,
       "thrown": {
         "class": "Error",
-        "classChain": [
-          "Error"
-        ],
+        "classChain": ["Error"],
         "name": "Error",
         "message": "9 FAILED_PRECONDITION: Duplicate name in schema: db_test_thrown_identity.",
         "code": 9,
@@ -945,10 +871,7 @@
             "writable": true,
             "value": {
               "class": "Metadata",
-              "keys": [
-                "content-type",
-                "grpc-status-details-bin"
-              ]
+              "keys": ["content-type", "grpc-status-details-bin"]
             }
           },
           "note": {
