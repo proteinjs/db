@@ -2,7 +2,8 @@ import { GoogleCloudStorageDriver } from '../src/GoogleCloudStorageDriver';
 
 const saveMock = jest.fn();
 const downloadMock = jest.fn();
-const fileMock = jest.fn(() => ({ save: saveMock, download: downloadMock }));
+const getMetadataMock = jest.fn();
+const fileMock = jest.fn(() => ({ save: saveMock, download: downloadMock, getMetadata: getMetadataMock }));
 const bucketMock = jest.fn(() => ({ file: fileMock }));
 
 jest.mock('@google-cloud/storage', () => ({
@@ -25,6 +26,7 @@ describe('GoogleCloudStorageDriver byte encoding', () => {
   beforeEach(() => {
     saveMock.mockReset();
     downloadMock.mockReset();
+    getMetadataMock.mockReset();
     fileMock.mockClear();
     bucketMock.mockClear();
   });
@@ -55,6 +57,7 @@ describe('GoogleCloudStorageDriver byte encoding', () => {
 
   it('updateFileData stores the decoded true bytes', async () => {
     saveMock.mockResolvedValue(undefined);
+    getMetadataMock.mockResolvedValue([{ contentType: 'video/mp4', generation: '1' }, {}]);
 
     await driver.updateFileData('file-1', base64);
 
