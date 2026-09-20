@@ -157,18 +157,25 @@ const DynamicRecordForm = ({ urlParams }: PageComponentProps) => {
     return { table, error };
   }
 
-  function Message({ children }: { children: React.ReactNode }) {
-    return <Typography sx={{ p: 3, color: 'text.secondary' }}>{children}</Typography>;
+  function message(text: React.ReactNode) {
+    return <Typography sx={{ p: 3, color: 'text.secondary' }}>{text}</Typography>;
   }
 
-  function Form() {
+  /**
+   * The form's ELEMENTS — a plain function this component calls, never a component it defines.
+   * A component defined in here is a new component type on every render, so React unmounts and
+   * remounts everything under it each time this page's parent renders: the form came back
+   * empty, whatever had been typed into it gone (the record table page's twin defect — it
+   * fetched its rows again on every such render).
+   */
+  function form() {
     const { table, error } = getTable();
     if (!table) {
-      return <Message>{error}</Message>;
+      return message(error);
     }
 
     if (loadError) {
-      return <Message>{loadError}</Message>;
+      return message(loadError);
     }
 
     if (!recordLoaded) {
@@ -176,10 +183,13 @@ const DynamicRecordForm = ({ urlParams }: PageComponentProps) => {
     }
 
     if (recordId && !record) {
-      return <Message>{`No ${table.name} record found: ${recordId}`}</Message>;
+      return message(`No ${table.name} record found: ${recordId}`);
     }
 
-    return <RecordForm table={table} record={record} />;
+    // Keyed by its table: the form builds its fields once, when it mounts, so a different table
+    // is a different form — and the same one is never rebuilt. (A different RECORD already is:
+    // its load takes the form down until the record has arrived.)
+    return <RecordForm key={table.name} table={table} record={record} />;
   }
 
   if (recordLink) {
@@ -204,14 +214,10 @@ const DynamicRecordForm = ({ urlParams }: PageComponentProps) => {
   if (isPhone) {
     return (
       <Box data-phone-fullbleed sx={{ flexGrow: 1, minHeight: 0, width: '100%', overflow: 'auto', padding: 2 }}>
-        <Form />
+        {form()}
       </Box>
     );
   }
 
-  return (
-    <FormPage>
-      <Form />
-    </FormPage>
-  );
+  return <FormPage>{form()}</FormPage>;
 };
