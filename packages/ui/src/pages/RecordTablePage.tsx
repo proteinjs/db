@@ -35,55 +35,60 @@ const DynamicRecordTable = ({ urlParams }: PageComponentProps) => {
   // the deliberate house card (admin round 3).
   const { isPhone } = useFormFactor();
 
-  function Table() {
-    const tableName = urlParams['name'];
-    let table;
-    let errorMessage;
-    if (tableName) {
-      try {
-        table = tableByName(tableName);
-      } catch (error) {
-        errorMessage = `Table not accessible in UI: ${tableName}`;
-      }
-    } else {
-      errorMessage = `Table not provided via the 'name' url param`;
+  // This component RETURNS the table's elements; it never defines a component of its own to
+  // hold them. A component defined in here is a new component type on every render, so React
+  // unmounts and remounts everything under it each time this page's parent renders — and a
+  // remounted table fetches its rows again (an in-flight rows query is dropped when its table
+  // unmounts, a landed one is stale by the remount): the same first page was fetched three
+  // times on every mount, and any later parent render threw away the table's scroll position,
+  // selection and settled columns. The table is keyed by its table's name instead: a different
+  // table is a different table (it starts from its own first page, unscrolled), the same one is
+  // never rebuilt.
+  const tableName = urlParams['name'];
+  let table;
+  let errorMessage;
+  if (tableName) {
+    try {
+      table = tableByName(tableName);
+    } catch (error) {
+      errorMessage = `Table not accessible in UI: ${tableName}`;
     }
+  } else {
+    errorMessage = `Table not provided via the 'name' url param`;
+  }
 
-    // The error state renders as a plain message — wrapping it in the table's stretched
-    // card produced a full-height empty Paper with the text clipped at its edge.
-    if (!table) {
-      return <Typography sx={{ p: 3, color: 'text.secondary' }}>{errorMessage}</Typography>;
-    }
+  // The error state renders as a plain message — wrapping it in the table's stretched
+  // card produced a full-height empty Paper with the text clipped at its edge.
+  if (!table) {
+    return <Typography sx={{ p: 3, color: 'text.secondary' }}>{errorMessage}</Typography>;
+  }
 
-    if (isPhone) {
-      // Full-bleed: the table IS the page below the shell chrome. flex-grow 1 + min-height 0
-      // against the shell's flex page column hand the table the rest of the viewport; its own
-      // scroll container carries the height (the desktop card's 80vh cap has no place here).
-      return (
-        <Box
-          data-phone-fullbleed
-          sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: 0, minWidth: 0, width: '100%' }}
-        >
-          <RecordTable table={table} {...adminScrollAffordances} />
-        </Box>
-      );
-    }
-
-    // The card OWNS its overflow (founder finding 2026-09-02: the Migrations header row painted
-    // past the card's rounded edges). A flex item's automatic minimum width is its content's
-    // min-content — a table wider than the page (narrow window, zoom, a wide column declaration)
-    // grew the card past its container, and nothing clipped at the radius. Capped at the
-    // container's width and free to shrink below its table, the table's own scroller absorbs the
-    // width instead (horizontal scroll inside the card, the sticky header staying with it), and
-    // the clip keeps every painted edge inside the rounded box.
+  if (isPhone) {
+    // Full-bleed: the table IS the page below the shell chrome. flex-grow 1 + min-height 0
+    // against the shell's flex page column hand the table the rest of the viewport; its own
+    // scroll container carries the height (the desktop card's 80vh cap has no place here).
     return (
-      <Box sx={{ display: 'flex', flexGrow: 1, justifyContent: 'center', padding: 4, minWidth: 0 }}>
-        <Paper sx={{ maxHeight: '80vh', maxWidth: '100%', minWidth: 0, overflow: 'hidden' }}>
-          <RecordTable table={table} {...adminScrollAffordances} />
-        </Paper>
+      <Box
+        data-phone-fullbleed
+        sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: 0, minWidth: 0, width: '100%' }}
+      >
+        <RecordTable key={table.name} table={table} {...adminScrollAffordances} />
       </Box>
     );
   }
 
-  return <Table />;
+  // The card OWNS its overflow (founder finding 2026-09-02: the Migrations header row painted
+  // past the card's rounded edges). A flex item's automatic minimum width is its content's
+  // min-content — a table wider than the page (narrow window, zoom, a wide column declaration)
+  // grew the card past its container, and nothing clipped at the radius. Capped at the
+  // container's width and free to shrink below its table, the table's own scroller absorbs the
+  // width instead (horizontal scroll inside the card, the sticky header staying with it), and
+  // the clip keeps every painted edge inside the rounded box.
+  return (
+    <Box sx={{ display: 'flex', flexGrow: 1, justifyContent: 'center', padding: 4, minWidth: 0 }}>
+      <Paper sx={{ maxHeight: '80vh', maxWidth: '100%', minWidth: 0, overflow: 'hidden' }}>
+        <RecordTable key={table.name} table={table} {...adminScrollAffordances} />
+      </Paper>
+    </Box>
+  );
 };
