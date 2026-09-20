@@ -5,6 +5,7 @@ import { isRetryableInternalError } from '@google-cloud/spanner/build/src/transa
 import { grpc } from 'google-gax';
 import {
   SpannerDriver,
+  SpannerDriverError,
   SpannerFailureText,
   SpannerLivenessMonitor,
   SpannerOperationError,
@@ -25,8 +26,8 @@ import { CapturedLog, lineOf, printed } from './util/printedLine';
  * classes and the line carries the driver's sentence for it, beside the gRPC code and status; the
  * only vendor text a sentence keeps is a schema identifier (or a number the backend computed) read
  * from a fixed position before any value, never under OUT_OF_RANGE, and never a bound value. The
- * raw vendor error rides the typed error's `vendorError` accessor — not `cause`, not a property a
- * printer can reach.
+ * raw vendor error rides the typed error's `vendorError()` method — not `cause`, not a property
+ * and not an accessor: nothing a printer can reach, whatever its options.
  *
  * Pure unit tests: no emulator (BackendMessageNeverPrinted.test.ts holds the same contract against
  * the emulator's real messages).
@@ -162,9 +163,13 @@ describe('every class of backend message: the driver`s sentence, never the echoe
         expect(failure.message).toContain(`code ${code}`);
       }
       // The vendor error rides for a caller that asks for it by name — and only there.
-      expect(failure.vendorError).toBe(vendorError);
+      expect(failure.vendorError()).toBe(vendorError);
       expect('cause' in failure).toBe(false);
       expect(Object.getOwnPropertyNames(failure)).not.toContain('vendorError');
+      // A method, never an accessor: a printer that runs getters finds a function, which it does not call.
+      expect(typeof Object.getOwnPropertyDescriptor(SpannerDriverError.prototype, 'vendorError')?.value).toBe(
+        'function'
+      );
     }
   });
 
@@ -450,7 +455,7 @@ describe('the lines and throws outside a statement ride the same owner', () => {
       );
 
     expect(outcome).toBeInstanceOf(SpannerOperationError);
-    expect(outcome.vendorError).toBe(echoed);
+    expect(outcome.vendorError()).toBe(echoed);
     expect(printed(outcome)).not.toContain(VALUE);
     expect(captured.filter((log) => log.message === 'Failed when executing query')).toHaveLength(1);
     for (const log of captured) {
@@ -484,7 +489,7 @@ describe('the lines and throws outside a statement ride the same owner', () => {
     expect(outcome.message).toBe(
       'Failed when executing commit (ABORTED, code 10): the transaction was aborted (a lock conflict with a concurrent transaction)'
     );
-    expect(outcome.vendorError).toBe(aborted);
+    expect(outcome.vendorError()).toBe(aborted);
     expect(printed(outcome)).not.toContain(VALUE);
     for (const log of captured) {
       expect(lineOf(log)).not.toContain(VALUE);

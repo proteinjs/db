@@ -35,10 +35,10 @@ type VendorMetadata = {
  * client's own frames take over), so an error report through this driver locates the application
  * code that issued the statement instead of a client-library frame every failure shares.
  *
- * The vendor error itself is `vendorError` — for a caller that asks for it by name, and for
- * nothing else; never the standard `cause`, never a property of the instance (SpannerDriverError
- * owns that). Read the backend's raw `message` and `details` there, knowing they can carry row
- * values. `metadata` passes on the ONE entry the client library's transaction runner reads off a
+ * The vendor error itself is `vendorError()` — for a caller that asks for it by name, and for
+ * nothing else; never the standard `cause`, never a property of the instance, never an accessor
+ * (SpannerDriverError owns that). Read the backend's raw `message` and `details` there, knowing
+ * they can carry row values. `metadata` passes on the ONE entry the client library's transaction runner reads off a
  * thrown error — the backend's retry delay — and nothing else of the vendor's trailers (their
  * status-details entry repeats the raw message).
  */
@@ -53,6 +53,10 @@ export class SpannerOperationError extends SpannerDriverError {
   /**
    * @param boundValues the failed statement's parameter values — struck out of anything the
    * failure's sentence keeps (SpannerFailureText); never stored.
+   *
+   * The `operation` is also the door the failure is summarized at: a failed `commit` reached the
+   * client library's transaction runner as the vendor threw it, anything else as one masked line
+   * — which decides where a retry signal is looked for (THE RETRY LAW, SpannerFailureText).
    */
   constructor(
     readonly operation: SpannerOperationKind,
@@ -61,7 +65,11 @@ export class SpannerOperationError extends SpannerDriverError {
     callSiteStack?: string,
     boundValues?: { [param: string]: unknown }
   ) {
-    const summary = SpannerFailureText.summarize(vendorError, boundValues);
+    const summary = SpannerFailureText.summarize(
+      vendorError,
+      boundValues,
+      operation === 'commit' ? 'commit' : 'statement'
+    );
     super('SpannerOperationError', SpannerOperationError.describe(operation, statement, summary), vendorError);
     Object.setPrototypeOf(this, SpannerOperationError.prototype);
     if (summary.code !== undefined) {
@@ -77,7 +85,7 @@ export class SpannerOperationError extends SpannerDriverError {
 
   /** The backend's retry delay (gRPC `RetryInfo`), when it sent one — what a transaction runner backs off by. */
   get metadata(): unknown {
-    const metadata = (this.vendorError as { metadata?: Partial<VendorMetadata> } | null | undefined)?.metadata;
+    const metadata = (this.vendorError() as { metadata?: Partial<VendorMetadata> } | null | undefined)?.metadata;
     if (
       typeof metadata?.clone !== 'function' ||
       typeof metadata.getMap !== 'function' ||

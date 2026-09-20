@@ -29,6 +29,14 @@ export type OperationCauseSummary = { code?: number; status?: string; failureCla
 type BoundValues = { [param: string]: unknown } | undefined;
 
 /**
+ * The door a failure came through, as far as the client library's transaction runner is concerned:
+ * a `commit` failure has always reached the runner with the backend's message as it arrived; a
+ * failure at any other door (`statement`) reached it as one masked, bounded line (see THE RETRY
+ * LAW in the class doc).
+ */
+export type FailureDoor = 'statement' | 'commit';
+
+/**
  * One recognized class of backend failure. `codes` are the gRPC codes it is recognized under
  * (`undefined` = an error with no code); `patterns` run against the backend's message AS IT
  * ARRIVED (the status prefix stripped) — no bound value takes part in recognizing a class;
@@ -45,6 +53,13 @@ type FailureClass = {
 };
 
 /**
+ * One of the two failures the client library's transaction runner re-runs on the MESSAGE of the
+ * error a transaction body throws: the gRPC code and the literal its own predicate looks for. The
+ * sentence repeats the literal (from this file, never from the message).
+ */
+type RetrySignal = { name: string; code: number; literal: string; phrase: string };
+
+/**
  * The ONE owner of what a backend failure may SAY — in a log line at any level, in the message and
  * stack of an error the driver throws, for a data op, a schema update and a liveness probe alike.
  *
@@ -57,7 +72,7 @@ type FailureClass = {
  * the message opens with — and the line carries the driver's sentence for that class, beside the
  * code and status. An unrecognized failure carries the sentence for its code, or says that its
  * message is withheld. The raw vendor error stays reachable for a caller that asks for it by name
- * (`SpannerOperationError.vendorError`); nothing that prints an error reaches it.
+ * (`SpannerOperationError.vendorError()`); nothing that prints an error reaches it.
  *
  * What a sentence may keep of the backend's text is SCHEMA, never data: an identifier (an index,
  * a column, a constraint, a table) or a number the backend computed (a size, a limit, a position
@@ -75,23 +90,38 @@ type FailureClass = {
  * a statement must not change what the failure IS. A bound `2` overlaps `HTTP/2 error code`, a
  * bound `found` overlaps `Session not found`, a bound `index` overlaps `UNIQUE violation on
  * index` — striking first would let row content un-recognize a failure, and callers act on the
- * class (the schema reconcile's already-exists check; the transaction runner below). Recognizing
- * on the unstruck text prints nothing of it: a class's name and phrase are constants of this file.
+ * class (the schema reconcile's already-exists check; the transaction runner, under THE RETRY LAW
+ * below). Recognizing on the unstruck text prints nothing of it: a class's name and phrase are
+ * constants of this file.
  *
  * The driver's own errors (the op deadline, the env-token auth error) are authored here or
  * registered here (houseError / markHouseAuthored): their text is the driver's, and is kept.
  *
- * The client library's transaction runner decides a retry by reading the error a transaction body
- * throws — which is the driver's typed error. Read in its source (@google-cloud/spanner 7.5.0): an
- * ABORTED is retried on `code` alone and backed off by the `google.rpc.retryinfo-bin` metadata
- * entry, both of which the typed error carries structurally. A lost session and a reset stream
- * have no structural signal — `isSessionNotFoundError` is `code === NOT_FOUND &&
- * message.includes('Session not found')`, `isRetryableInternalError` is `code === INTERNAL &&
- * message.includes(<one of four literals>)` — so those two classes' sentences repeat the literal
- * (from this file, never from the message). They are recognized FIRST, by exactly the vendor's
- * test on the vendor's own message, so the typed error's sentence carries the literal precisely
- * when the vendor's message does — whatever is bound, and whatever other class the message might
- * also fit.
+ * THE RETRY LAW. The client library's transaction runner decides a retry by reading the error a
+ * transaction body throws — which is the driver's typed error. Read in its source
+ * (@google-cloud/spanner 7.5.0): an ABORTED is retried on `code` alone and backed off by the
+ * `google.rpc.retryinfo-bin` metadata entry, both of which the typed error carries structurally. A
+ * lost session and a reset stream have no structural signal — `isSessionNotFoundError` is `code
+ * === NOT_FOUND && message.includes('Session not found')` (it re-runs the transaction on a fresh
+ * session in an unbounded loop, and drops the session from the pool), `isRetryableInternalError`
+ * is `code === INTERNAL && message.includes(<one of four literals>)` — so those two classes'
+ * sentences repeat the literal. The law: the typed error leads the runner to EXACTLY the retries
+ * the driver led it to while the backend's message still rode the typed error — never fewer (a
+ * transaction the runner would have re-run and committed is rejected), never more (a failure that
+ * is final is re-run without end: nothing in the runner bounds the lost-session loop). What the
+ * runner was shown then is what the literal is looked for in now (runnerText):
+ *  - at a statement's door, the backend's message as ONE MASKED, BOUNDED LINE — quoted strings,
+ *    braced and bracketed keys and long numbers blanked, whitespace collapsed, 300 characters. The
+ *    backend prints a key inside quotes, braces or brackets (`Key: {String("…")}`, `Row […]`), so
+ *    a bound KEY that reads `Session not found` is not a lost session: on an interleaved child
+ *    insert with no parent row the backend answers NOT_FOUND and echoes the key, and reading the
+ *    literal off the raw message re-ran that transaction forever;
+ *  - at the commit door, the backend's message as it arrived — a failed commit reached the runner
+ *    as the vendor's own error.
+ * The two are recognized FIRST, so no other class the message fits shadows a retry signal; and no
+ * bound value takes part (the law above), so what is bound to a statement cannot un-recognize
+ * one. No other sentence can carry a literal: a kept token is an identifier or a number, no class
+ * under INTERNAL keeps one, and `Session not found` is not an identifier.
  */
 export class SpannerFailureText {
   /** The class name `SpannerSchemaOperations.isAlreadyExistsError` keys on. */
@@ -102,12 +132,27 @@ export class SpannerFailureText {
   private static readonly IDENTIFIER = '([\\w.]{1,128})';
   /** Errors whose text the driver wrote itself (see houseError / markHouseAuthored). */
   private static readonly HOUSE_AUTHORED = new WeakSet<object>();
-  /** The stream-reset literals the client library's transaction runner retries on (INTERNAL). */
-  private static readonly RETRYABLE_STREAM_RESETS = [
-    'Received unexpected EOS on DATA frame from server',
-    'RST_STREAM',
-    'HTTP/2 error code: INTERNAL_ERROR',
-    'Connection closed with unknown cause',
+  /** Free text the runner was shown at a statement's door was one line of this many characters. */
+  private static readonly RUNNER_TEXT_CHARS = 300;
+  /** The failures the client library's transaction runner re-runs on the message (THE RETRY LAW). */
+  private static readonly RETRY_SIGNALS: RetrySignal[] = [
+    {
+      name: 'session not found',
+      code: 5,
+      literal: 'Session not found',
+      phrase: 'Session not found (the session expired or was deleted; the client library replaces it)',
+    },
+    ...[
+      'Received unexpected EOS on DATA frame from server',
+      'RST_STREAM',
+      'HTTP/2 error code: INTERNAL_ERROR',
+      'Connection closed with unknown cause',
+    ].map((literal) => ({
+      name: 'retryable stream reset',
+      code: 13,
+      literal,
+      phrase: `the stream was reset mid-call (${literal})`,
+    })),
   ];
 
   private static readonly CODE_PHRASES: { [code: number]: string } = {
@@ -130,21 +175,6 @@ export class SpannerFailureText {
   };
 
   private static readonly CLASSES: FailureClass[] = [
-    // ── sessions and streams: the sentences the client library's transaction runner reads. FIRST,
-    //    and by the vendor's own test (its code, its literal anywhere in the message), so no other
-    //    class shadows a retry signal (see the class doc). ───────────────────────────────────────
-    {
-      name: 'session not found',
-      codes: [5],
-      patterns: [/Session not found/],
-      phrase: 'Session not found (the session expired or was deleted; the client library replaces it)',
-    },
-    ...SpannerFailureText.RETRYABLE_STREAM_RESETS.map((literal) => ({
-      name: 'retryable stream reset',
-      codes: [13],
-      patterns: [new RegExp(literal.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&'))],
-      phrase: `the stream was reset mid-call (${literal})`,
-    })),
     // ── rows ──────────────────────────────────────────────────────────────────────────────────
     {
       name: 'row already exists',
@@ -316,14 +346,24 @@ export class SpannerFailureText {
   /**
    * `{ code, status, failureClass, message }` of any thrown value — a vendor error, one of the
    * driver's own, a string — as a log line and an error message may carry it. `boundValues` are
-   * the failed statement's parameters: what the backend may have echoed into its message.
+   * the failed statement's parameters: what the backend may have echoed into its message. `door`
+   * is where the failure happened, which decides the text a retry signal is looked for in (THE
+   * RETRY LAW in the class doc).
    */
-  static summarize(failure: unknown, boundValues?: BoundValues): OperationCauseSummary {
+  static summarize(
+    failure: unknown,
+    boundValues?: BoundValues,
+    door: FailureDoor = 'statement'
+  ): OperationCauseSummary {
     const vendor = failure as { code?: unknown; message?: unknown } | null | undefined;
     const code = typeof vendor?.code === 'number' ? vendor.code : undefined;
     const coded = code !== undefined ? { code, status: GRPC_STATUS_NAMES[code] ?? `code ${code}` } : {};
     if (typeof failure === 'object' && failure !== null && SpannerFailureText.HOUSE_AUTHORED.has(failure)) {
       return { ...coded, failureClass: 'driver', message: String(vendor?.message ?? '') };
+    }
+    const retrySignal = SpannerFailureText.retrySignal(failure, code, door);
+    if (retrySignal) {
+      return { ...coded, failureClass: retrySignal.name, message: retrySignal.phrase };
     }
     const raw = typeof vendor?.message === 'string' ? vendor.message : typeof failure === 'string' ? failure : '';
     const text = raw.replace(/^\d{1,2} [A-Z_]+: /, '');
@@ -349,7 +389,7 @@ export class SpannerFailureText {
       message:
         code !== undefined && SpannerFailureText.CODE_PHRASES[code]
           ? SpannerFailureText.CODE_PHRASES[code]
-          : "the failure is not one the driver recognizes; its message is withheld (it can quote row values) — the thrown error's vendorError carries it",
+          : "the failure is not one the driver recognizes; its message is withheld (it can quote row values) — the thrown error's vendorError() carries it",
     };
   }
 
@@ -362,6 +402,43 @@ export class SpannerFailureText {
   static markHouseAuthored<T extends Error>(error: T): T {
     SpannerFailureText.HOUSE_AUTHORED.add(error);
     return error;
+  }
+
+  /**
+   * The retry signal a failure is, if it is one: the vendor's own test — its code, its literal
+   * anywhere — on the text the runner was shown at that door (THE RETRY LAW in the class doc).
+   */
+  private static retrySignal(failure: unknown, code: number | undefined, door: FailureDoor): RetrySignal | undefined {
+    const candidates = SpannerFailureText.RETRY_SIGNALS.filter((signal) => signal.code === code);
+    if (candidates.length === 0) {
+      return undefined;
+    }
+    const shown = SpannerFailureText.runnerText(failure, door);
+    return candidates.find((signal) => shown.includes(signal.literal));
+  }
+
+  /**
+   * The backend's message as the transaction runner was shown it (THE RETRY LAW in the class doc).
+   * At the commit door: as it arrived. At a statement's door: quoted strings, braced and bracketed
+   * keys and long numbers blanked, then whitespace collapsed, then cut to one bounded line — in
+   * that order, each step exactly as it was, because the law is parity, scenario by scenario. This
+   * text is only ever SEARCHED for a literal; it is never printed.
+   */
+  private static runnerText(failure: unknown, door: FailureDoor): string {
+    const message = (failure as { message?: unknown } | null | undefined)?.message;
+    const raw = typeof message === 'string' ? message : String(failure);
+    if (door === 'commit') {
+      return raw;
+    }
+    return raw
+      .replace(/"(?:[^"\\]|\\.)*"/g, '"…"')
+      .replace(/'(?:[^'\\]|\\.)*'/g, "'…'")
+      .replace(/\{[^{}\n]{1,300}\}/g, '{…}')
+      .replace(/\[[^\]\n]{1,300}\]/g, '[…]')
+      .replace(/\b\d{4,}\b/g, '<n>')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, SpannerFailureText.RUNNER_TEXT_CHARS);
   }
 
   /**

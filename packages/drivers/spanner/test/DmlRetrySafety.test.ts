@@ -247,9 +247,9 @@ describe('DML retry safety (a lost response must never re-execute a statement)',
 
     // The surfaced failure is the injected loss — NOT a replay self-collision (6 ALREADY_EXISTS).
     expect(outcome).toBeInstanceOf(Error);
-    // (The typed error never prints the transport's own text; it rides behind `vendorError`.)
+    // (The typed error never prints the transport's own text; it rides behind `vendorError()`.)
     expect(outcome).toBeInstanceOf(SpannerOperationError);
-    expect(String(((outcome as SpannerOperationError).vendorError as Error).message)).toContain(INJECTED_LOSS);
+    expect(String(((outcome as SpannerOperationError).vendorError() as Error).message)).toContain(INJECTED_LOSS);
     expect((outcome as any).code).not.toBe(6);
     // Exactly one wire execution of the target DML across both transports.
     expect(streamingPatch.attempts() + unaryPatch.attempts()).toBe(1);
@@ -276,9 +276,9 @@ describe('DML retry safety (a lost response must never re-execute a statement)',
     // The op fails with the injected loss — it is NOT silently healed by a transparent replay
     // (a replay resolves the op and materializes a row behind a "failed" attempt).
     expect(outcome).toBeInstanceOf(Error);
-    // (The typed error never prints the transport's own text; it rides behind `vendorError`.)
+    // (The typed error never prints the transport's own text; it rides behind `vendorError()`.)
     expect(outcome).toBeInstanceOf(SpannerOperationError);
-    expect(String(((outcome as SpannerOperationError).vendorError as Error).message)).toContain(INJECTED_LOSS);
+    expect(String(((outcome as SpannerOperationError).vendorError() as Error).message)).toContain(INJECTED_LOSS);
     expect(streamingPatch.attempts() + unaryPatch.attempts()).toBe(1);
     expect(await db.query(targetTable, { name: 'RetryTargetB' })).toHaveLength(0);
   }, 30000);

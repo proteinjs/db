@@ -91,7 +91,7 @@ export class SpannerEnvTokenAuth {
 /**
  * A dead or missing env-delivered token while env-token auth is active. Always loud, always
  * names the rotation path (re-configure + restart, or `SpannerConfig.envTokenRefreshHook`).
- * The vendor's UNAUTHENTICATED rejection, when there is one, rides behind `vendorError` — for a
+ * The vendor's UNAUTHENTICATED rejection, when there is one, rides behind `vendorError()` — for a
  * caller that asks for it by name; never the standard `cause`, which every printer follows
  * (SpannerDriverError owns that), so nothing the backend said reaches a log line through this
  * error either.

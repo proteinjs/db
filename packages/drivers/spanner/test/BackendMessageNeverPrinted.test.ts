@@ -27,7 +27,7 @@ import '../generated/test/index';
  * Every scenario captures the driver's lines at the log WRITER with the logger at debug, and
  * judges each line — and the error the caller catches — as anything that prints it would
  * (printedLine.ts). Each also asserts its PREMISE: the vendor error behind the typed error's
- * `vendorError` accessor does quote the value, so a scenario that stopped provoking the echo
+ * `vendorError()` method does quote the value, so a scenario that stopped provoking the echo
  * fails rather than passing on nothing.
  */
 
@@ -134,7 +134,7 @@ describe('The backend`s message never reaches a log line or a thrown error (emul
     expect(printed(failure)).not.toContain(head);
     // The premise: the backend DID echo the value, and the typed error still hands it to a caller
     // that asks by name.
-    expect(String((failure.vendorError as Error).message)).toContain(head);
+    expect(String((failure.vendorError() as Error).message)).toContain(head);
     return failure;
   };
 

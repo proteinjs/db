@@ -232,7 +232,7 @@ describe('Spanner env-token auth', () => {
         expect('cause' in error).toBe(false);
         expect(Object.getOwnPropertyNames(error)).not.toContain('vendorError');
         // For a caller that asks for it by name — and only there.
-        expect(error.vendorError).toBe(dead);
+        expect(error.vendorError()).toBe(dead);
       }
       // Each failure's error line is handed the typed error; what a writer prints of it is value-free.
       expect(errorLines.mock.calls.length).toBeGreaterThanOrEqual(2);
@@ -242,7 +242,7 @@ describe('Spanner env-token auth', () => {
         expect(JSON.stringify(line.obj) ?? '').not.toContain(VALUE);
       }
       // An auth error with no vendor rejection behind it (a token that is gone) has none to carry.
-      expect(new SpannerEnvTokenAuthError('no token').vendorError).toBeUndefined();
+      expect(new SpannerEnvTokenAuthError('no token').vendorError()).toBeUndefined();
     });
 
     test('an UNAUTHENTICATED op in ADC mode passes through untranslated — the typed op error carries the vendor error behind vendorError; translation only exists in env-token mode', async () => {
@@ -252,7 +252,9 @@ describe('Spanner env-token auth', () => {
       statics.SPANNER_DB = { run: () => Promise.reject(dead) };
       statics.LIVENESS_MONITOR = fakeMonitor;
 
-      await expect(driver.runQuery(generateStatement)).rejects.toMatchObject({ code: 16, vendorError: dead });
+      const thrown: any = await driver.runQuery(generateStatement).catch((error: unknown) => error);
+      expect(thrown.code).toBe(16);
+      expect(thrown.vendorError()).toBe(dead);
       await expect(driver.runQuery(generateStatement)).rejects.not.toBeInstanceOf(SpannerEnvTokenAuthError);
     });
 
@@ -264,7 +266,9 @@ describe('Spanner env-token auth', () => {
       statics.SPANNER_DB = { run: () => Promise.reject(unavailable) };
       statics.LIVENESS_MONITOR = fakeMonitor;
 
-      await expect(driver.runQuery(generateStatement)).rejects.toMatchObject({ code: 14, vendorError: unavailable });
+      const thrown: any = await driver.runQuery(generateStatement).catch((error: unknown) => error);
+      expect(thrown.code).toBe(14);
+      expect(thrown.vendorError()).toBe(unavailable);
       await expect(driver.runQuery(generateStatement)).rejects.not.toBeInstanceOf(SpannerEnvTokenAuthError);
     });
   });

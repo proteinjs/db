@@ -15,8 +15,8 @@ import '../generated/test/index';
  * failed, where, or why (the 2026-09-13 ops finding — "insufficient evidence to classify without
  * the underlying cause or a stack through app code").
  *
- * The contract: the throw is a `SpannerOperationError` — the vendor error behind its `vendorError`
- * accessor, its gRPC `code` copied (an ALREADY_EXISTS adopt-the-winner path keeps branching on
+ * The contract: the throw is a `SpannerOperationError` — the vendor error behind its
+ * `vendorError()` method, its gRPC `code` copied (an ALREADY_EXISTS adopt-the-winner path keeps branching on
  * `error.code === 6`), the status, the statement's shape and the driver's sentence for the
  * failure's class in the message, the CALLER's frames as the stack — and the one error log line
  * names the cause (code + status + class + that sentence) and the statement shape, never the bound
@@ -124,7 +124,7 @@ describe('Data-op failures carry their cause (emulator)', () => {
     expect(failure.operation).toBe('dml');
     expect(failure.code).toBe(6);
     expect(failure.status).toBe('ALREADY_EXISTS');
-    expect((failure.vendorError as { code?: number }).code).toBe(6);
+    expect((failure.vendorError() as { code?: number }).code).toBe(6);
     expect('cause' in failure).toBe(false);
     expect(failure.failureClass).toBe('row already exists');
     expect(failure.statement).toEqual({ operation: 'INSERT', table: table.name });
@@ -191,7 +191,7 @@ describe('Data-op failures carry their cause (emulator)', () => {
     expect(failure.statement).toEqual({ operation: 'SELECT', table: 'db_test_no_such_table' });
     expect(typeof failure.code).toBe('number');
     expect(failure.status).toBeDefined();
-    expect((failure.vendorError as { code?: number }).code).toBe(failure.code);
+    expect((failure.vendorError() as { code?: number }).code).toBe(failure.code);
     const queryFailures = errorLogSpy.mock.calls
       .map((call) => call[0] as { message: string; obj?: any })
       .filter((log) => log.message === 'Failed when executing query');

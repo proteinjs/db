@@ -5,7 +5,9 @@ import { SpannerDriver, SpannerOperationError } from '@proteinjs/db-driver-spann
 import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
 
 /**
- * What is bound to a statement never changes whether its transaction is retried.
+ * THE RETRY LAW: the typed error leads the client library's transaction runner to exactly the
+ * retries the driver led it to while the backend's message still rode the typed error — never
+ * fewer, never more. What is bound to a statement never changes whether its transaction is retried.
  *
  * The client library's transaction runner decides a retry by reading the error the transaction's
  * body throws, and the body throws the DRIVER's typed error (`SpannerOperationError`), never the
@@ -23,10 +25,21 @@ import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
  * not found` — destroyed the class, the typed message lost the literal, and a transaction the
  * runner would have retried and committed was rejected on its first attempt.
  *
- * The contract: a failure's class is recognized on the backend's message as it arrived — no bound
- * value takes part — and the vendor's own predicates read the thrown error exactly as they read
- * the vendor error, through the driver's real failure path (`runDml` / `runQuery` →
- * operationFailure, which always hands the statement's bound values to the typed error).
+ * So no bound value takes part in recognizing a failure's class. But reading the literal off the
+ * backend's RAW message went wrong the other way: the backend ECHOES a bound value, and it prints a
+ * key inside quotes, braces or brackets — an interleaved child insert with no parent row answers
+ * NOT_FOUND with `Key: {String("<the key>")}`. A key that reads `Session not found` put the literal
+ * into the typed message; the runner took a final failure for a lost session and re-ran the
+ * transaction on a fresh session without end (nothing in the client library bounds that loop).
+ * While the backend's message still rode the typed error it rode MASKED — quoted, braced and
+ * bracketed spans blanked — so that transaction was rejected on its first attempt.
+ *
+ * The contract: a retry signal is recognized by the vendor's own test (its code, its literal
+ * anywhere) on the text the runner was shown at that door — at a statement's door the masked,
+ * bounded line; no bound value takes part — through the driver's real failure path (`runDml` /
+ * `runQuery` → operationFailure, which always hands the statement's bound values to the typed
+ * error). TransactionRetryParity.test.ts holds the law scenario by scenario against recorded
+ * behaviour; this suite holds both directions by name, and end to end on the emulator.
  */
 
 // The vendor runner's whole retry decision (RETRYABLE codes, a lost session, a reset stream); it reads no instance state.
@@ -136,6 +149,56 @@ describe('through the driver`s real failure path, the vendor runner reads the th
     ['an abort (retried on its code alone)', 10, '10 ABORTED: Transaction was aborted.', 'unclassified'],
   ];
 
+  /** How the backend prints a value it echoes as a KEY: quoted, braced, bracketed — never bare. */
+  const ECHOED: [string, number, string, (value: string) => string][] = [
+    [
+      'braced and quoted (an interleaved child insert with no parent row)',
+      5,
+      'Session not found',
+      (value) =>
+        `5 NOT_FOUND: Insert failed because key was not found in parent table:  Parent Table: parent  Child Table: child  Key: {String("${value}")}`,
+    ],
+    [
+      'bracketed (a row key)',
+      5,
+      'Session not found',
+      (value) => `5 NOT_FOUND: Row [${value}] in table ledger is missing. Row cannot be updated.`,
+    ],
+    ['single-quoted', 5, 'Session not found', (value) => `5 NOT_FOUND: No row for key '${value}'`],
+    ['double-quoted', 13, 'RST_STREAM', (value) => `13 INTERNAL: Unexpected value "${value}"`],
+    [
+      'braced',
+      13,
+      'HTTP/2 error code: INTERNAL_ERROR',
+      (value) => `13 INTERNAL: Unexpected key {${value}} while reading`,
+    ],
+    [
+      'bracketed, among other keys',
+      13,
+      'Connection closed with unknown cause',
+      (value) => `13 INTERNAL: Unexpected keys [a, ${value}, b]`,
+    ],
+    [
+      'past the bounded line the runner was shown',
+      5,
+      'Session not found',
+      (value) => `5 NOT_FOUND: ${'no such row; '.repeat(30)}${value}`,
+    ],
+  ];
+
+  /** The other direction: text outside any quoted, braced or bracketed span was always shown to the runner. */
+  const SHOWN: [string, number, string, string][] = [
+    ['bare, after other text', 5, 'Session not found', '5 NOT_FOUND: The operation failed: Session not found'],
+    ['parenthesized', 13, 'RST_STREAM', '13 INTERNAL: stream closed (RST_STREAM)'],
+    [
+      'broken across whitespace the line collapses',
+      5,
+      'Session not found',
+      '5 NOT_FOUND: Session\n   not found: projects/p/instances/i/databases/d/sessions/s-2',
+    ],
+    ['beside a quoted span', 13, 'RST_STREAM', '13 INTERNAL: "frame" Received RST_STREAM with code 2'],
+  ];
+
   describe.each(Object.keys(doors))('%s', (door) => {
     test.each(RETRIED)('%s is retried whatever is bound', async (_name, code, message, failureClass) => {
       const verdicts: object[] = [];
@@ -183,6 +246,37 @@ describe('through the driver`s real failure path, the vendor runner reads the th
         }
       }
     });
+
+    test.each(ECHOED)(
+      'a bound value that IS a literal, echoed by the backend %s: a final failure — never a retry',
+      async (_form, code, literal, echo) => {
+        const raw = vendor(code, echo(literal));
+        const thrown = (await settle(doors[door](raw, { value: literal }))) as SpannerOperationError;
+
+        // The premise: read off the raw message, the vendor's own predicates WOULD re-run this.
+        expect(shouldRetry(raw) || isSessionNotFoundError(raw as any)).toBe(true);
+        expect(thrown).toBeInstanceOf(SpannerOperationError);
+        expect({
+          code: thrown.code,
+          retried: shouldRetry(thrown),
+          lostSession: isSessionNotFoundError(thrown as any),
+          literalInMessage: thrown.message.includes(literal),
+          failureClass: thrown.failureClass,
+        }).toEqual({ code, retried: false, lostSession: false, literalInMessage: false, failureClass: 'unclassified' });
+      }
+    );
+
+    test.each(SHOWN)(
+      'a literal the runner was always shown — %s — is still a retry signal (never fewer)',
+      async (_form, code, literal, message) => {
+        const raw = vendor(code, message);
+        const thrown = (await settle(doors[door](raw, { value: literal }))) as SpannerOperationError;
+
+        expect(thrown).toBeInstanceOf(SpannerOperationError);
+        expect(shouldRetry(thrown) || isSessionNotFoundError(thrown as any)).toBe(true);
+        expect(thrown.message).toContain(literal);
+      }
+    );
   });
 
   test('the backend`s retry delay rides the thrown error structurally (the one metadata entry the runner reads)', async () => {
@@ -201,10 +295,12 @@ describe('through the driver`s real failure path, the vendor runner reads the th
   });
 });
 
-describe('on the emulator: a transaction whose first attempt meets a retry signal is retried and commits, whatever is bound', () => {
+describe('on the emulator: a transaction whose first attempt meets a retry signal is retried and commits, whatever is bound — and a final failure is never re-run', () => {
   const spannerConfig = { projectId: 'proteinjs-test', instanceName: 'proteinjs-test', databaseName: 'test' };
   const spannerDriver = new SpannerDriver(spannerConfig, () => undefined as any);
   const TABLE = 'db_test_retry_signal';
+  const PARENT = 'db_test_retry_signal_parent';
+  const CHILD = 'db_test_retry_signal_child';
   const quietly = async <T>(work: () => Promise<T>): Promise<T> => {
     const quiet = jest
       .spyOn((spannerDriver as unknown as { logger: { error: () => void } }).logger, 'error')
@@ -219,14 +315,20 @@ describe('on the emulator: a transaction whose first attempt meets a retry signa
   beforeAll(async () => {
     await SpannerEmulatorProvisioner.ensureProvisioned(spannerConfig);
     await spannerDriver.createDbIfNotExists();
-    await quietly(() => spannerDriver.runUpdateSchema(`DROP TABLE ${TABLE}`).catch(() => undefined));
-    await spannerDriver.runUpdateSchema(
-      `CREATE TABLE ${TABLE} (id STRING(MAX) NOT NULL, n INT64, note STRING(MAX)) PRIMARY KEY (id)`
-    );
+    for (const table of [CHILD, PARENT, TABLE]) {
+      await quietly(() => spannerDriver.runUpdateSchema(`DROP TABLE ${table}`).catch(() => undefined));
+    }
+    await spannerDriver.runUpdateSchema([
+      `CREATE TABLE ${TABLE} (id STRING(MAX) NOT NULL, n INT64, note STRING(MAX)) PRIMARY KEY (id)`,
+      `CREATE TABLE ${PARENT} (pid STRING(MAX) NOT NULL) PRIMARY KEY (pid)`,
+      `CREATE TABLE ${CHILD} (pid STRING(MAX) NOT NULL, cid STRING(MAX) NOT NULL) PRIMARY KEY (pid, cid), INTERLEAVE IN PARENT ${PARENT} ON DELETE CASCADE`,
+    ]);
   }, 120000);
 
   afterAll(async () => {
-    await quietly(() => spannerDriver.runUpdateSchema(`DROP TABLE ${TABLE}`).catch(() => undefined));
+    for (const table of [CHILD, PARENT, TABLE]) {
+      await quietly(() => spannerDriver.runUpdateSchema(`DROP TABLE ${table}`).catch(() => undefined));
+    }
     await SpannerEmulatorProvisioner.release();
   }, 120000);
 
@@ -307,6 +409,78 @@ describe('on the emulator: a transaction whose first attempt meets a retry signa
         outcome: 'committed 1 row',
         rows: [{ n, note }],
       });
+    },
+    60000
+  );
+
+  /**
+   * The REAL echo. An interleaved child row whose parent does not exist: the backend answers
+   * NOT_FOUND and prints the key — `Key: {String("<pid>")}`. With the key bound as the very
+   * literal the client library re-runs on, reading that literal off the raw message made a final
+   * failure a "lost session", and `runTransactionAsync` re-ran the body on a fresh session without
+   * end — the library bounds that loop by nothing. So the body carries its own BRAKE (an attempt
+   * cap and a deadline): past either it throws an error no runner retries.
+   */
+  test.each([
+    ['an ordinary key', 'an ordinary key'],
+    ['a key that reads `Session not found`', 'Session not found'],
+  ])(
+    'an interleaved child insert with no parent row, %s: rejected on its first attempt',
+    async (_name, pid) => {
+      const MAX_ATTEMPTS = 3;
+      const deadline = Date.now() + 10_000;
+      const backendSaid: string[] = [];
+      let attempts = 0;
+      const outcome = await quietly(() =>
+        spannerDriver
+          .runTransaction(async (transaction) => {
+            attempts += 1;
+            if (attempts > MAX_ATTEMPTS || Date.now() > deadline) {
+              throw new Error(`BRAKE: attempt ${attempts} of a transaction that must run once`);
+            }
+            // The premise is read where the backend's answer arrives, before the driver words it.
+            const handle = transaction as unknown as { batchUpdate: (...args: unknown[]) => Promise<unknown> };
+            const batchUpdate = handle.batchUpdate.bind(transaction);
+            handle.batchUpdate = (...args: unknown[]) =>
+              batchUpdate(...args).catch((raw: Error) => {
+                backendSaid.push(raw.message);
+                throw raw;
+              });
+            return await spannerDriver.runDml(
+              () => ({
+                sql: `INSERT INTO \`${CHILD}\` (\`pid\`, \`cid\`) VALUES (@pid, @cid)`,
+                namedParams: { params: { pid, cid: 'c1' }, types: { pid: 'string', cid: 'string' } },
+              }),
+              transaction
+            );
+          })
+          .then(
+            () => ({ committed: true }),
+            (error: SpannerOperationError) => ({
+              committed: false,
+              typed: error instanceof SpannerOperationError,
+              code: error.code,
+              failureClass: error.failureClass,
+              lostSession: isSessionNotFoundError(error as any),
+              echoesTheKey: error.message.includes(pid),
+            })
+          )
+      );
+
+      expect({ attempts, outcome }).toEqual({
+        attempts: 1,
+        outcome: {
+          committed: false,
+          typed: true,
+          code: 5,
+          failureClass: 'unclassified',
+          lostSession: false,
+          echoesTheKey: false,
+        },
+      });
+      // The premise: the backend did answer — once — with the key echoed inside braces and quotes.
+      expect(backendSaid).toHaveLength(1);
+      expect(backendSaid[0]).toContain(`{String("${pid}")}`);
     },
     60000
   );
