@@ -1,0 +1,6 @@
+{
+  "branch": "feat/file-origin-model",
+  "packages": ["file"],
+  "suites": ["packages/file/test/FileMediaMetadata.test.ts"],
+  "removes": []
+}
