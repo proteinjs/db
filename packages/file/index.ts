@@ -12,5 +12,6 @@ export * from './src/routes/getFileRoute';
 
 export * from './src/FileReachabilityResolver';
 export * from './src/FileStorageDriver';
+export * from './src/FileStorageError';
 export * from './src/DbFileStorageDriver';
 export * from './src/FileStorageTableWatcher';
