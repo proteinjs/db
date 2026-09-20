@@ -1,7 +1,8 @@
 import React from 'react';
-import { FormPage, Page, Form, Fields, textField, FormButtons } from '@proteinjs/ui';
+import { Page, Form, Fields, textField, FormButtons } from '@proteinjs/ui';
 import { v1 as uuidv1 } from 'uuid';
 import { SxProps, Theme } from '@mui/material';
+import { FullBleedFormPage } from './FullBleedFormPage';
 
 export const uuidGeneratorPage: Page = {
   name: 'Uuid Generator',
@@ -14,14 +15,14 @@ export const uuidGeneratorPage: Page = {
     };
   },
   component: () => (
-    <FormPage>
+    <FullBleedFormPage>
       <Form<UuidFields, typeof buttons>
         name='Uuid Generator'
         createFields={() => new UuidFields()}
         fieldLayout={['uuid']}
         buttons={buttons}
       />
-    </FormPage>
+    </FullBleedFormPage>
   ),
 };
 

@@ -1,12 +1,13 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FormPage, Page, PageComponentProps, useFormFactor } from '@proteinjs/ui';
+import { Page, PageComponentProps } from '@proteinjs/ui';
 import { getDbService, tableByName } from '@proteinjs/db';
 import { RecordForm } from '../form/RecordForm';
 import { getRecordPanels, RecordPanel } from '../panel/RecordPanel';
 import { RecordSurface } from '../panel/RecordSurface';
 import { recordTableLink } from './RecordTablePage';
-import { Box, Theme, SxProps, Typography } from '@mui/material';
+import { FullBleedFormPage } from './FullBleedFormPage';
+import { Theme, SxProps, Typography } from '@mui/material';
 
 export const recordFormPage: Page = {
   name: 'Record Form',
@@ -50,16 +51,15 @@ const RecordLinkRedirect = ({ link }: { link: string }) => {
 /**
  * The record page: ONE loader for the record and its declared panels (`RecordPanel`), one paint.
  *
- * Shell — phone (founder ruling 2026-08-31): the form takes the FULL mobile view under the
- * shell's chrome — no FormPage card, no page gutters; the page column scrolls the form itself.
- * The form keeps its own content inset (the card's inset was the only thing keeping fields off
- * the glass). Desktop keeps the house FormPage card. With panels declared for the current user,
- * the shell is `RecordSurface` (form + panels, placement derived from the viewport); without
- * panels this page renders exactly as it did before panels existed.
+ * Shell (`FullBleedFormPage`) — phone (founder ruling 2026-08-31): the form takes the FULL mobile
+ * view under the shell's chrome — no FormPage card, no page gutters; the page column scrolls the
+ * form itself. The form keeps its own content inset (the card's inset was the only thing keeping
+ * fields off the glass). Desktop keeps the house FormPage card. With panels declared for the
+ * current user, the shell is `RecordSurface` (form + panels, placement derived from the
+ * viewport); without panels this page renders exactly as it did before panels existed.
  */
 const DynamicRecordForm = ({ urlParams }: PageComponentProps) => {
   const recordId = urlParams['record'];
-  const { isPhone } = useFormFactor();
   /**
    * Tables whose rows have their OWN page (`Table.ui.recordTable.recordLink`) never render the
    * generic form. A stale `/record/form?table=<name>&record=<id>` URL — a bookmark, an old link,
@@ -201,17 +201,9 @@ const DynamicRecordForm = ({ urlParams }: PageComponentProps) => {
     }
   }
 
-  if (isPhone) {
-    return (
-      <Box data-phone-fullbleed sx={{ flexGrow: 1, minHeight: 0, width: '100%', overflow: 'auto', padding: 2 }}>
-        <Form />
-      </Box>
-    );
-  }
-
   return (
-    <FormPage>
+    <FullBleedFormPage>
       <Form />
-    </FormPage>
+    </FullBleedFormPage>
   );
 };

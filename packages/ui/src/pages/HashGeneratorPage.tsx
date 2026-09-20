@@ -1,6 +1,7 @@
 import React from 'react';
-import { FormPage, Page, Form, Fields, textField, FormButtons } from '@proteinjs/ui';
+import { Page, Form, Fields, textField, FormButtons } from '@proteinjs/ui';
 import { SxProps, Theme } from '@mui/material';
+import { FullBleedFormPage } from './FullBleedFormPage';
 
 export const hashGeneratorPage: Page = {
   name: 'Hash Generator',
@@ -13,14 +14,14 @@ export const hashGeneratorPage: Page = {
     };
   },
   component: () => (
-    <FormPage>
+    <FullBleedFormPage>
       <Form<HashGeneratorFields, typeof buttons>
         name='Hash Generator'
         createFields={() => new HashGeneratorFields()}
         fieldLayout={['input', 'hash']}
         buttons={buttons}
       />
-    </FormPage>
+    </FullBleedFormPage>
   ),
 };
 
