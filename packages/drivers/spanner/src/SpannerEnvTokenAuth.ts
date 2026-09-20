@@ -1,4 +1,5 @@
 import { OAuth2Client } from 'google-auth-library';
+import { SpannerDriverError } from './SpannerDriverError';
 import { SpannerFailureText } from './SpannerFailureText';
 
 /**
@@ -89,16 +90,15 @@ export class SpannerEnvTokenAuth {
 
 /**
  * A dead or missing env-delivered token while env-token auth is active. Always loud, always
- * names the rotation path (re-configure + restart, or `SpannerConfig.envTokenRefreshHook`);
- * the original vendor error, when there is one, rides along as `cause`.
+ * names the rotation path (re-configure + restart, or `SpannerConfig.envTokenRefreshHook`).
+ * The vendor's UNAUTHENTICATED rejection, when there is one, rides behind `vendorError` — for a
+ * caller that asks for it by name; never the standard `cause`, which every printer follows
+ * (SpannerDriverError owns that), so nothing the backend said reaches a log line through this
+ * error either.
  */
-export class SpannerEnvTokenAuthError extends Error {
-  constructor(
-    message: string,
-    readonly cause?: unknown
-  ) {
-    super(message);
-    this.name = 'SpannerEnvTokenAuthError';
+export class SpannerEnvTokenAuthError extends SpannerDriverError {
+  constructor(message: string, vendorError?: unknown) {
+    super('SpannerEnvTokenAuthError', message, vendorError);
     // The driver wrote this text (a vendor rejection rides in it only as the driver's sentence for
     // its status), so a failure summary keeps it.
     SpannerFailureText.markHouseAuthored(this);

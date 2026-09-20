@@ -4,6 +4,7 @@ import {
   SpannerEnvTokenAuthError,
   SPANNER_ENV_TOKEN_VAR,
 } from '@proteinjs/db-driver-spanner';
+import { printed } from './util/printedLine';
 
 /**
  * Env-delivered token auth (CLOUDSDK_AUTH_ACCESS_TOKEN — the sandbox dev-server leg,
@@ -204,6 +205,44 @@ describe('Spanner env-token auth', () => {
       await expect(driver.runUpdateSchema('CREATE TABLE t (id STRING(36)) PRIMARY KEY (id)')).rejects.toThrow(
         SpannerEnvTokenAuthError
       );
+    });
+
+    test('the typed auth error`s chain carries no vendor text: no `cause`, nothing a printer reaches — the vendor error rides behind vendorError', async () => {
+      // A fixture shaped like content that must never be printed (not a real credential).
+      const VALUE = 'rst_5d41402abc4b2a76b9719d911017c592';
+      const text = `16 UNAUTHENTICATED: Request had invalid authentication credentials (${VALUE})`;
+      const dead = Object.assign(new Error(text), { code: 16, details: text });
+      process.env[SPANNER_ENV_TOKEN_VAR] = 'dead-token';
+      const driver = makeDriver();
+      internals(driver).getSpanner();
+      statics.SPANNER_DB = { run: () => Promise.reject(dead), updateSchema: () => Promise.reject(dead) };
+      statics.LIVENESS_MONITOR = fakeMonitor;
+      const errorLines = (driver as any).logger.error as jest.Mock;
+
+      const thrown: any[] = [
+        await driver.runQuery(generateStatement).catch((error: unknown) => error),
+        await driver
+          .runUpdateSchema('CREATE TABLE t (id STRING(36)) PRIMARY KEY (id)')
+          .catch((error: unknown) => error),
+      ];
+
+      for (const error of thrown) {
+        expect(error).toBeInstanceOf(SpannerEnvTokenAuthError);
+        expect(printed(error)).not.toContain(VALUE);
+        expect('cause' in error).toBe(false);
+        expect(Object.getOwnPropertyNames(error)).not.toContain('vendorError');
+        // For a caller that asks for it by name — and only there.
+        expect(error.vendorError).toBe(dead);
+      }
+      // Each failure's error line is handed the typed error; what a writer prints of it is value-free.
+      expect(errorLines.mock.calls.length).toBeGreaterThanOrEqual(2);
+      for (const [line] of errorLines.mock.calls) {
+        expect(line.error).toBeInstanceOf(SpannerEnvTokenAuthError);
+        expect(printed(line.error)).not.toContain(VALUE);
+        expect(JSON.stringify(line.obj) ?? '').not.toContain(VALUE);
+      }
+      // An auth error with no vendor rejection behind it (a token that is gone) has none to carry.
+      expect(new SpannerEnvTokenAuthError('no token').vendorError).toBeUndefined();
     });
 
     test('an UNAUTHENTICATED op in ADC mode passes through untranslated — the typed op error carries the vendor error behind vendorError; translation only exists in env-token mode', async () => {

@@ -1,3 +1,4 @@
+import { SpannerDriverError } from './SpannerDriverError';
 import { OperationCauseSummary, SpannerFailureText } from './SpannerFailureText';
 
 export type SpannerOperationKind = 'query' | 'dml' | 'commit' | 'schema update';
@@ -35,22 +36,15 @@ type VendorMetadata = {
  * code that issued the statement instead of a client-library frame every failure shares.
  *
  * The vendor error itself is `vendorError` — for a caller that asks for it by name, and for
- * nothing else. It is deliberately NOT the standard `cause`: whatever prints an error follows
- * `cause` whether or not it is enumerable (`util.inspect` — so `console.*` and any log writer built
- * on it — appends `[cause]`; error reporters and generic handlers walk `error.cause.message`), and
- * this vendor error quotes row content. It is not a property of the instance at all (an accessor
- * on the prototype over a private map), so no serializer and no own-property walk reaches it, and
- * the error renders itself under `util.inspect`, whatever the options. Read the backend's raw
- * `message` and `details` there, knowing they can carry row values. `metadata` passes on the ONE entry the client library's transaction runner
- * reads off a thrown error — the backend's retry delay — and nothing else of the vendor's trailers
- * (their status-details entry repeats the raw message).
+ * nothing else; never the standard `cause`, never a property of the instance (SpannerDriverError
+ * owns that). Read the backend's raw `message` and `details` there, knowing they can carry row
+ * values. `metadata` passes on the ONE entry the client library's transaction runner reads off a
+ * thrown error — the backend's retry delay — and nothing else of the vendor's trailers (their
+ * status-details entry repeats the raw message).
  */
-export class SpannerOperationError extends Error {
-  /** Each error's vendor error and summary — held beside the instance, never on it (see the class doc). */
-  private static readonly FAILURES = new WeakMap<
-    SpannerOperationError,
-    { vendorError: unknown; summary: OperationCauseSummary }
-  >();
+export class SpannerOperationError extends SpannerDriverError {
+  /** Each error's summary — held beside the instance, never on it. */
+  private static readonly SUMMARIES = new WeakMap<SpannerOperationError, OperationCauseSummary>();
   readonly code?: number;
   readonly status?: string;
   /** The class SpannerFailureText recognized the failure as (`unclassified` when it is none of them). */
@@ -68,23 +62,17 @@ export class SpannerOperationError extends Error {
     boundValues?: { [param: string]: unknown }
   ) {
     const summary = SpannerFailureText.summarize(vendorError, boundValues);
-    super(SpannerOperationError.describe(operation, statement, summary));
-    this.name = 'SpannerOperationError';
+    super('SpannerOperationError', SpannerOperationError.describe(operation, statement, summary), vendorError);
     Object.setPrototypeOf(this, SpannerOperationError.prototype);
     if (summary.code !== undefined) {
       this.code = summary.code;
       this.status = summary.status;
     }
     this.failureClass = summary.failureClass;
-    SpannerOperationError.FAILURES.set(this, { vendorError, summary });
+    SpannerOperationError.SUMMARIES.set(this, summary);
     if (callSiteStack) {
       this.stack = `${this.name}: ${this.message}\n${callSiteStack}`;
     }
-  }
-
-  /** The vendor error itself — raw; its `message` and `details` can quote row values. */
-  get vendorError(): unknown {
-    return SpannerOperationError.FAILURES.get(this)?.vendorError;
   }
 
   /** The backend's retry delay (gRPC `RetryInfo`), when it sent one — what a transaction runner backs off by. */
@@ -108,24 +96,7 @@ export class SpannerOperationError extends Error {
 
   /** The underlying failure as a log line carries it: code, status, class and the driver's sentence. */
   causeSummary(): OperationCauseSummary {
-    return { ...(SpannerOperationError.FAILURES.get(this) as { summary: OperationCauseSummary }).summary };
-  }
-
-  /**
-   * What `util.inspect` prints for this error — so what `console.*` and any log writer built on it
-   * (the default dev writer) print: the stack and the enumerable facts, nothing else. The stock
-   * rendering would not print `vendorError` either, but an inspection configured to show hidden
-   * properties and run getters walks the prototype's accessors and would; this rendering is the
-   * same under every option.
-   */
-  [Symbol.for('nodejs.util.inspect.custom')](
-    _depth: number,
-    options: object,
-    inspect?: (value: unknown, options?: object) => string
-  ): string {
-    const facts = { ...this };
-    const header = this.stack ?? `${this.name}: ${this.message}`;
-    return `${header} ${inspect ? inspect(facts, options) : JSON.stringify(facts)}`;
+    return { ...(SpannerOperationError.SUMMARIES.get(this) as OperationCauseSummary) };
   }
 
   /**
