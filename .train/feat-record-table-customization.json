@@ -1,0 +1,1 @@
+{ "branch": "feat/record-table-customization", "packages": ["ui"], "suites": ["packages/ui/test/recordTableCustomization.test.tsx", "packages/ui/test/recordTableDefaultRenderers.test.tsx", "packages/ui/test/recordTablePageMobile.test.tsx"], "removes": [] }
