@@ -73,16 +73,16 @@ export class KnexDriver implements DbDriver {
       );
     }
 
-    await this.getKnex().raw(`CREATE DATABASE ${name};`);
+    await this.runAdminStatement(`CREATE DATABASE ${name};`);
   }
 
   /** Drop the named database. */
   async dropDb(name: string): Promise<void> {
-    await this.getKnex().raw(`DROP DATABASE ${name};`);
+    await this.runAdminStatement(`DROP DATABASE ${name};`);
   }
 
   async dbExists(databaseName: string): Promise<boolean> {
-    const result: any = await this.getKnex().raw('SHOW DATABASES;');
+    const result: any = await this.runAdminStatement('SHOW DATABASES;');
     for (const existingDatabase of result[0]) {
       if (existingDatabase['Database'] == databaseName) {
         return true;
@@ -102,7 +102,7 @@ export class KnexDriver implements DbDriver {
   }
 
   private async setMaxAllowedPacketSize(): Promise<void> {
-    await this.getKnex().raw('SET GLOBAL max_allowed_packet=1073741824;');
+    await this.runAdminStatement('SET GLOBAL max_allowed_packet=1073741824;');
     await this.getKnex().destroy();
     KnexDriver.KNEX = knex(this.knexConfig);
     this.logger.info({ message: 'Set global max_allowed_packet size to 1gb' });
@@ -189,10 +189,19 @@ export class KnexDriver implements DbDriver {
     });
   }
 
+  /** A database-level statement (no parameters) — its failure rides the same door as a data statement's. */
+  private async runAdminStatement(sql: string): Promise<any> {
+    try {
+      return await this.getKnex().raw(sql);
+    } catch (error: unknown) {
+      throw this.operationFailure(sql, undefined, error);
+    }
+  }
+
   /**
    * A statement's failure, logged ONCE and rethrown as the driver's typed error
-   * (`KnexOperationError`: the vendor's codes copied, the vendor error as its non-enumerable
-   * `vendorError`). The vendor error never reaches the logger or the caller as is — its message
+   * (`KnexOperationError`: the vendor's codes copied, the vendor error behind its `vendorError`
+   * accessor). The vendor error never reaches the logger or the caller as is — its message
    * is the SQL with the bindings interpolated (see KnexOperationError) — so the line carries the
    * SQL text (placeholders only), the parameters DESCRIBED (describeParams) and the failure's
    * codes, and never a bound value.

@@ -3,6 +3,7 @@ import { Logger } from '@proteinjs/logger';
 import { Column, Table, SchemaOperations, TableChanges } from '@proteinjs/db';
 import { KnexDriver } from './KnexDriver';
 import { getColumnFactory } from './getColumnFactory';
+import { KnexOperationError } from './KnexOperationError';
 
 const getEnvVar = (key: string): string | undefined =>
   typeof process !== 'undefined' && process.env ? process.env[key] : undefined;
@@ -59,7 +60,9 @@ export class KnexSchemaOperations implements SchemaOperations {
         }
       })
       .catch((reason: any) => {
-        reject(`Failed to create table: ${table.name}. reason: ${reason}`);
+        // The vendor's reason is never part of the text: a unique index over duplicate rows fails
+        // with `Duplicate entry '<row value>' for key …` (KnexOperationError keeps its codes).
+        reject(new KnexOperationError(reason, `Failed to create table: ${table.name}`));
       })
       .then(() => {
         resolve();
@@ -130,7 +133,8 @@ export class KnexSchemaOperations implements SchemaOperations {
         }
       })
       .catch((reason: any) => {
-        reject(`Failed to alter table: ${table.name}. reason: ${reason}`);
+        // As in createTable: the codes, never the vendor's text.
+        reject(new KnexOperationError(reason, `Failed to alter table: ${table.name}`));
       })
       .then(() => {
         resolve();
