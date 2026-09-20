@@ -85,6 +85,36 @@ describe('File media metadata columns', () => {
     expect(row.sourcePageUrl).toEqual('https://commons.wikimedia.org/w/index.php?curid=1');
   });
 
+  it('round-trips the producer record on a made picture — what kind of producer, and which model', async () => {
+    const file = await new FileStorage().createFile(
+      {
+        name: 'mark.png',
+        type: 'image/png',
+        size: 4,
+        width: 1024,
+        height: 1024,
+        origin: 'generation',
+        originModel: 'example-image-model-1',
+      } as File,
+      Buffer.from('mark').toString('base64')
+    );
+
+    const row = await getDbAsSystem().get(tables.File, { id: file.id });
+    expect(row.origin).toEqual('generation');
+    expect(row.originModel).toEqual('example-image-model-1');
+  });
+
+  it('keeps a producer kind with no model — an upload has an origin and no originModel', async () => {
+    const file = await new FileStorage().createFile(
+      { name: 'photo.jpg', type: 'image/jpeg', size: 5, origin: 'upload' } as File,
+      Buffer.from('photo').toString('base64')
+    );
+
+    const row = await getDbAsSystem().get(tables.File, { id: file.id });
+    expect(row.origin).toEqual('upload');
+    expect(row.originModel ?? undefined).toBeUndefined();
+  });
+
   it('leaves the fields absent for non-media files', async () => {
     const file = await new FileStorage().createFile(
       { name: 'a.txt', type: 'text/plain', size: 5 } as File,
@@ -97,5 +127,7 @@ describe('File media metadata columns', () => {
     expect(row.durationMs ?? undefined).toBeUndefined();
     expect(row.license ?? undefined).toBeUndefined();
     expect(row.attribution ?? undefined).toBeUndefined();
+    expect(row.origin ?? undefined).toBeUndefined();
+    expect(row.originModel ?? undefined).toBeUndefined();
   });
 });

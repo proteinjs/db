@@ -44,6 +44,17 @@ export interface File extends ScopedRecord {
   licenseUrl?: string;
   attribution?: string;
   /**
+   * Producer record — HOW these bytes came to exist. `origin` names the kind of producer (a
+   * person's upload, a device capture, a copy saved from the web, a model's generation, a
+   * rendered mockup); `originModel` is the id of the model that made the bytes, when a model did.
+   * Same layer ruling as `width`/`height`: a generic file fact every consumer needs without a
+   * join — to label a made picture with what made it, or to refuse anything but a capture as
+   * evidence. Set by ingest paths that know their producer; absent for everything else. The
+   * values are the producing domain's vocabulary, not enumerated here.
+   */
+  origin?: string;
+  originModel?: string;
+  /**
    * SHA-256 of the stored bytes (hex), stamped at media ingest. Enables content dedup — the
    * same web image saved twice (or cited from two pages) reuses one File row — and doubles as
    * an integrity fact. Absent for files written before the column existed.
@@ -79,6 +90,9 @@ export class FileTable extends Table<File> {
     license: new StringColumn('license', {}, 64),
     licenseUrl: new StringColumn('license_url', {}, 'MAX'),
     attribution: new StringColumn('attribution', {}, 'MAX'),
+    // Producer record (see the interface docs): a short producer kind, and a model id.
+    origin: new StringColumn('origin', {}, 50),
+    originModel: new StringColumn('origin_model', {}, 200),
     contentHash: new StringColumn('content_hash', {}, 64),
   });
   // Dedup lookup path: find the caller's existing copy of these bytes (content_hash is only
