@@ -98,7 +98,7 @@ const row: Member = {
   notes: 'a long note',
   verified: true,
   invitedBy: { _table: 'user', _id: 'user-9' },
-  email: 'brent+test@n3xa.io',
+  email: 'someone+test@example.com',
   status: 'active',
   loginCount: 12,
   lastSeen,

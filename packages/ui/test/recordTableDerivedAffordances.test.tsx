@@ -151,7 +151,7 @@ class NoAuthBlockTable extends Table<Session> {
   });
 }
 
-const rows: Session[] = [{ id: 's-1', userEmail: 'a@n3xa.io' } as Session];
+const rows: Session[] = [{ id: 's-1', userEmail: 'a@example.com' } as Session];
 
 describe('RecordTable — auth-derived affordances', () => {
   let container: HTMLDivElement;
@@ -184,12 +184,12 @@ describe('RecordTable — auth-derived affordances', () => {
         </QueryClientProvider>
       );
     });
-    for (let i = 0; i < 5 && !document.body.textContent?.includes('a@n3xa.io'); i++) {
+    for (let i = 0; i < 5 && !document.body.textContent?.includes('a@example.com'); i++) {
       await act(async () => {
         await Promise.resolve();
       });
     }
-    expect(document.body.textContent).toContain('a@n3xa.io');
+    expect(document.body.textContent).toContain('a@example.com');
   };
 
   const createButton = () => document.querySelector('button[aria-label^="Create"]');

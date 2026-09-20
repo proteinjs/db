@@ -125,7 +125,7 @@ class UndeclaredRunTable extends Table<Run> {
   });
 }
 
-const runRows: Run[] = [{ id: 'r-1', email: 'a@n3xa.io', startedAt: moment('2026-09-01T10:00:00Z') } as Run];
+const runRows: Run[] = [{ id: 'r-1', email: 'a@example.com', startedAt: moment('2026-09-01T10:00:00Z') } as Run];
 
 const migrationRow = {
   id: 'bee7a15c-369f-4e77-abf7-ccd5dc3ae60c',

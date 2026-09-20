@@ -28,7 +28,7 @@ class UserTable extends Table<User> {
   });
 }
 
-const rows: User[] = [{ id: 'u-1', email: 'a@n3xa.io' } as User];
+const rows: User[] = [{ id: 'u-1', email: 'a@example.com' } as User];
 
 const mockDb = {
   query: jest.fn(async () => rows),
@@ -120,7 +120,7 @@ describe('RecordTablePage desktop card overflow', () => {
         </QueryClientProvider>
       );
     });
-    for (let i = 0; i < 5 && !document.body.textContent?.includes('a@n3xa.io'); i++) {
+    for (let i = 0; i < 5 && !document.body.textContent?.includes('a@example.com'); i++) {
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 0));
       });

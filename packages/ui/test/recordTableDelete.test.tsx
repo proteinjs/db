@@ -59,7 +59,7 @@ class UserTable extends Table<User> {
   });
 }
 
-const rows: User[] = [{ id: 'u-1', email: 'a@n3xa.io' } as User, { id: 'u-2', email: 'b@n3xa.io' } as User];
+const rows: User[] = [{ id: 'u-1', email: 'a@example.com' } as User, { id: 'u-2', email: 'b@example.com' } as User];
 
 describe('RecordTable', () => {
   let container: HTMLDivElement;
@@ -97,12 +97,12 @@ describe('RecordTable', () => {
       );
     });
     // Let react-query resolve the first page
-    for (let i = 0; i < 5 && !document.body.textContent?.includes('a@n3xa.io'); i++) {
+    for (let i = 0; i < 5 && !document.body.textContent?.includes('a@example.com'); i++) {
       await act(async () => {
         await Promise.resolve();
       });
     }
-    expect(document.body.textContent).toContain('a@n3xa.io');
+    expect(document.body.textContent).toContain('a@example.com');
   };
 
   const click = async (element: Element) => {
