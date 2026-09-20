@@ -16,7 +16,10 @@ import { CapturedLog, lineOf } from './util/printedLine';
  * length; one private helper (`describeParams`) owns that form — and a summary of the failure (the
  * error's name, the vendor's codes, the server's own message). The vendor error itself no longer
  * rides the line. (The dev-only switch that adds the values back is LogValuesSwitch.test.ts; it is
- * off here.)
+ * off here.) A statement's bindings are typed as an array, but the query layer also accepts a
+ * bindings DICTIONARY (`:name` placeholders) and the driver forwards what it was handed: a
+ * dictionary is described by entry name. (Every other shape the driver can be handed, and a log
+ * writer that throws, are StatementLogNeverThrows.test.ts.)
  *
  * THE LAW beside it: what the driver THROWS is untouched — the vendor's error itself, the same
  * object with the same message and properties a bare query-layer call rejects with. So a caller
@@ -42,9 +45,10 @@ const SECRET_EMAIL = 'casey.rivers@mail.example';
 const ECHOED_KEY = 'c0ffee00-0000-4000-8000-000000000001';
 
 type ParamDescription = { type: string; length?: number; null?: true };
+type ParamsDescription = ParamDescription[] | { [name: string]: ParamDescription } | 'unreadable';
 type DriverInternals = {
   logger: Logger;
-  describeParams: (params?: any[]) => ParamDescription[] | undefined;
+  describeParams: (params?: unknown) => ParamsDescription | undefined;
 };
 type DriverStatics = { KNEX?: unknown };
 
@@ -202,6 +206,51 @@ describe('The driver never prints a bound value; what it throws is the vendor`s 
       expect(lineOf(log)).not.toContain(SECRET_EMAIL);
     }
   });
+
+  const NAMED_INSERT =
+    'INSERT INTO `credential` (`id`, `email`, `token`, `attempts`, `cleared`) VALUES (:id, :email, :token, :attempts, :cleared)';
+  /** A hand-written statement whose bindings are a DICTIONARY — wider than `Statement` declares, and what the query layer accepts. */
+  const namedStatement = () => ({
+    sql: NAMED_INSERT,
+    params: { id: ECHOED_KEY, email: SECRET_EMAIL, token: SECRET_TOKEN, attempts: 3, cleared: null } as any,
+  });
+
+  test('the named-bindings door: a failed statement bound by a DICTIONARY throws the vendor`s error itself, and its line describes each entry by name', async () => {
+    const bare = await settle(instance.raw(NAMED_INSERT, namedStatement().params) as any);
+    // The premise: the query layer takes the dictionary, and the statement reaches the server and fails there.
+    expect(bare.code).toBe('ER_DUP_ENTRY');
+    rejected.length = 0;
+
+    const outcome = await settle(driver.runDml(namedStatement));
+
+    expect(rejected).toHaveLength(1);
+    expect(outcome).toBe(rejected[0]);
+    expect(facts(outcome)).toEqual(facts(bare));
+    const failures = captured.filter((log) => log.logLevel === 'error' && log.message === 'Failed when executing sql');
+    expect(failures).toHaveLength(1);
+    expect(failures[0].obj.sql).toBe(NAMED_INSERT);
+    expect(failures[0].obj.params).toEqual({
+      id: { type: 'string', length: 36 },
+      email: { type: 'string', length: SECRET_EMAIL.length },
+      token: { type: 'string', length: SECRET_TOKEN.length },
+      attempts: { type: 'number' },
+      cleared: { type: 'null', null: true },
+    });
+    expect(Object.keys(failures[0].obj)).not.toContain('paramValues');
+    expect(failures[0].error).toBeUndefined();
+    for (const log of captured) {
+      expect(lineOf(log)).not.toContain(SECRET_TOKEN);
+      expect(lineOf(log)).not.toContain(SECRET_EMAIL);
+    }
+  });
+
+  test('the named-bindings door inside a transaction: the transaction rejects with the vendor`s error itself', async () => {
+    const outcome = await settle(driver.runTransaction((transaction) => driver.runDml(namedStatement, transaction)));
+
+    expect(rejected).toHaveLength(1);
+    expect(outcome).toBe(rejected[0]);
+    expect(captured.filter((log) => log.message === 'Failed when executing sql')).toHaveLength(1);
+  });
 });
 
 describe('describeParams — positions, kinds and lengths; never a value', () => {
@@ -242,5 +291,23 @@ describe('describeParams — positions, kinds and lengths; never a value', () =>
 
   test('a statement with no parameters describes nothing', () => {
     expect(internals.describeParams(undefined)).toBeUndefined();
+  });
+
+  test('a bindings dictionary: each entry by NAME, described the same way', () => {
+    const described = internals.describeParams({
+      token: SECRET_TOKEN,
+      emails: [SECRET_EMAIL, SECRET_TOKEN],
+      attempts: 3,
+      cleared: null,
+    });
+
+    expect(described).toEqual({
+      token: { type: 'string', length: SECRET_TOKEN.length },
+      emails: { type: 'array', length: 2 },
+      attempts: { type: 'number' },
+      cleared: { type: 'null', null: true },
+    });
+    expect(JSON.stringify(described)).not.toContain(SECRET_TOKEN);
+    expect(JSON.stringify(described)).not.toContain(SECRET_EMAIL);
   });
 });

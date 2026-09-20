@@ -27,9 +27,12 @@ export class KnexLogValues {
     return !!process.env[KnexLogValues.DEVELOPMENT_VAR] && process.env[KnexLogValues.SWITCH_VAR] === '1';
   }
 
-  /** What a statement's line adds beside its described parameters: `{ paramValues }`, or nothing. */
-  static ofStatement(params: readonly unknown[] | undefined): { paramValues?: readonly unknown[] } {
-    return KnexLogValues.enabled() && params ? { paramValues: params } : {};
+  /**
+   * What a statement's line adds beside its described parameters: `{ paramValues }` — the bindings
+   * as the statement carried them, positional or a bindings dictionary — or nothing.
+   */
+  static ofStatement(params: unknown): { paramValues?: unknown } {
+    return KnexLogValues.enabled() && params !== undefined ? { paramValues: params } : {};
   }
 
   /** What a failure's line carries beside its cause summary: the vendor error itself as `{ error }`, or nothing. */

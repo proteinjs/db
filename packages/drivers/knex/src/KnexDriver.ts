@@ -18,6 +18,12 @@ import { KnexColumnTypeFactory } from './KnexColumnTypeFactory';
 /** A bound parameter as a log line carries it (see KnexDriver.describeParams): never its value. */
 type ParamDescription = { type: string; length?: number; null?: true };
 
+/**
+ * A statement's bindings as a log line carries them: positional bindings by position, a bindings
+ * dictionary by entry name — or the one word for bindings that could not be read at all.
+ */
+type ParamsDescription = ParamDescription[] | { [name: string]: ParamDescription } | 'unreadable';
+
 /** A failure as the log line carries it: the error's name, the vendor's codes and the server's own message. */
 type FailureCauseSummary = { name?: string; code?: string; errno?: number; sqlState?: string; sqlMessage?: string };
 
@@ -205,29 +211,66 @@ export class KnexDriver implements DbDriver {
    * server's own message (`sqlMessage` — which can itself quote a value, e.g. a colliding key; the
    * driver prints it as it always has). The vendor error itself, and the values as bound, ride
    * the line only behind the dev-only switch (KnexLogValues).
+   *
+   * `params` is whatever the statement carried. `Statement` types it as an array, but the query
+   * layer also accepts a bindings dictionary (and wraps anything else as one binding), and
+   * runQuery forwards what it was handed — so nothing here may assume a shape. The line is
+   * written through writeStatementLine: it sits on the way to a `throw`, and must never be the
+   * reason something else is thrown.
    */
-  private logFailure(sql: string, params: Statement['params'], error: unknown): void {
-    this.logger.error({
-      message: `Failed when executing sql`,
-      obj: {
-        sql,
-        params: this.describeParams(params),
-        ...KnexLogValues.ofStatement(params),
-        cause: this.causeSummary(error),
-      },
-      ...KnexLogValues.ofFailure(error),
-    });
+  private logFailure(sql: string, params: unknown, error: unknown): void {
+    this.writeStatementLine(() =>
+      this.logger.error({
+        message: `Failed when executing sql`,
+        obj: {
+          sql,
+          params: this.describeParams(params),
+          ...KnexLogValues.ofStatement(params),
+          cause: this.causeSummary(error),
+        },
+        ...KnexLogValues.ofFailure(error),
+      })
+    );
   }
 
-  /** The name, codes and server message of any thrown value — never the query layer's rewritten `message` or `sql`. */
+  /**
+   * The ONE door a statement's log line is written through — the owner of the rule that writing
+   * a line can NEVER change what the driver throws. A statement line is written on the way to a
+   * `throw`, so whatever goes wrong while building or writing it — a log writer that is down, a
+   * serializer meeting a value it cannot print (a bigint or a throwing `toJSON`, under the values
+   * switch), a helper meeting a shape nobody foresaw — is caught HERE and reported as one FIXED
+   * line that carries nothing of the statement; the caller then throws exactly what it was going
+   * to throw. If the logger itself is what failed, the fixed line fails too and is dropped:
+   * nothing is left to write with.
+   */
+  private writeStatementLine(write: () => void): void {
+    try {
+      write();
+    } catch {
+      try {
+        this.logger.error({ message: `Failed to write a statement log line` });
+      } catch {
+        // The logger itself is what failed: nothing is left to write with, and nothing here may throw.
+      }
+    }
+  }
+
+  /**
+   * The name, codes and server message of any thrown value — never the query layer's rewritten
+   * `message` or `sql`. Total: a fact that cannot be read (vendorFact) is left out.
+   */
   private causeSummary(error: unknown): FailureCauseSummary {
-    const vendor = error as { [fact: string]: unknown } | null | undefined;
+    const name = this.vendorFact(error, 'name');
+    const code = this.vendorFact(error, 'code');
+    const errno = this.vendorFact(error, 'errno');
+    const sqlState = this.vendorFact(error, 'sqlState');
+    const sqlMessage = this.vendorFact(error, 'sqlMessage');
     return {
-      ...(typeof vendor?.name === 'string' ? { name: vendor.name } : {}),
-      ...(typeof vendor?.code === 'string' ? { code: vendor.code } : {}),
-      ...(typeof vendor?.errno === 'number' ? { errno: vendor.errno } : {}),
-      ...(typeof vendor?.sqlState === 'string' ? { sqlState: vendor.sqlState } : {}),
-      ...(typeof vendor?.sqlMessage === 'string' ? { sqlMessage: vendor.sqlMessage } : {}),
+      ...(typeof name === 'string' ? { name } : {}),
+      ...(typeof code === 'string' ? { code } : {}),
+      ...(typeof errno === 'number' ? { errno } : {}),
+      ...(typeof sqlState === 'string' ? { sqlState } : {}),
+      ...(typeof sqlMessage === 'string' ? { sqlMessage } : {}),
     };
   }
 
@@ -238,21 +281,63 @@ export class KnexDriver implements DbDriver {
    * log line outlives and out-travels the row it came from. The SQL text beside it carries `?`
    * placeholders only, so position + kind + length is what locates a failure (which parameter was
    * null, which was oversized) without quoting it.
+   *
+   * The shapes are the query layer's own: positional bindings (an array) are described by
+   * POSITION; a bindings DICTIONARY (a plain object, bound to `:name` placeholders) by entry
+   * NAME; no bindings describe nothing; and anything else — null, a scalar, a Map, a Date — is
+   * what the query layer binds as ONE parameter, so it is described as one.
+   *
+   * TOTAL, for any input: a value that cannot be read is described as `unreadable`
+   * (describeParam), and bindings that cannot even be walked are the one word `unreadable`.
    */
-  private describeParams(params?: Statement['params']): ParamDescription[] | undefined {
-    if (!params) {
+  private describeParams(params?: unknown): ParamsDescription | undefined {
+    if (params === undefined) {
       return undefined;
     }
-    return params.map((value) => {
+    try {
+      if (Array.isArray(params)) {
+        const described: ParamDescription[] = [];
+        for (let position = 0; position < params.length; position++) {
+          described.push(this.describeParam(() => params[position]));
+        }
+        return described;
+      }
+      if (this.isDictionary(params)) {
+        const described: { [name: string]: ParamDescription } = {};
+        for (const name of Object.keys(params)) {
+          described[name] = this.describeParam(() => params[name]);
+        }
+        return described;
+      }
+      return [this.describeParam(() => params)];
+    } catch {
+      return 'unreadable';
+    }
+  }
+
+  /**
+   * One bound value, described: its kind, a length for strings, arrays and bytes, null named. The
+   * value is READ in here (`read`), so a read that throws — an accessor, a revoked proxy — is
+   * described as `unreadable` and its neighbours still are described. A length that is not a
+   * number is no length: nothing a value says about itself rides the line but that one number.
+   */
+  private describeParam(read: () => unknown): ParamDescription {
+    try {
+      const value = read();
       const description: ParamDescription = { type: this.paramKind(value) };
       if (typeof value === 'string' || Array.isArray(value) || value instanceof Uint8Array) {
-        description.length = value.length;
+        const length: unknown = value.length;
+        if (typeof length === 'number') {
+          description.length = length;
+        }
       }
       if (value === null || value === undefined) {
         description.null = true;
       }
       return description;
-    });
+    } catch {
+      return { type: 'unreadable' };
+    }
   }
 
   /** The kind of a bound value — a word, never the value. */
@@ -270,5 +355,23 @@ export class KnexDriver implements DbDriver {
       return 'bytes';
     }
     return typeof value;
+  }
+
+  /** Whether bindings are a DICTIONARY — a plain object, which the query layer binds by entry name. */
+  private isDictionary(params: unknown): params is { [name: string]: unknown } {
+    if (typeof params !== 'object' || params === null) {
+      return false;
+    }
+    const prototype = Object.getPrototypeOf(params);
+    return prototype === null || Object.getPrototypeOf(prototype) === null;
+  }
+
+  /** One fact of a thrown value, or nothing when it cannot be read (nothing thrown, a scalar, a throwing accessor). */
+  private vendorFact(error: unknown, fact: keyof FailureCauseSummary): unknown {
+    try {
+      return (error as { [fact: string]: unknown } | null | undefined)?.[fact];
+    } catch {
+      return undefined;
+    }
   }
 }

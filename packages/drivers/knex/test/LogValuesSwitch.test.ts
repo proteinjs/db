@@ -161,4 +161,41 @@ describe('the dev-only values switch: real values ride the driver`s failure line
     expect(failure.error).toBe(caught);
     expect(lineOf(failure)).toContain(VALUE);
   });
+
+  // A bindings DICTIONARY — wider than `Statement` declares, and what the query layer accepts.
+  const namedParams = { id: VALUE, n: 42 };
+  const failingNamedInsert = (): Promise<any> =>
+    driver
+      .runDml(() => ({ sql: 'INSERT INTO `credential` (`id`, `n`) VALUES (:id, :n)', params: namedParams as any }))
+      .then(
+        () => 'resolved',
+        (error: unknown) => error
+      );
+
+  test.each(GATES)('a bindings dictionary rides the same switch — %s', async (_gate, env, on) => {
+    const baseline = facts(await failingNamedInsert());
+    captured = [];
+    Object.assign(process.env, env);
+
+    const caught = await failingNamedInsert();
+
+    const failures = captured.filter((log) => log.message === 'Failed when executing sql');
+    expect(failures).toHaveLength(1);
+    const [failure] = failures;
+    expect(caught.code).toBe('ER_NO_SUCH_TABLE');
+    expect(facts(caught)).toEqual(baseline);
+    // The description, by entry name, rides the line at every gate.
+    expect(failure.obj.params).toEqual({ id: { type: 'string', length: VALUE.length }, n: { type: 'number' } });
+    if (!on) {
+      for (const log of captured) {
+        expect(lineOf(log)).not.toContain(VALUE);
+        expect(Object.keys(log.obj ?? {})).not.toContain('paramValues');
+        expect(log.error).toBeUndefined();
+      }
+      return;
+    }
+    // The dictionary as bound, BESIDE the description; and the vendor error itself, as it was thrown.
+    expect(failure.obj.paramValues).toEqual(namedParams);
+    expect(failure.error).toBe(caught);
+  });
 });
