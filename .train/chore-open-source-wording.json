@@ -1,0 +1,24 @@
+{
+  "branch": "chore/open-source-wording",
+  "packages": ["file", "db", "ui", "drivers/spanner"],
+  "suites": [
+    "packages/file/test/emulatorLockName.test.ts",
+    "packages/db/test/SearchTokenizer.test.ts",
+    "packages/db/test/SourceRecordLoader.test.ts",
+    "packages/drivers/spanner/test/EncryptedSearch.test.ts",
+    "packages/drivers/spanner/test/Crud.test.ts",
+    "packages/drivers/spanner/test/SourceRecordSync.test.ts",
+    "packages/drivers/spanner/test/SessionPoolExhaustion.test.ts",
+    "packages/drivers/spanner/test/TransactionSafety.test.ts",
+    "packages/ui/test/recordTableDeclaredColumns.test.tsx",
+    "packages/ui/test/recordTableDeclaredPresentation.test.tsx",
+    "packages/ui/test/recordTableDefaultRenderers.test.tsx",
+    "packages/ui/test/recordTableDelete.test.tsx",
+    "packages/ui/test/recordTableDerivedAffordances.test.tsx",
+    "packages/ui/test/recordTablePageCardOverflow.test.tsx",
+    "packages/ui/test/recordTablePageHeaderContainment.test.tsx",
+    "packages/ui/test/recordTablePageMobile.test.tsx",
+    "packages/ui/test/recordTableRecordLink.test.tsx"
+  ],
+  "removes": []
+}
