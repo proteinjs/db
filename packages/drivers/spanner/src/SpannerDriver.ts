@@ -12,6 +12,7 @@ import {
 import { SpannerConfig } from './SpannerConfig';
 import { SpannerEnvTokenAuth, SpannerEnvTokenAuthError, SPANNER_ENV_TOKEN_VAR } from './SpannerEnvTokenAuth';
 import { SpannerOperationError, SpannerOperationKind } from './SpannerOperationError';
+import { SpannerLogValues } from './SpannerLogValues';
 import { SpannerLivenessMonitor, type SpannerSessionPoolStats } from './SpannerLivenessMonitor';
 import { Logger } from '@proteinjs/logger';
 import { ParamType, Statement } from '@proteinjs/db-query';
@@ -391,8 +392,9 @@ export class SpannerDriver implements DbDriver {
    * stack). The log line names what actually failed — the underlying status and message, the
    * statement's verb and table, the SQL text, the duration — and never a bound value: the
    * parameters are DESCRIBED (loggedParams: names, types, lengths), here exactly as on the debug
-   * line beside the op. A rejection that is already one of the driver's own typed errors (the
-   * env-token auth translation, an earlier wrap) is logged the same way and passes through as is.
+   * line beside the op; their values ride only behind the dev-only switch (SpannerLogValues). A
+   * rejection that is already one of the driver's own typed errors (the env-token auth
+   * translation, an earlier wrap) is logged the same way and passes through as is.
    *
    * What is THROWN is untouched by any of that: the parameters reach the log lines and nothing
    * else. The cause summary is the backend's own message with quoted, braced and bracketed spans
@@ -951,10 +953,14 @@ export class SpannerDriver implements DbDriver {
 
   /**
    * What a statement's log line carries for its bound parameters — every line the driver writes
-   * about a statement, at every level: `params`, the DESCRIPTION (describeParams).
+   * about a statement, at every level: `params`, the DESCRIPTION (describeParams), and — only
+   * behind the dev-only switch (SpannerLogValues) — `paramValues`, the values as bound.
    */
-  private loggedParams(namedParams?: Statement['namedParams']): { params?: { [param: string]: ParamDescription } } {
-    return { params: this.describeParams(namedParams) };
+  private loggedParams(namedParams?: Statement['namedParams']): {
+    params?: { [param: string]: ParamDescription };
+    paramValues?: { [param: string]: unknown };
+  } {
+    return { params: this.describeParams(namedParams), ...SpannerLogValues.ofStatement(namedParams?.params) };
   }
 
   /**

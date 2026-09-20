@@ -25,7 +25,7 @@ export type SpannerOperationKind = 'query' | 'dml';
  * The SHAPE of a statement — its verb and the table it acts on, never a value — the statement
  * facts an error message carries. Beside the shape and the SQL text, the driver's log lines
  * DESCRIBE the bound parameters (names, types, lengths — SpannerDriver.describeParams); their
- * values ride a line at no level.
+ * values ride a line at no level, except behind the dev-only switch (SpannerLogValues).
  */
 export type StatementShape = { operation: string; table?: string };
 

@@ -140,3 +140,11 @@ export class DbDriverFactory implements DefaultDbDriverFactory {
   }
 }
 ```
+
+# What the driver's log lines carry
+
+The driver never prints the value of a parameter bound to a statement, at any level. Every line it writes about a statement (`Executing query` and `Executing dml` at debug, `Failed when executing …` at error, the retried-abort line at debug) carries the SQL text (placeholders only) and, as `params`, a description of each parameter: its name, its type and, for strings, arrays and bytes, its length.
+
+To debug against an emulator or a local dev database with the real values, set `DB_LOG_PARAM_VALUES=1` in a process that also has `DEVELOPMENT` set: those lines then add `paramValues` (the parameters as bound) beside the description. With either variable unset the lines never carry them. The switch changes log lines only.
+
+What this does NOT cover: the backend's own error text can echo a bound value (a colliding key, a value it could not parse), and the driver passes that text on as it always has. The failure line's `cause` summary and the thrown `SpannerOperationError`'s message carry it with quoted, braced and bracketed spans masked — a value echoed outside such a span reads there in clear — and the thrown error's `cause` (and `details`) carry the vendor error unmasked, which a log writer that inspects the failure line's `error` follows and prints; a failed commit or schema update throws the vendor error as is. What the driver throws is deliberately unchanged by the log-line contract, because the client library decides transaction retries off the thrown error. Closing the echo class is parked on the branch `fix/driver-logs-never-carry-param-values`, pending a decision.

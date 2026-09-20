@@ -19,7 +19,8 @@ import '../generated/test/index';
  * failure line at error, the retried-abort line — carries the SQL text (placeholders only) and,
  * for the parameters, a DESCRIPTION: each parameter's name, its type and, for strings, arrays and
  * bytes, its length. One private helper (`describeParams`) owns that description, so every call
- * site — and any future one — shares it.
+ * site — and any future one — shares it. (The dev-only switch that adds the values back is
+ * LogValuesSwitch.test.ts; it is off here.)
  *
  * SCOPE, by name: this suite holds what the DRIVER prints of the parameters it was handed. It does
  * NOT hold the vendor-echo class — the backend's own error text can quote a bound value (a
@@ -146,6 +147,7 @@ describe('The driver never prints a bound value (emulator)', () => {
       email: { type: 'string', length: SECRET_EMAIL.length },
       token: { type: 'string', length: SECRET_TOKEN.length },
     });
+    expect(Object.keys(failure.obj)).not.toContain('paramValues');
     const line = lineOf(failure);
     expect(line).toContain('token');
     expect(line).toContain("type: 'string'");
