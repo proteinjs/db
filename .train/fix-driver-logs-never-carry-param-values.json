@@ -1,0 +1,11 @@
+{
+  "branch": "fix/driver-logs-never-carry-param-values",
+  "packages": ["drivers/spanner", "drivers/knex"],
+  "suites": [
+    "packages/drivers/spanner/test/StatementParamLogging.test.ts",
+    "packages/drivers/spanner/test/OperationFailureCause.test.ts",
+    "packages/drivers/spanner/test/RetriedAbortLogging.test.ts",
+    "packages/drivers/knex/test/StatementParamLogging.test.ts"
+  ],
+  "removes": []
+}
