@@ -30,14 +30,18 @@ type BoundValues = { [param: string]: unknown } | undefined;
 
 /**
  * One recognized class of backend failure. `codes` are the gRPC codes it is recognized under
- * (`undefined` = an error with no code); `patterns` run against the backend's message with the
- * status prefix stripped and every bound value struck out; `phrase` is the driver's sentence.
+ * (`undefined` = an error with no code); `patterns` run against the backend's message AS IT
+ * ARRIVED (the status prefix stripped) — no bound value takes part in recognizing a class;
+ * `phrase` is the driver's sentence, a constant of this file. `kept` is what the sentence may add
+ * of the message's own tokens, read from the same pattern's match on the message with every bound
+ * value STRUCK out; a class without it keeps nothing of the message.
  */
 type FailureClass = {
   name: string;
   codes: (number | undefined)[];
   patterns: RegExp[];
-  phrase: (match: RegExpExecArray) => string;
+  phrase: string;
+  kept?: (match: RegExpExecArray) => string | undefined;
 };
 
 /**
@@ -62,22 +66,37 @@ type FailureClass = {
  *    where the backend prints a value;
  *  - a class recognized under OUT_OF_RANGE keeps nothing — that is the code `ERROR()` raises, and
  *    under it the whole message can be row data;
- *  - before anything is recognized, every occurrence of every bound value is struck out of the
- *    message (strikeBoundValues), in each form the backend echoes it — so a token that IS a bound
- *    value can never be kept, whatever the message looks like.
+ *  - a token is kept only from the message with every occurrence of every bound value struck out
+ *    (strikeBoundValues), in each form the backend echoes it — so a token that IS a bound value
+ *    can never be kept, whatever the message looks like; where the strike leaves no token to
+ *    read, the sentence stands without one.
+ *
+ * The CLASS is recognized on the message as it arrived, never on the struck one: what is bound to
+ * a statement must not change what the failure IS. A bound `2` overlaps `HTTP/2 error code`, a
+ * bound `found` overlaps `Session not found`, a bound `index` overlaps `UNIQUE violation on
+ * index` — striking first would let row content un-recognize a failure, and callers act on the
+ * class (the schema reconcile's already-exists check; the transaction runner below). Recognizing
+ * on the unstruck text prints nothing of it: a class's name and phrase are constants of this file.
  *
  * The driver's own errors (the op deadline, the env-token auth error) are authored here or
  * registered here (houseError / markHouseAuthored): their text is the driver's, and is kept.
  *
- * Two vendor predicates read the MESSAGE of the error a transaction body throws — the client
- * library's runner decides a retry on `message.includes('Session not found')` and on four
- * stream-reset literals — so those two classes' sentences repeat the literal (from this file,
- * never from the message) and the runner keeps retrying what it retried before.
+ * The client library's transaction runner decides a retry by reading the error a transaction body
+ * throws — which is the driver's typed error. Read in its source (@google-cloud/spanner 7.5.0): an
+ * ABORTED is retried on `code` alone and backed off by the `google.rpc.retryinfo-bin` metadata
+ * entry, both of which the typed error carries structurally. A lost session and a reset stream
+ * have no structural signal — `isSessionNotFoundError` is `code === NOT_FOUND &&
+ * message.includes('Session not found')`, `isRetryableInternalError` is `code === INTERNAL &&
+ * message.includes(<one of four literals>)` — so those two classes' sentences repeat the literal
+ * (from this file, never from the message). They are recognized FIRST, by exactly the vendor's
+ * test on the vendor's own message, so the typed error's sentence carries the literal precisely
+ * when the vendor's message does — whatever is bound, and whatever other class the message might
+ * also fit.
  */
 export class SpannerFailureText {
   /** The class name `SpannerSchemaOperations.isAlreadyExistsError` keys on. */
   static readonly SCHEMA_OBJECT_ALREADY_EXISTS = 'schema object already exists';
-  /** Struck-out bound values read as this; no pattern below can match across it. */
+  /** Struck-out bound values read as this; no kept token (an identifier, a number) can contain it. */
   private static readonly STRUCK = '\u0000';
   /** A kept identifier: word characters and dots, bounded. */
   private static readonly IDENTIFIER = '([\\w.]{1,128})';
@@ -111,12 +130,27 @@ export class SpannerFailureText {
   };
 
   private static readonly CLASSES: FailureClass[] = [
+    // ── sessions and streams: the sentences the client library's transaction runner reads. FIRST,
+    //    and by the vendor's own test (its code, its literal anywhere in the message), so no other
+    //    class shadows a retry signal (see the class doc). ───────────────────────────────────────
+    {
+      name: 'session not found',
+      codes: [5],
+      patterns: [/Session not found/],
+      phrase: 'Session not found (the session expired or was deleted; the client library replaces it)',
+    },
+    ...SpannerFailureText.RETRYABLE_STREAM_RESETS.map((literal) => ({
+      name: 'retryable stream reset',
+      codes: [13],
+      patterns: [new RegExp(literal.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&'))],
+      phrase: `the stream was reset mid-call (${literal})`,
+    })),
     // ── rows ──────────────────────────────────────────────────────────────────────────────────
     {
       name: 'row already exists',
       codes: [6],
       patterns: [/^Failed to insert row with primary key/i, /^Row \[/i],
-      phrase: () => 'a row with this primary key already exists',
+      phrase: 'a row with this primary key already exists',
     },
     {
       name: 'unique index violation',
@@ -125,7 +159,8 @@ export class SpannerFailureText {
         new RegExp(`^UNIQUE violation on index ${SpannerFailureText.IDENTIFIER},`, 'i'),
         new RegExp(`^Unique index violation on index ${SpannerFailureText.IDENTIFIER} at index key`, 'i'),
       ],
-      phrase: (match) => `a unique index already holds this key (index ${SpannerFailureText.identifier(match[1])})`,
+      phrase: 'a unique index already holds this key',
+      kept: (match) => `index ${SpannerFailureText.identifier(match[1])}`,
     },
     {
       name: 'value exceeds column size',
@@ -135,8 +170,8 @@ export class SpannerFailureText {
           `^New value exceeds the maximum size limit for this column[^:]{0,40}: ${SpannerFailureText.IDENTIFIER}, size: (\\d{1,12}), limit: (\\d{1,12})`
         ),
       ],
-      phrase: (match) =>
-        `a value exceeds its column's size limit (column ${SpannerFailureText.identifier(match[1])}, size ${match[2]}, limit ${match[3]})`,
+      phrase: "a value exceeds its column's size limit",
+      kept: (match) => `column ${SpannerFailureText.identifier(match[1])}, size ${match[2]}, limit ${match[3]}`,
     },
     {
       name: 'null in required column',
@@ -147,7 +182,8 @@ export class SpannerFailureText {
           `^A new row in table [\\w.]{1,128} does not specify a non-null value for (?:these )?NOT NULL columns?: ${SpannerFailureText.IDENTIFIER}`
         ),
       ],
-      phrase: (match) => `a NOT NULL column was given no value (column ${SpannerFailureText.identifier(match[1])})`,
+      phrase: 'a NOT NULL column was given no value',
+      kept: (match) => `column ${SpannerFailureText.identifier(match[1])}`,
     },
     {
       name: 'foreign key violation',
@@ -160,28 +196,29 @@ export class SpannerFailureText {
           `^Foreign key constraint \`?${SpannerFailureText.IDENTIFIER}\`? is violated on table \`?${SpannerFailureText.IDENTIFIER}\`?\\.`
         ),
       ],
-      phrase: (match) =>
-        `a foreign key rejected the row (constraint ${SpannerFailureText.identifier(match[1])} on table ${SpannerFailureText.identifier(match[2])})`,
+      phrase: 'a foreign key rejected the row',
+      kept: (match) =>
+        `constraint ${SpannerFailureText.identifier(match[1])} on table ${SpannerFailureText.identifier(match[2])}`,
     },
     {
       // OUT_OF_RANGE: nothing of the message is kept (see the class doc).
       name: 'check constraint violation',
       codes: [9, 11],
       patterns: [/^Check constraint /],
-      phrase: () => 'a check constraint rejected the row',
+      phrase: 'a check constraint rejected the row',
     },
     {
       name: 'bound value does not parse',
       codes: [3, 9],
       patterns: [/^Could not parse /, /^Invalid value for bind parameter /],
-      phrase: () => 'a bound value does not parse as the type its parameter declares',
+      phrase: 'a bound value does not parse as the type its parameter declares',
     },
     {
       // The exact-mode JSON parser's refusal of a number (see SpannerDriver.paramExpression).
       name: 'json number does not round-trip',
       codes: [11],
       patterns: [/cannot round-trip through string representation/],
-      phrase: () =>
+      phrase:
         "a JSON number cannot round-trip through string representation (bind JSON through PARSE_JSON(…, wide_number_mode=>'round'))",
     },
     // ── statements (the tokens kept here are the SQL text's own, which rides the line beside them) ─
@@ -191,15 +228,15 @@ export class SpannerFailureText {
       patterns: [
         new RegExp(`^Unrecognized name: ${SpannerFailureText.IDENTIFIER}(?: \\[at (\\d{1,6}):(\\d{1,6})\\])?`),
       ],
-      phrase: (match) =>
-        `the statement names something the schema does not have (${SpannerFailureText.identifier(match[1])}${SpannerFailureText.position(match[2], match[3])})`,
+      phrase: 'the statement names something the schema does not have',
+      kept: (match) => `${SpannerFailureText.identifier(match[1])}${SpannerFailureText.position(match[2], match[3])}`,
     },
     {
       name: 'table not found',
       codes: [3, 5],
       patterns: [new RegExp(`^Table not found: ${SpannerFailureText.IDENTIFIER}(?: \\[at (\\d{1,6}):(\\d{1,6})\\])?`)],
-      phrase: (match) =>
-        `the statement names a table the schema does not have (${SpannerFailureText.identifier(match[1])}${SpannerFailureText.position(match[2], match[3])})`,
+      phrase: 'the statement names a table the schema does not have',
+      kept: (match) => `${SpannerFailureText.identifier(match[1])}${SpannerFailureText.position(match[2], match[3])}`,
     },
     {
       name: 'value type does not match column',
@@ -207,28 +244,28 @@ export class SpannerFailureText {
       patterns: [
         new RegExp(`^Value has type \\w{1,32} which cannot be inserted into column ${SpannerFailureText.IDENTIFIER},`),
       ],
-      phrase: (match) =>
-        `a bound value's type does not match its column (column ${SpannerFailureText.identifier(match[1])})`,
+      phrase: "a bound value's type does not match its column",
+      kept: (match) => `column ${SpannerFailureText.identifier(match[1])}`,
     },
     {
       name: 'no matching signature',
       codes: [3],
       patterns: [/^No matching signature for /],
-      phrase: () => 'an operator or function was given argument types it has no signature for',
+      phrase: 'an operator or function was given argument types it has no signature for',
     },
     {
       name: 'syntax error',
       codes: [3],
       patterns: [/^Syntax error:/, /^Error parsing Spanner DDL statement/],
-      phrase: () => 'the statement does not parse (syntax error)',
+      phrase: 'the statement does not parse (syntax error)',
     },
     // ── schema updates ────────────────────────────────────────────────────────────────────────
     {
       name: 'unique index backfill found duplicates',
       codes: [9],
       patterns: [new RegExp(`^Found uniqueness violation on index ${SpannerFailureText.IDENTIFIER},`, 'i')],
-      phrase: (match) =>
-        `uniqueness violation: a unique index cannot be built over existing rows that hold duplicate keys (index ${SpannerFailureText.identifier(match[1])})`,
+      phrase: 'uniqueness violation: a unique index cannot be built over existing rows that hold duplicate keys',
+      kept: (match) => `index ${SpannerFailureText.identifier(match[1])}`,
     },
     {
       name: 'index names a missing column',
@@ -238,14 +275,15 @@ export class SpannerFailureText {
           `^Index ${SpannerFailureText.IDENTIFIER} specifies key column ${SpannerFailureText.IDENTIFIER} which does not exist`
         ),
       ],
-      phrase: (match) =>
-        `an index names a key column its table does not have (index ${SpannerFailureText.identifier(match[1])}, column ${SpannerFailureText.identifier(match[2])})`,
+      phrase: 'an index names a key column its table does not have',
+      kept: (match) =>
+        `index ${SpannerFailureText.identifier(match[1])}, column ${SpannerFailureText.identifier(match[2])}`,
     },
     {
       name: 'schema change in progress',
       codes: [9],
       patterns: [/concurrent schema change operation or read-write transaction is already in progress/i],
-      phrase: () => 'a concurrent schema change operation or read-write transaction is already in progress',
+      phrase: 'a concurrent schema change operation or read-write transaction is already in progress',
     },
     {
       // The class TableManager's concurrent-create reconcile keys on (isAlreadyExistsError): the
@@ -260,26 +298,8 @@ export class SpannerFailureText {
         /Duplicate name in schema/i,
         /already exists/i,
       ],
-      phrase: (match) =>
-        match[1]
-          ? `the schema object already exists (${SpannerFailureText.identifier(match[1])})`
-          : 'the schema object already exists',
-    },
-    // ── sessions and streams (sentences the client library's transaction runner reads) ─────────
-    {
-      name: 'session not found',
-      codes: [5],
-      patterns: [/Session not found/],
-      phrase: () => 'Session not found (the session expired or was deleted; the client library replaces it)',
-    },
-    {
-      name: 'retryable stream reset',
-      codes: [13],
-      patterns: SpannerFailureText.RETRYABLE_STREAM_RESETS.map(
-        (literal) => new RegExp(literal.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&'))
-      ),
-      phrase: (match) =>
-        `the stream was reset mid-call (${SpannerFailureText.RETRYABLE_STREAM_RESETS.find((literal) => literal === match[0])})`,
+      phrase: 'the schema object already exists',
+      kept: (match) => (match[1] ? SpannerFailureText.identifier(match[1]) : undefined),
     },
     {
       name: 'session pool unavailable',
@@ -289,8 +309,7 @@ export class SpannerFailureText {
         /^Timeout occurred while acquiring session\.?$/,
         /^Database is closed\.?$/,
       ],
-      phrase: () =>
-        'the session pool could not supply a session (exhausted, timed out, or the database handle is closed)',
+      phrase: 'the session pool could not supply a session (exhausted, timed out, or the database handle is closed)',
     },
   ];
 
@@ -307,16 +326,21 @@ export class SpannerFailureText {
       return { ...coded, failureClass: 'driver', message: String(vendor?.message ?? '') };
     }
     const raw = typeof vendor?.message === 'string' ? vendor.message : typeof failure === 'string' ? failure : '';
-    const text = SpannerFailureText.strikeBoundValues(raw.replace(/^\d{1,2} [A-Z_]+: /, ''), boundValues);
+    const text = raw.replace(/^\d{1,2} [A-Z_]+: /, '');
     for (const failureClass of SpannerFailureText.CLASSES) {
       if (!failureClass.codes.includes(code)) {
         continue;
       }
       for (const pattern of failureClass.patterns) {
-        const match = pattern.exec(text);
-        if (match) {
-          return { ...coded, failureClass: failureClass.name, message: failureClass.phrase(match) };
+        // The class stands on the message as it arrived: no bound value takes part (see the class doc).
+        if (!pattern.test(text)) {
+          continue;
         }
+        return {
+          ...coded,
+          failureClass: failureClass.name,
+          message: SpannerFailureText.sentence(failureClass, pattern, text, boundValues),
+        };
       }
     }
     return {
@@ -338,6 +362,20 @@ export class SpannerFailureText {
   static markHouseAuthored<T extends Error>(error: T): T {
     SpannerFailureText.HOUSE_AUTHORED.add(error);
     return error;
+  }
+
+  /**
+   * A recognized class's sentence: its phrase, and — for a class that keeps a token — what the
+   * same pattern reads off the message with every bound value STRUCK out, so a kept token is never
+   * a bound value. Where the strike leaves nothing to read, the phrase stands alone.
+   */
+  private static sentence(failureClass: FailureClass, pattern: RegExp, text: string, boundValues: BoundValues): string {
+    if (!failureClass.kept) {
+      return failureClass.phrase;
+    }
+    const match = pattern.exec(SpannerFailureText.strikeBoundValues(text, boundValues));
+    const kept = match ? failureClass.kept(match) : undefined;
+    return kept ? `${failureClass.phrase} (${kept})` : failureClass.phrase;
   }
 
   /**

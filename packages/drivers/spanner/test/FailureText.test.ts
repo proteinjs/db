@@ -41,106 +41,107 @@ const vendor = (code: number | undefined, message: string, extra?: object) =>
 type OwnerInternals = { strikeBoundValues: (text: string, boundValues?: { [param: string]: unknown }) => string };
 const ownerInternals = SpannerFailureText as unknown as OwnerInternals;
 
-describe('every class of backend message: the driver`s sentence, never the echoed value', () => {
-  const cases: [string, number | undefined, string, string, string[]][] = [
-    [
-      'a string bound to a TIMESTAMP parameter, echoed bare',
-      9,
-      `Could not parse ${VALUE} as a TIMESTAMP. The timestamp value must end with an uppercase literal 'Z' to specify Zulu time (UTC-0).`,
-      'bound value does not parse',
-      [],
-    ],
-    ['an int64 bind, echoed bare', 9, `Could not parse ${VALUE} as an integer`, 'bound value does not parse', []],
-    [
-      'a float64 bind, echoed bare',
-      9,
-      `9 FAILED_PRECONDITION: Could not parse ${VALUE} as a FLOAT64. Only the following string values are supported`,
-      'bound value does not parse',
-      [],
-    ],
-    [
-      'a date bind, echoed bare',
-      9,
-      `Could not parse ${VALUE} as a DATE. Dates must be in the format YYYY-[M]M-[D]D`,
-      'bound value does not parse',
-      [],
-    ],
-    [
-      'a numeric bind, echoed bare',
-      9,
-      `Could not parse ${VALUE} as a NUMERIC. The NUMERIC type supports 38 digits`,
-      'bound value does not parse',
-      [],
-    ],
-    ['a CAST failure, echoed bare', 11, `11 OUT_OF_RANGE: Bad int64 value: ${VALUE}`, 'unclassified', []],
-    ['a NUMERIC cast failure, echoed bare', 11, `11 OUT_OF_RANGE: Invalid NUMERIC value: ${VALUE}`, 'unclassified', []],
-    ['ERROR(@p): the whole message is the value', 11, `11 OUT_OF_RANGE: ${VALUE}`, 'unclassified', []],
-    [
-      'a JSON number the exact-mode parser refuses',
-      11,
-      `11 OUT_OF_RANGE: Invalid input to PARSE_JSON: Input number: ${VALUE} cannot round-trip through string representation`,
-      'json number does not round-trip',
-      ['cannot round-trip through string representation'],
-    ],
-    [
-      'a duplicate primary key, quoted and braced',
-      6,
-      `Failed to insert row with primary key ({pk#id:"${VALUE}"}) due to previously existing row`,
-      'row already exists',
-      [],
-    ],
-    [
-      'a duplicate primary key, the hosted phrasing',
-      6,
-      `Row [${VALUE}] in table credential already exists`,
-      'row already exists',
-      [],
-    ],
-    [
-      'a unique index violation',
-      6,
-      `UNIQUE violation on index credential_email,  duplicate key: {String("${VALUE}")} in this transaction.`,
-      'unique index violation',
-      ['credential_email'],
-    ],
-    [
-      'a unique index violation, the hosted phrasing',
-      6,
-      `Unique index violation on index credential_email at index key [${VALUE}]. It conflicts with row [${VALUE}] in table credential.`,
-      'unique index violation',
-      ['credential_email'],
-    ],
-    [
-      'a unique-index backfill over duplicate rows (a schema update)',
-      9,
-      `Found uniqueness violation on index credential_email,  duplicate key: {String("${VALUE}")}`,
-      'unique index backfill found duplicates',
-      ['credential_email', 'uniqueness violation'],
-    ],
-    [
-      'a foreign key violation',
-      9,
-      `Foreign key \`fk_owner\` constraint violation on table \`credential\`. Cannot find referenced key \`{String("${VALUE}")}\` in table \`owner\`.`,
-      'foreign key violation',
-      ['fk_owner', 'credential'],
-    ],
-    [
-      'a check constraint violation (OUT_OF_RANGE: nothing kept)',
-      11,
-      `Check constraint \`credential\`.\`ck_email\` is violated for key {String("${VALUE}")}`,
-      'check constraint violation',
-      [],
-    ],
-    [
-      'an abort naming the key range it conflicted on',
-      10,
-      `Transaction was aborted. It was wounded by a higher priority transaction due to conflict on keys in range [[${VALUE}], [${VALUE}]), column token in table credential.`,
-      'unclassified',
-      [],
-    ],
-    ['a client-side codec rejection with no code', undefined, `Integer ${VALUE} is out of bounds.`, 'unclassified', []],
-  ];
+/** Every class of backend message: [name, gRPC code, the backend's text, the class it is recognized as, the tokens its sentence keeps]. */
+const cases: [string, number | undefined, string, string, string[]][] = [
+  [
+    'a string bound to a TIMESTAMP parameter, echoed bare',
+    9,
+    `Could not parse ${VALUE} as a TIMESTAMP. The timestamp value must end with an uppercase literal 'Z' to specify Zulu time (UTC-0).`,
+    'bound value does not parse',
+    [],
+  ],
+  ['an int64 bind, echoed bare', 9, `Could not parse ${VALUE} as an integer`, 'bound value does not parse', []],
+  [
+    'a float64 bind, echoed bare',
+    9,
+    `9 FAILED_PRECONDITION: Could not parse ${VALUE} as a FLOAT64. Only the following string values are supported`,
+    'bound value does not parse',
+    [],
+  ],
+  [
+    'a date bind, echoed bare',
+    9,
+    `Could not parse ${VALUE} as a DATE. Dates must be in the format YYYY-[M]M-[D]D`,
+    'bound value does not parse',
+    [],
+  ],
+  [
+    'a numeric bind, echoed bare',
+    9,
+    `Could not parse ${VALUE} as a NUMERIC. The NUMERIC type supports 38 digits`,
+    'bound value does not parse',
+    [],
+  ],
+  ['a CAST failure, echoed bare', 11, `11 OUT_OF_RANGE: Bad int64 value: ${VALUE}`, 'unclassified', []],
+  ['a NUMERIC cast failure, echoed bare', 11, `11 OUT_OF_RANGE: Invalid NUMERIC value: ${VALUE}`, 'unclassified', []],
+  ['ERROR(@p): the whole message is the value', 11, `11 OUT_OF_RANGE: ${VALUE}`, 'unclassified', []],
+  [
+    'a JSON number the exact-mode parser refuses',
+    11,
+    `11 OUT_OF_RANGE: Invalid input to PARSE_JSON: Input number: ${VALUE} cannot round-trip through string representation`,
+    'json number does not round-trip',
+    ['cannot round-trip through string representation'],
+  ],
+  [
+    'a duplicate primary key, quoted and braced',
+    6,
+    `Failed to insert row with primary key ({pk#id:"${VALUE}"}) due to previously existing row`,
+    'row already exists',
+    [],
+  ],
+  [
+    'a duplicate primary key, the hosted phrasing',
+    6,
+    `Row [${VALUE}] in table credential already exists`,
+    'row already exists',
+    [],
+  ],
+  [
+    'a unique index violation',
+    6,
+    `UNIQUE violation on index credential_email,  duplicate key: {String("${VALUE}")} in this transaction.`,
+    'unique index violation',
+    ['credential_email'],
+  ],
+  [
+    'a unique index violation, the hosted phrasing',
+    6,
+    `Unique index violation on index credential_email at index key [${VALUE}]. It conflicts with row [${VALUE}] in table credential.`,
+    'unique index violation',
+    ['credential_email'],
+  ],
+  [
+    'a unique-index backfill over duplicate rows (a schema update)',
+    9,
+    `Found uniqueness violation on index credential_email,  duplicate key: {String("${VALUE}")}`,
+    'unique index backfill found duplicates',
+    ['credential_email', 'uniqueness violation'],
+  ],
+  [
+    'a foreign key violation',
+    9,
+    `Foreign key \`fk_owner\` constraint violation on table \`credential\`. Cannot find referenced key \`{String("${VALUE}")}\` in table \`owner\`.`,
+    'foreign key violation',
+    ['fk_owner', 'credential'],
+  ],
+  [
+    'a check constraint violation (OUT_OF_RANGE: nothing kept)',
+    11,
+    `Check constraint \`credential\`.\`ck_email\` is violated for key {String("${VALUE}")}`,
+    'check constraint violation',
+    [],
+  ],
+  [
+    'an abort naming the key range it conflicted on',
+    10,
+    `Transaction was aborted. It was wounded by a higher priority transaction due to conflict on keys in range [[${VALUE}], [${VALUE}]), column token in table credential.`,
+    'unclassified',
+    [],
+  ],
+  ['a client-side codec rejection with no code', undefined, `Integer ${VALUE} is out of bounds.`, 'unclassified', []],
+];
 
+describe('every class of backend message: the driver`s sentence, never the echoed value', () => {
   test.each(cases)('%s', (_name, code, message, failureClass, kept) => {
     const vendorError = vendor(code, message);
 
@@ -219,20 +220,43 @@ describe('every class of backend message: the driver`s sentence, never the echoe
 });
 
 describe('what a sentence keeps can never be a value', () => {
-  test('a bound value in an identifier position is struck before anything is recognized', () => {
+  test('a bound value in an identifier position is never kept — the class is still recognized, its sentence keeps no token', () => {
     const spoof = vendor(6, `UNIQUE violation on index ${VALUE},  duplicate key: {String("x")} in this transaction.`);
 
     // The premise: with the value NOT known as bound, the token in that position is kept.
     expect(SpannerFailureText.summarize(spoof).message).toContain(VALUE);
-    // Known as bound, it is struck — and the failure falls back to the sentence for its code.
+    // Known as bound, it is struck from what the sentence may keep — the class stands on the fixed text.
     const summary = SpannerFailureText.summarize(spoof, { token: VALUE });
     expect(JSON.stringify(summary)).not.toContain(VALUE);
     expect(summary).toEqual({
       code: 6,
       status: 'ALREADY_EXISTS',
-      failureClass: 'unclassified',
-      message: 'the row or object already exists',
+      failureClass: 'unique index violation',
+      message: 'a unique index already holds this key',
     });
+  });
+
+  test('a failure`s class never depends on what is bound: with every word of the backend`s message bound, the class stands and the sentence keeps nothing', () => {
+    for (const [name, code, message, failureClass, kept] of cases) {
+      const vendorError = vendor(code, message);
+      const everyWord = message.split(/[^\w.]+/).filter((word) => word.length > 0);
+      const boundValues = everyWord.reduce<{ [param: string]: unknown }>(
+        (all, word, index) => ({ ...all, [`p${index}`]: /^\d+$/.test(word) ? Number(word) : word }),
+        {}
+      );
+
+      const unbound = SpannerFailureText.summarize(vendorError);
+      const bound = SpannerFailureText.summarize(vendorError, boundValues);
+
+      expect({ name, failureClass: bound.failureClass }).toEqual({ name, failureClass });
+      expect({ name, failureClass: unbound.failureClass }).toEqual({ name, failureClass });
+      // A token the unbound sentence keeps is a bound value here, so the bound sentence drops it.
+      for (const token of kept.filter((token) => everyWord.includes(token))) {
+        expect(unbound.message).toContain(token);
+        expect(bound.message).not.toContain(token);
+      }
+      expect(JSON.stringify(bound)).not.toContain(VALUE);
+    }
   });
 
   test('an echo the backend cut short is struck like a whole one', () => {
