@@ -17,7 +17,7 @@ import { Logger } from '@proteinjs/logger';
  * throw is a `KnexOperationError` that carries no value however it is printed — its message, its
  * stack, its serialized form, its `util.inspect` rendering (what `console.*` and the default dev
  * log writer print, which follows a `cause` even when it is not enumerable) — with the vendor
- * error as its non-enumerable `vendorError` and the vendor codes copied for callers.
+ * error behind its `vendorError()` method and the vendor codes copied for callers.
  *
  * No server is needed: the REAL query layer and dialect run over a stub connection that rejects
  * the way the client library does (its own `format` builds the interpolated `sql`), so the
@@ -158,7 +158,7 @@ describe('A bound value never reaches a log line or a thrown error', () => {
     expect(outcome.sqlState).toBe('23000');
     expect(outcome.message).toBe('Failed when executing sql (ER_DUP_ENTRY, errno 1062)');
     // The vendor error rides for callers, out of a printer's reach: not enumerable, not a `cause`.
-    expect(outcome.vendorError.sqlMessage).toContain('Duplicate entry');
+    expect(outcome.vendorError().sqlMessage).toContain('Duplicate entry');
     expect(Object.keys(outcome)).not.toContain('vendorError');
     expect('cause' in outcome).toBe(false);
   });

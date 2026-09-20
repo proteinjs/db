@@ -1,3 +1,10 @@
+/**
+ * Each typed error's vendor error — held beside the instance, never on it, and not on the class
+ * either: nothing an inspection can walk from an error (its own properties, its prototype chain,
+ * a getter it runs) reaches this map.
+ */
+const VENDOR_ERRORS = new WeakMap<KnexOperationError, unknown>();
+
 /** The failure as a log line carries it: the error's name and the vendor's codes — never its text. */
 export type KnexOperationCauseSummary = { name?: string; code?: string; errno?: number; sqlState?: string };
 
@@ -13,17 +20,16 @@ export type KnexOperationCauseSummary = { name?: string; code?: string; errno?: 
  * error's message, stack and enumerable properties name what failed in the driver's words and the
  * vendor's CODES (`ER_DUP_ENTRY`, errno 1062), which are copied so callers keep branching on them.
  *
- * The vendor error itself is `vendorError` — for a caller that asks for it by name, and for
+ * The vendor error itself is `vendorError()` — for a caller that asks for it by name, and for
  * nothing else. It is deliberately NOT the standard `cause`: whatever prints an error follows
  * `cause` whether or not it is enumerable (`util.inspect` — so `console.*` and any log writer built
  * on it — appends `[cause]`; error reporters and generic handlers walk `error.cause.message`). It
- * is not a property of the instance at all (an accessor on the prototype over a private map), so
- * no serializer and no own-property walk reaches it, and the error renders itself under
- * `util.inspect`, whatever the options.
+ * is not a property of the instance, and it is a METHOD, never an accessor: no serializer and no
+ * own-property walk reaches it, and a printer that runs getters — `util.inspect(error, {
+ * customInspect: false, showHidden: true, getters: true })` walks the prototype's accessors and
+ * prints what they return — finds a function, which no printer calls.
  */
 export class KnexOperationError extends Error {
-  /** Each error's vendor error — held beside the instance, never on it (see the class doc). */
-  private static readonly VENDOR_ERRORS = new WeakMap<KnexOperationError, unknown>();
   readonly code?: string;
   readonly errno?: number;
   readonly sqlState?: string;
@@ -43,24 +49,22 @@ export class KnexOperationError extends Error {
     if (summary.sqlState !== undefined) {
       this.sqlState = summary.sqlState;
     }
-    KnexOperationError.VENDOR_ERRORS.set(this, vendorError);
+    VENDOR_ERRORS.set(this, vendorError);
   }
 
   /** The vendor error itself — raw; its `message`, `sql` and `sqlMessage` quote bound and row values. */
-  get vendorError(): unknown {
-    return KnexOperationError.VENDOR_ERRORS.get(this);
+  vendorError(): unknown {
+    return VENDOR_ERRORS.get(this);
   }
 
   /** The underlying failure as a log line carries it. */
   causeSummary(): KnexOperationCauseSummary {
-    return KnexOperationError.summarize(this.vendorError);
+    return KnexOperationError.summarize(this.vendorError());
   }
 
   /**
-   * What `util.inspect` prints for this error: the stack and the enumerable facts, nothing else.
-   * The stock rendering would not print `vendorError` either, but an inspection configured to show
-   * hidden properties and run getters walks the prototype's accessors and would; this rendering is
-   * the same under every option.
+   * What `util.inspect` prints for this error: the stack and the enumerable facts, nothing else,
+   * the same under every option that honours a custom rendering.
    */
   [Symbol.for('nodejs.util.inspect.custom')](
     _depth: number,

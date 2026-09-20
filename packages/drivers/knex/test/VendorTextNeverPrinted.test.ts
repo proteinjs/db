@@ -15,8 +15,9 @@ import { Logger } from '@proteinjs/logger';
  *
  * The contract: every rejection leaves the driver as a `KnexOperationError` — what failed in the
  * driver's words plus the vendor's CODES, each kept only in its constant form — with the vendor
- * error behind the `vendorError` accessor: not `cause`, not a property of the instance, and not
- * in any rendering of the error, whatever the inspection options.
+ * error behind the `vendorError()` method: not `cause`, not a property of the instance, not an
+ * accessor a printer could run, and not in any rendering of the error, whatever the inspection
+ * options — the error's own rendering switched off (`customInspect: false`) included.
  *
  * No server is needed: the REAL query layer and dialect run over a stub connection that rejects
  * the way the client library does.
@@ -36,6 +37,7 @@ const printed = (error: any): string => {
     String(error?.stack),
     inspect({ error }, { depth: 10, maxStringLength: null }),
     inspect(error, { depth: 10, maxStringLength: null, showHidden: true, getters: true }),
+    inspect(error, { depth: 10, maxStringLength: null, showHidden: true, getters: true, customInspect: false }),
     JSON.stringify(error) ?? '',
   ];
   for (let link = error?.cause, depth = 0; link && depth < 5; link = link.cause, depth++) {
@@ -143,8 +145,10 @@ describe('The vendor`s text never leaves the driver — schema operations and da
     expect(outcome.code).toBe('ER_DUP_ENTRY');
     expect(outcome.errno).toBe(1062);
     // The premise, and the one door left open: the vendor error quotes the value, for a caller that asks by name.
-    expect(outcome.vendorError.sqlMessage).toContain(VALUE);
+    expect(outcome.vendorError().sqlMessage).toContain(VALUE);
     expect(Object.getOwnPropertyNames(outcome)).not.toContain('vendorError');
+    // A method, never an accessor: a printer that runs getters finds a function, which it does not call.
+    expect(typeof Object.getOwnPropertyDescriptor(KnexOperationError.prototype, 'vendorError')?.value).toBe('function');
     expect('cause' in outcome).toBe(false);
   };
 
