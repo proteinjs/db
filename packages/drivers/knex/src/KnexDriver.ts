@@ -9,10 +9,14 @@ import {
   tableByName,
 } from '@proteinjs/db';
 import { KnexConfig } from './KnexConfig';
+import { KnexOperationError } from './KnexOperationError';
 import { Logger } from '@proteinjs/logger';
 import { Statement } from '@proteinjs/db-query';
 import { KnexSchemaOperations } from './KnexSchemaOperations';
 import { KnexColumnTypeFactory } from './KnexColumnTypeFactory';
+
+/** A bound parameter as a log line carries it (see KnexDriver.describeParams): never its value. */
+type ParamDescription = { type: string; length?: number; null?: true };
 
 /**
  * Knex driver (configured for MariaDb) for ProteinJs Db
@@ -160,9 +164,8 @@ export class KnexDriver implements DbDriver {
     try {
       const runner = transaction || this.getKnex();
       return (await runner.raw(sql, params as any))[0]; // returns 2 arrays, first is records, second is metadata per record
-    } catch (error: any) {
-      this.logger.error({ message: `Failed when executing sql`, obj: { sql }, error });
-      throw error;
+    } catch (error: unknown) {
+      throw this.operationFailure(sql, params, error);
     }
   }
 
@@ -184,5 +187,65 @@ export class KnexDriver implements DbDriver {
       const result = await fn(trx);
       return result;
     });
+  }
+
+  /**
+   * A statement's failure, logged ONCE and rethrown as the driver's typed error
+   * (`KnexOperationError`: the vendor's codes copied, the vendor error as its non-enumerable
+   * `vendorError`). The vendor error never reaches the logger or the caller as is — its message
+   * is the SQL with the bindings interpolated (see KnexOperationError) — so the line carries the
+   * SQL text (placeholders only), the parameters DESCRIBED (describeParams) and the failure's
+   * codes, and never a bound value.
+   */
+  private operationFailure(sql: string, params: Statement['params'], error: unknown): KnexOperationError {
+    const failure = error instanceof KnexOperationError ? error : new KnexOperationError(error);
+    this.logger.error({
+      message: `Failed when executing sql`,
+      error: failure,
+      obj: { sql, params: this.describeParams(params), cause: failure.causeSummary() },
+    });
+    return failure;
+  }
+
+  /**
+   * A statement's bound parameters as a LOG LINE carries them — the one owner of that form, for
+   * every line the driver writes about a statement, at every level: by position, the KIND of each
+   * value and, for strings, arrays and bytes, its LENGTH. Never a value: a parameter is row content
+   * (a presented token, a credential hash, an address), and a log line outlives and out-travels the
+   * row it came from. The SQL text beside it carries `?` placeholders only, so position + kind +
+   * length is what locates a failure (which parameter was null, which was oversized) without
+   * quoting it.
+   */
+  private describeParams(params?: Statement['params']): ParamDescription[] | undefined {
+    if (!params) {
+      return undefined;
+    }
+    return params.map((value) => {
+      const description: ParamDescription = { type: this.paramKind(value) };
+      if (typeof value === 'string' || Array.isArray(value) || value instanceof Uint8Array) {
+        description.length = value.length;
+      }
+      if (value === null || value === undefined) {
+        description.null = true;
+      }
+      return description;
+    });
+  }
+
+  /** The kind of a bound value — a word, never the value. */
+  private paramKind(value: unknown): string {
+    if (value === null || value === undefined) {
+      return 'null';
+    }
+    if (Array.isArray(value)) {
+      return 'array';
+    }
+    if (value instanceof Date) {
+      return 'date';
+    }
+    if (value instanceof Uint8Array) {
+      return 'bytes';
+    }
+    return typeof value;
   }
 }
