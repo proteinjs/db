@@ -1,0 +1,12 @@
+{
+  "branch": "fix/phone-reading-edge",
+  "packages": ["ui"],
+  "suites": [
+    "packages/ui/test/generatorPagesMobile.test.tsx",
+    "packages/ui/test/recordFormPageMobile.test.tsx",
+    "packages/ui/test/recordTablePageMobile.test.tsx",
+    "packages/ui/test/tablesPageMobile.test.tsx",
+    "packages/ui/test/recordPanels.test.tsx"
+  ],
+  "removes": []
+}
