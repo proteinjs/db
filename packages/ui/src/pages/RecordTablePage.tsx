@@ -3,6 +3,7 @@ import { Page, PageComponentProps, useFormFactor } from '@proteinjs/ui';
 import { tableByName, Table } from '@proteinjs/db';
 import { RecordTable } from '../table/RecordTable';
 import { adminScrollAffordances } from './adminScrollAffordances';
+import { PhoneFullBleed } from './PhoneFullBleed';
 import { Box, Paper, SxProps, Theme, Typography } from '@mui/material';
 
 export const recordTablePage: Page = {
@@ -56,16 +57,12 @@ const DynamicRecordTable = ({ urlParams }: PageComponentProps) => {
     }
 
     if (isPhone) {
-      // Full-bleed: the table IS the page below the shell chrome. flex-grow 1 + min-height 0
-      // against the shell's flex page column hand the table the rest of the viewport; its own
-      // scroll container carries the height (the desktop card's 80vh cap has no place here).
+      // Full-bleed: the table IS the page below the shell chrome; its own scroll container
+      // carries the height (the desktop card's 80vh cap has no place here).
       return (
-        <Box
-          data-phone-fullbleed
-          sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: 0, minWidth: 0, width: '100%' }}
-        >
+        <PhoneFullBleed content='table'>
           <RecordTable table={table} {...adminScrollAffordances} />
-        </Box>
+        </PhoneFullBleed>
       );
     }
 

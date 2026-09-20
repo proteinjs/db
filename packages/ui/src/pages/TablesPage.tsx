@@ -11,6 +11,7 @@ import {
 import { getTables, getDbService, Table } from '@proteinjs/db';
 import { recordTableLinkByName } from './RecordTablePage';
 import { adminScrollAffordances } from './adminScrollAffordances';
+import { PhoneFullBleed } from './PhoneFullBleed';
 import { Box, SxProps, Theme } from '@mui/material';
 
 export const tablesPage: Page = {
@@ -72,16 +73,9 @@ const Tables = () => {
   );
 
   if (isPhone) {
-    // Full-bleed: flex-grow 1 + min-height 0 against the shell's flex page column hand the
-    // table the rest of the viewport; its own scroll container carries the height.
-    return (
-      <Box
-        data-phone-fullbleed
-        sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: 0, minWidth: 0, width: '100%' }}
-      >
-        {table}
-      </Box>
-    );
+    // Full-bleed: the table takes the rest of the viewport; its own scroll container carries
+    // the height.
+    return <PhoneFullBleed content='table'>{table}</PhoneFullBleed>;
   }
 
   return (

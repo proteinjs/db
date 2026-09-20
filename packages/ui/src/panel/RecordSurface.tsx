@@ -4,6 +4,7 @@ import { FormPaper, useFormFactor } from '@proteinjs/ui';
 import { Record, Table } from '@proteinjs/db';
 import { RecordForm } from '../form/RecordForm';
 import { RecordPanel } from './RecordPanel';
+import { PhoneFullBleed } from '../pages/PhoneFullBleed';
 
 export type RecordSurfaceProps<T extends Record> = {
   table: Table<T>;
@@ -43,12 +44,12 @@ export function RecordSurface<T extends Record>({ table, record, panels, panelDa
 
   if (isPhone) {
     return (
-      <Box data-phone-fullbleed sx={{ flexGrow: 1, minHeight: 0, width: '100%', overflow: 'auto', padding: 2 }}>
+      <PhoneFullBleed content='form'>
         {form}
         <Box data-record-panels sx={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2 }}>
           {panelCards}
         </Box>
-      </Box>
+      </PhoneFullBleed>
     );
   }
 
