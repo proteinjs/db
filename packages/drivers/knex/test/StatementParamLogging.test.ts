@@ -15,7 +15,8 @@ import { CapturedLog, lineOf } from './util/printedLine';
  * DESCRIBED — each one's position, the kind of its value and, for strings, arrays and bytes, its
  * length; one private helper (`describeParams`) owns that form — and a summary of the failure (the
  * error's name, the vendor's codes, the server's own message). The vendor error itself no longer
- * rides the line.
+ * rides the line. (The dev-only switch that adds the values back is LogValuesSwitch.test.ts; it is
+ * off here.)
  *
  * THE LAW beside it: what the driver THROWS is untouched — the vendor's error itself, the same
  * object with the same message and properties a bare query-layer call rejects with. So a caller
@@ -157,6 +158,7 @@ describe('The driver never prints a bound value; what it throws is the vendor`s 
       sqlState: '23000',
       sqlMessage: `Duplicate entry '${ECHOED_KEY}' for key 'PRIMARY'`,
     });
+    expect(Object.keys(failure.obj)).not.toContain('paramValues');
     // The vendor error itself — the carrier of the interpolated SQL — is not on the line.
     expect(failure.error).toBeUndefined();
   });

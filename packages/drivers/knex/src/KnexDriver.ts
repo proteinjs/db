@@ -9,6 +9,7 @@ import {
   tableByName,
 } from '@proteinjs/db';
 import { KnexConfig } from './KnexConfig';
+import { KnexLogValues } from './KnexLogValues';
 import { Logger } from '@proteinjs/logger';
 import { Statement } from '@proteinjs/db-query';
 import { KnexSchemaOperations } from './KnexSchemaOperations';
@@ -202,7 +203,8 @@ export class KnexDriver implements DbDriver {
    * reaches. So the line carries the SQL text (placeholders only), the parameters DESCRIBED
    * (describeParams) and a summary of the failure: the error's name, the vendor's codes and the
    * server's own message (`sqlMessage` — which can itself quote a value, e.g. a colliding key; the
-   * driver prints it as it always has). The vendor error itself no longer rides the line.
+   * driver prints it as it always has). The vendor error itself, and the values as bound, ride
+   * the line only behind the dev-only switch (KnexLogValues).
    */
   private logFailure(sql: string, params: Statement['params'], error: unknown): void {
     this.logger.error({
@@ -210,8 +212,10 @@ export class KnexDriver implements DbDriver {
       obj: {
         sql,
         params: this.describeParams(params),
+        ...KnexLogValues.ofStatement(params),
         cause: this.causeSummary(error),
       },
+      ...KnexLogValues.ofFailure(error),
     });
   }
 
