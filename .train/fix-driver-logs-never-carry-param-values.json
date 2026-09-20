@@ -12,8 +12,11 @@
     "packages/drivers/spanner/test/DmlRetrySafety.test.ts",
     "packages/drivers/spanner/test/EnvTokenAuth.test.ts",
     "packages/drivers/spanner/test/TransactionRetrySignal.test.ts",
+    "packages/drivers/spanner/test/TransactionRetryParity.test.ts",
+    "packages/drivers/spanner/test/LogValuesSwitch.test.ts",
     "packages/drivers/knex/test/StatementParamLogging.test.ts",
-    "packages/drivers/knex/test/VendorTextNeverPrinted.test.ts"
+    "packages/drivers/knex/test/VendorTextNeverPrinted.test.ts",
+    "packages/drivers/knex/test/LogValuesSwitch.test.ts"
   ],
   "removes": []
 }
