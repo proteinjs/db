@@ -141,12 +141,14 @@ describe('the dev-only values switch: real values ride the driver`s failure line
     expect(facts(caught)).toEqual(baseline);
     // The description and the summary ride the line at every gate.
     expect(failure.obj.params).toEqual([{ type: 'string', length: VALUE.length }, { type: 'number' }]);
+    // The server's own message rides the summary only behind the switch.
     expect(failure.obj.cause).toEqual({
       name: 'Error',
       code: 'ER_NO_SUCH_TABLE',
       errno: 1146,
       sqlState: '42S02',
-      sqlMessage: `Table 'test.credential' doesn't exist`,
+      sentence: 'a table the statement names does not exist',
+      ...(on ? { sqlMessage: `Table 'test.credential' doesn't exist` } : {}),
     });
     if (!on) {
       for (const log of captured) {
