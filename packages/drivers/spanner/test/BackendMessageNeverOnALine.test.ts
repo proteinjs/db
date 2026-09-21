@@ -130,7 +130,7 @@ describe('the backend`s message never reaches a log line; the thrown error still
       expect(line.obj.cause).toEqual({
         code: 9,
         status: 'FAILED_PRECONDITION',
-        sentence: 'the statement cannot run against the database as it stands',
+        message: 'the statement cannot run against the database as it stands',
       });
       expect(line.error.message).toBe(
         `Failed when executing dml (FAILED_PRECONDITION, code 9) on INSERT ${TYPED_TABLE}: the statement cannot run against the database as it stands`
@@ -163,7 +163,7 @@ describe('the backend`s message never reaches a log line; the thrown error still
           expect(failure.obj.cause.message).toContain(headOf(value));
         } else {
           expect(callersLine.error).not.toBe(caught);
-          expect(Object.keys(failure.obj.cause)).not.toContain('message');
+          expect(failure.obj.cause.message).toBe('the statement cannot run against the database as it stands');
           for (const log of captured) {
             expect(lineOf(log)).not.toContain(headOf(value));
           }
@@ -180,6 +180,30 @@ describe('the backend`s message never reaches a log line; the thrown error still
     },
     30000
   );
+
+  test('the vendor error UNDER the typed one — what a caller reaches as `caught.cause` — rides no line either, logged on its own', async () => {
+    const value = valueFor('cause_alone');
+
+    const caught = (await settle(typedInsert({ ts: value }))) as Error & { cause: Error };
+
+    // The premise: the typed error's cause is the vendor's own error, and it carries the echo.
+    expect(caught.cause).toBeInstanceOf(Error);
+    expect(caught.cause).not.toBe(caught);
+    expect(String(caught.cause.message)).toContain(headOf(value));
+    captured = [];
+
+    callerLogger.error({ message: 'A caller`s line about the cause alone', error: caught.cause });
+    callerLogger.warn({ message: 'A caller`s line about the cause alone', obj: { cause: caught.cause } });
+
+    expect(captured).toHaveLength(2);
+    for (const log of captured) {
+      expect(lineOf(log)).not.toContain(headOf(value));
+    }
+    expect(captured[0].error.message).toBe(
+      'Failed when executing dml (FAILED_PRECONDITION, code 9): the statement cannot run against the database as it stands'
+    );
+    expect(captured[1].obj.cause.message).toBe(captured[0].error.message);
+  }, 30000);
 
   test('the same inside a transaction the driver runs', async () => {
     const value = valueFor('transaction');
@@ -362,7 +386,7 @@ describe('the backend`s message never reaches a log line — the doors only a st
       'Transaction failed: spanner transaction (DEADLINE_EXCEEDED, code 4): the call did not finish within its deadline'
     );
     const [budgetLine] = captured.filter((log) => /^Transaction retry budget exhausted/.test(log.message ?? ''));
-    expect(budgetLine.obj.cause).toEqual({ code: 10, status: 'ABORTED', sentence: 'the transaction was aborted' });
+    expect(budgetLine.obj.cause).toEqual({ code: 10, status: 'ABORTED', message: 'the transaction was aborted' });
   });
 
   test('a failure the client library raises around the body (no session, no transaction) is marked at the transaction`s door', async () => {
@@ -390,6 +414,29 @@ describe('the backend`s message never reaches a log line — the doors only a st
     );
   });
 
+  test('the driver`s own op-deadline error quotes nothing of the backend`s: it is not marked, and a line about it says what the driver said', async () => {
+    statics.SPANNER_DB = { run: () => new Promise(() => undefined) };
+    driver = new SpannerDriver({
+      projectId: 'fake',
+      instanceName: 'fake',
+      databaseName: 'fake',
+      operationDeadlineMs: 20,
+    });
+    (driver as unknown as { logger: Logger }).logger = capturing('SpannerDriver');
+
+    const caught = (await settle(
+      driver.runQuery(() => ({ sql: 'SELECT 1', namedParams: { params: {}, types: {} } }))
+    )) as Error & { cause: Error };
+    callerLogger.error({ message: 'A caller`s own line', error: caught, obj: { cause: caught.cause } });
+
+    expect(caught.message).toContain('exceeded its 20ms deadline');
+    const [callersLine] = captured.filter((log) => log.message === 'A caller`s own line');
+    expect(callersLine.error).toBe(caught);
+    expect(callersLine.obj.cause).toBe(caught.cause);
+    const [failure] = captured.filter((log) => log.message === 'Failed when executing query');
+    expect(failure.error).toBe(caught);
+  });
+
   test('a connectivity probe that fails: the line carries the status and the sentence', async () => {
     jest.useFakeTimers();
     try {
@@ -408,7 +455,7 @@ describe('the backend`s message never reaches a log line — the doors only a st
       expect(probeLines[0].obj.cause).toEqual({
         code: 14,
         status: 'UNAVAILABLE',
-        sentence: 'the database could not be reached',
+        message: 'the database could not be reached',
       });
       for (const log of captured) {
         expect(lineOf(log)).not.toContain(VALUE);
