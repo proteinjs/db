@@ -10,6 +10,7 @@ import {
 } from '@proteinjs/db';
 import { KnexConfig } from './KnexConfig';
 import { KnexLogValues } from './KnexLogValues';
+import { KnexFailureLine } from './KnexFailureLine';
 import { Logger } from '@proteinjs/logger';
 import { Statement } from '@proteinjs/db-query';
 import { KnexSchemaOperations } from './KnexSchemaOperations';
@@ -23,9 +24,6 @@ type ParamDescription = { type: string; length?: number; null?: true };
  * dictionary by entry name — or the one word for bindings that could not be read at all.
  */
 type ParamsDescription = ParamDescription[] | { [name: string]: ParamDescription } | 'unreadable';
-
-/** A failure as the log line carries it: the error's name, the vendor's codes and the server's own message. */
-type FailureCauseSummary = { name?: string; code?: string; errno?: number; sqlState?: string; sqlMessage?: string };
 
 /**
  * Knex driver (configured for MariaDb) for ProteinJs Db
@@ -174,6 +172,8 @@ export class KnexDriver implements DbDriver {
       const runner = transaction || this.getKnex();
       return (await runner.raw(sql, params as any))[0]; // returns 2 arrays, first is records, second is metadata per record
     } catch (error: unknown) {
+      // Rethrown as it is; marked, so no line about it — this driver's or a caller's — prints its text.
+      KnexFailureLine.mark(error, 'Failed when executing sql');
       this.logFailure(sql, params, error);
       throw error;
     }
@@ -193,10 +193,25 @@ export class KnexDriver implements DbDriver {
    * @returns the return value of the `fn`
    */
   async runTransaction<T>(fn: (transaction: Transaction) => Promise<T>): Promise<T> {
-    return await this.getKnex().transaction(async (trx) => {
-      const result = await fn(trx);
-      return result;
-    });
+    const bodyErrors = new Set<unknown>();
+    try {
+      return await this.getKnex().transaction(async (trx) => {
+        try {
+          return await fn(trx);
+        } catch (error: unknown) {
+          bodyErrors.add(error);
+          throw error;
+        }
+      });
+    } catch (error: unknown) {
+      // What the BODY threw is the caller's own error, or a failure already marked at the
+      // statement's door. Anything else was raised around the body — beginning, committing —
+      // and words itself as the vendor did. Rethrown as it is, either way.
+      if (!bodyErrors.has(error)) {
+        KnexFailureLine.mark(error, 'Transaction failed');
+      }
+      throw error;
+    }
   }
 
   /**
@@ -226,7 +241,7 @@ export class KnexDriver implements DbDriver {
           sql,
           params: this.describeParams(params),
           ...KnexLogValues.ofStatement(params),
-          cause: this.causeSummary(error),
+          cause: KnexFailureLine.causeOf(error),
         },
         ...KnexLogValues.ofFailure(error),
       })
@@ -253,25 +268,6 @@ export class KnexDriver implements DbDriver {
         // The logger itself is what failed: nothing is left to write with, and nothing here may throw.
       }
     }
-  }
-
-  /**
-   * The name, codes and server message of any thrown value — never the query layer's rewritten
-   * `message` or `sql`. Total: a fact that cannot be read (vendorFact) is left out.
-   */
-  private causeSummary(error: unknown): FailureCauseSummary {
-    const name = this.vendorFact(error, 'name');
-    const code = this.vendorFact(error, 'code');
-    const errno = this.vendorFact(error, 'errno');
-    const sqlState = this.vendorFact(error, 'sqlState');
-    const sqlMessage = this.vendorFact(error, 'sqlMessage');
-    return {
-      ...(typeof name === 'string' ? { name } : {}),
-      ...(typeof code === 'string' ? { code } : {}),
-      ...(typeof errno === 'number' ? { errno } : {}),
-      ...(typeof sqlState === 'string' ? { sqlState } : {}),
-      ...(typeof sqlMessage === 'string' ? { sqlMessage } : {}),
-    };
   }
 
   /**
@@ -364,14 +360,5 @@ export class KnexDriver implements DbDriver {
     }
     const prototype = Object.getPrototypeOf(params);
     return prototype === null || Object.getPrototypeOf(prototype) === null;
-  }
-
-  /** One fact of a thrown value, or nothing when it cannot be read (nothing thrown, a scalar, a throwing accessor). */
-  private vendorFact(error: unknown, fact: keyof FailureCauseSummary): unknown {
-    try {
-      return (error as { [fact: string]: unknown } | null | undefined)?.[fact];
-    } catch {
-      return undefined;
-    }
   }
 }

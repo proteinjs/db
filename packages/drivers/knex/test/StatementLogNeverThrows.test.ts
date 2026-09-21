@@ -1,6 +1,6 @@
 import knex from 'knex';
 import { inspect } from 'util';
-import { KnexDriver } from '@proteinjs/db-driver-knex';
+import { KnexDriver, KnexFailureLine } from '@proteinjs/db-driver-knex';
 import { Logger } from '@proteinjs/logger';
 import { CapturedLog, lineOf } from './util/printedLine';
 
@@ -12,7 +12,7 @@ import { CapturedLog, lineOf } from './util/printedLine';
  *
  * Two layers hold that, and this suite holds both:
  *
- *  - the helpers that build the line (`describeParams`, `causeSummary`) are TOTAL: whatever they
+ *  - the helpers that build the line (`describeParams`, `KnexFailureLine.causeOf`) are TOTAL: whatever they
  *    are handed — positional bindings, a bindings dictionary, nothing, null, a scalar, a Map, a
  *    value whose accessor or `toJSON` throws, a proxy that refuses everything — they return a
  *    description and never a value;
@@ -34,7 +34,6 @@ type ParamsDescription = ParamDescription[] | { [name: string]: ParamDescription
 type DriverInternals = {
   logger: Logger;
   describeParams: (params?: unknown) => ParamsDescription | undefined;
-  causeSummary: (error: unknown) => { [fact: string]: unknown };
 };
 type DriverStatics = { KNEX?: unknown };
 
@@ -164,13 +163,8 @@ describe('describeParams is total: any bindings, a description, never a value', 
   });
 });
 
-describe('causeSummary is total: anything thrown, a summary of codes, never the rewritten message', () => {
-  const internals = new KnexDriver({
-    host: 'localhost',
-    user: 'root',
-    password: '',
-    dbName: 'test',
-  }) as unknown as DriverInternals;
+describe('KnexFailureLine.causeOf is total: anything thrown, a summary of codes and the driver`s sentence, never the vendor`s text', () => {
+  const UNNAMED = 'the database refused the statement';
   const vendorFacts = {
     code: 'ER_NO_SUCH_TABLE',
     errno: 1146,
@@ -182,27 +176,37 @@ describe('causeSummary is total: anything thrown, a summary of codes, never the 
     [
       'a vendor error whose message and sql carry the bindings',
       () => Object.assign(new Error(`insert ... '${CANARY}'`), vendorFacts, { sql: `insert ... '${CANARY}'` }),
-      { name: 'Error', ...vendorFacts },
+      {
+        name: 'Error',
+        code: 'ER_NO_SUCH_TABLE',
+        errno: 1146,
+        sqlState: '42S02',
+        sentence: 'a table the statement names does not exist',
+      },
     ],
-    ['nothing', () => undefined, {}],
-    ['null', () => null, {}],
-    ['a thrown string', () => CANARY, {}],
-    ['a thrown number', () => 1146, {}],
-    ['facts of the wrong kind', () => ({ name: 5, code: 1146, errno: '1146', sqlState: null, sqlMessage: {} }), {}],
+    ['nothing', () => undefined, { sentence: UNNAMED }],
+    ['null', () => null, { sentence: UNNAMED }],
+    ['a thrown string', () => CANARY, { sentence: UNNAMED }],
+    ['a thrown number', () => 1146, { sentence: UNNAMED }],
+    [
+      'facts of the wrong kind',
+      () => ({ name: 5, code: 1146, errno: '1146', sqlState: null, sqlMessage: {} }),
+      { sentence: UNNAMED },
+    ],
     [
       'an error with a fact whose accessor throws',
       () => throwingEntry(Object.assign(new Error(CANARY), vendorFacts), 'code'),
-      { name: 'Error', errno: 1146, sqlState: '42S02', sqlMessage: vendorFacts.sqlMessage },
+      { name: 'Error', errno: 1146, sqlState: '42S02', sentence: UNNAMED },
     ],
-    ['an error that refuses every read', () => refusesEverything(new Error(CANARY)), {}],
-    ['a revoked error', () => revoked(new Error(CANARY)), {}],
+    ['an error that refuses every read', () => refusesEverything(new Error(CANARY)), { sentence: UNNAMED }],
+    ['a revoked error', () => revoked(new Error(CANARY)), { sentence: UNNAMED }],
   ];
 
   test.each(THROWN)('%s', (_shape, thrown, expected) => {
     let summary: { [fact: string]: unknown } | undefined;
 
     expect(() => {
-      summary = internals.causeSummary(thrown());
+      summary = KnexFailureLine.causeOf(thrown());
     }).not.toThrow();
 
     expect(summary).toEqual(expected);
