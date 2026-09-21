@@ -214,14 +214,19 @@ describe('Batched DDL', () => {
     const logErrorSpy = jest.spyOn(Logger.prototype, 'error');
     await expect(spannerDriver.runUpdateSchema(statements)).rejects.toThrow(/uniqueness violation/);
 
-    // The failure LOG must carry the backend's reason too. Apply-phase LRO errors put it in
-    // `error.message` and leave `error.details` UNDEFINED — logging details alone records an
-    // empty reason for exactly the failure class that leaves partial schema state behind.
+    // The failure LOG names the status, the driver's sentence and the statements. The backend's
+    // reason stays on the thrown error (above): a failed backfill quotes the row it met, so it
+    // rides the line only behind the dev-only values switch (SpannerFailureLine).
     const failureLog = logErrorSpy.mock.calls.find(
       ([entry]) => entry.message === 'Failed when executing schema update'
     );
     expect(failureLog).toBeDefined();
-    expect(String((failureLog![0].obj as { errorDetails?: unknown }).errorDetails)).toMatch(/uniqueness violation/);
+    expect((failureLog![0].obj as { cause?: unknown }).cause).toEqual({
+      code: 9,
+      status: 'FAILED_PRECONDITION',
+      sentence: 'the statement cannot run against the database as it stands',
+    });
+    expect((failureLog![0].obj as { statements?: unknown }).statements).toEqual(statements);
 
     // Honest partial-failure semantics of the apply phase: NOT atomic. Statement 1 stays
     // applied; statement 3, ordered after the failure, is cancelled.
