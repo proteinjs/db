@@ -29,6 +29,8 @@ export const tableManagerTests = (
     alterColumnName?: boolean;
     alterColumnTypes?: boolean;
     alterNullableConstraint?: boolean;
+    /** The driver does not create descending index keys: it must REFUSE the declaration by name. */
+    descendingIndexes?: boolean;
   }
 ) => {
   return () => {
@@ -42,7 +44,7 @@ export const tableManagerTests = (
       await dropTable(tableManagerTestTables.ColumnTypes);
       await dropTable(tableManagerTestTables.User);
       await dropTable(tableManagerTestTables.MappedIndexUser);
-      await dropTable(tableManagerTestTables.FeedEntry);
+      await dropTable(new FeedEntryTable());
     });
 
     test('create primary key', async () => {
@@ -542,7 +544,29 @@ export const tableManagerTests = (
       expect(JSON.stringify(indexes['db_test_user_active_email_index'])).toBeFalsy();
     });
 
+    test('a driver that does not create descending index keys refuses the declaration by name — never an index that ignores the direction', async () => {
+      if (!excludedTests?.descendingIndexes) {
+        return;
+      }
+
+      // The table manager reports a failed create in its own words (an Error or a string, by
+      // driver): read the refusal whichever way it arrives.
+      const refusal = await tableManager.loadTable(new FeedEntryTable()).then(
+        () => undefined,
+        (reason: unknown) => String((reason as { message?: string })?.message ?? reason)
+      );
+      expect(refusal).toMatch(/declares descending columns/);
+      // An all-ascending table is untouched by the refusal, and reports no descending column.
+      const userTable = new UserTestTable();
+      await tableManager.loadTable(userTable);
+      expect(await tableManager.schemaMetadata.getDescendingIndexColumns(userTable)).toEqual({});
+    });
+
     test('creates an index with a descending key column; an all-ascending index reports none', async () => {
+      if (excludedTests?.descendingIndexes) {
+        return;
+      }
+
       const feedTable = new FeedEntryTable();
       await tableManager.loadTable(feedTable);
       const indexes = await tableManager.schemaMetadata.getIndexes(feedTable);
@@ -556,6 +580,10 @@ export const tableManagerTests = (
     });
 
     test("a declared direction is part of an index's identity: changing it replaces the index; an unchanged one is left alone", async () => {
+      if (excludedTests?.descendingIndexes) {
+        return;
+      }
+
       const feedTable = new FeedEntryTable();
       feedTable.indexes = [{ name: 'db_test_tm_feed_entry_owner_posted_index', columns: ['owner', 'postedOn'] }];
       await tableManager.loadTable(feedTable);
@@ -584,6 +612,10 @@ export const tableManagerTests = (
     });
 
     test('a descending column that is not one of the index key columns is refused by name', async () => {
+      if (excludedTests?.descendingIndexes) {
+        return;
+      }
+
       const feedTable = new FeedEntryTable();
       await tableManager.loadTable(feedTable);
       feedTable.indexes = [{ name: 'db_test_tm_feed_entry_owner_index', columns: ['owner'], descending: ['postedOn'] }];

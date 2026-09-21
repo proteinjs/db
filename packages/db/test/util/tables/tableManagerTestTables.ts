@@ -38,7 +38,12 @@ export interface FeedEntry extends Record {
   postedOn: Date;
 }
 
-/** A newest-first feed: the index stores `posted_on` DESCENDING within an owner. */
+/**
+ * A newest-first feed: the index stores `posted_on` DESCENDING within an owner. NOT in
+ * `tableManagerTestTables`: every reusable suite loads that registry on every driver, and a driver
+ * that does not create descending keys refuses this table by name — the table-manager suite loads
+ * it itself, in the tests that are about it.
+ */
 export class FeedEntryTable extends Table<FeedEntry> {
   name = 'db_test_tm_feed_entry';
   columns: Table<FeedEntry>['columns'] = withRecordColumns<FeedEntry>({
@@ -111,6 +116,5 @@ export class ColumnTypesTable extends Table<ColumnTypes> {
 export const tableManagerTestTables = {
   User: new UserTestTable() as Table<User>,
   MappedIndexUser: new MappedIndexUserTable() as Table<MappedIndexUser>,
-  FeedEntry: new FeedEntryTable() as Table<FeedEntry>,
   ColumnTypes: new ColumnTypesTable() as Table<ColumnTypes>,
 };

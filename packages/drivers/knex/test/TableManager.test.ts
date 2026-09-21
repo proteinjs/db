@@ -13,5 +13,9 @@ const knexDriver = new KnexDriver({
 
 describe(
   'Table Manager Tests',
-  tableManagerTests(knexDriver, getDropTestTable(knexDriver), new KnexColumnTypeFactory().getType)
+  tableManagerTests(knexDriver, getDropTestTable(knexDriver), new KnexColumnTypeFactory().getType, {
+    // This driver's schema builder creates ascending keys only: it refuses a descending declaration
+    // by name, and the reusable suite proves the refusal in place of the descending-index tests.
+    descendingIndexes: true,
+  })
 );
