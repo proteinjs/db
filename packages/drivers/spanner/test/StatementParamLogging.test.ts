@@ -22,16 +22,11 @@ import '../generated/test/index';
  * site — and any future one — shares it. (The dev-only switch that adds the values back is
  * LogValuesSwitch.test.ts; it is off here.)
  *
- * SCOPE, by name: this suite holds what the DRIVER prints of the parameters it was handed. It does
- * NOT hold the vendor-echo class — the backend's own error text can quote a bound value (a
- * colliding key: `Row {String("…")} already exists`; an unparsable one: `Bad int64 value: …`), and
- * that text reaches the failure line's cause summary and the thrown error exactly as it did before
- * this contract (quoted, braced and bracketed spans masked in the summary and the message; the raw
- * text on the error's `cause`). Closing that class means changing what the driver THROWS, which
- * moves the client library's transaction retries; that work is parked on the branch
- * `fix/driver-logs-never-carry-param-values`, pending a decision. So the canaries below are bound
- * to parameters the backend does not echo, and the one value it does echo — the colliding key — is
- * left out of the assertions on purpose.
+ * SCOPE, by name: this suite holds what the DRIVER prints of the parameters it was handed. The
+ * vendor-echo class — the backend's own error text quoting a bound value (a colliding key: `Row
+ * {String("…")} already exists`; an unparsable one: `Bad int64 value: …`) — is
+ * BackendMessageNeverOnALine.test.ts: that text stays on the thrown error, where the client
+ * library's transaction runner reads it, and rides no line.
  *
  * The lines are captured at the log WRITER (what actually leaves the driver), with the driver's
  * logger at debug level, and judged as the text a writer would print (printedLine.ts): the

@@ -29,7 +29,7 @@ export type SpannerOperationKind = 'query' | 'dml';
  */
 export type StatementShape = { operation: string; table?: string };
 
-/** The underlying failure, summarized for a log line: the gRPC code, its name, the vendor message (values masked). */
+/** The underlying failure, summarized for this error's MESSAGE: the gRPC code, its name, the vendor message (values masked). */
 export type OperationCauseSummary = { code?: number; status?: string; message: string };
 
 /** Free text that reaches a log line or an error message is one line and bounded. */
@@ -104,6 +104,19 @@ export class SpannerOperationError extends Error {
     };
   }
 
+  /**
+   * What failed, in the driver's own words and nothing of the backend's: the operation, the
+   * status of `cause` (any thrown value that carries a gRPC `code`) and the statement's verb and
+   * table — `Failed when executing dml (ALREADY_EXISTS, code 6) on INSERT ledger`. The opening
+   * of this error's message, and the whole of what a log line says of it (SpannerFailureLine).
+   */
+  static headline(operation: SpannerOperationKind, statement: StatementShape, cause: unknown): string {
+    const summary = SpannerOperationError.summarize(cause);
+    const status = summary.status ? ` (${summary.status}, code ${summary.code})` : '';
+    const target = statement.table ? `${statement.operation} ${statement.table}` : statement.operation;
+    return `Failed when executing ${operation}${status} on ${target}`;
+  }
+
   /** Quoted strings, bracketed/braced keys and long numbers → placeholders; one bounded line. */
   static maskValues(text: string): string {
     return String(text ?? '')
@@ -143,9 +156,7 @@ export class SpannerOperationError extends Error {
   }
 
   private static describe(operation: SpannerOperationKind, statement: StatementShape, cause: unknown): string {
-    const summary = SpannerOperationError.summarize(cause);
-    const status = summary.status ? ` (${summary.status}, code ${summary.code})` : '';
-    const target = statement.table ? `${statement.operation} ${statement.table}` : statement.operation;
-    return `Failed when executing ${operation}${status} on ${target}: ${summary.message}`;
+    const headline = SpannerOperationError.headline(operation, statement, cause);
+    return `${headline}: ${SpannerOperationError.summarize(cause).message}`;
   }
 }
