@@ -135,4 +135,24 @@ export class SchemaMetadata {
 
     return indexes;
   }
+
+  /**
+   * The DESCENDING key columns of each index that has any (index name → column names); an index
+   * stored all-ascending has no entry. Read beside `getIndexes` by the schema diff, so a declared
+   * direction is part of what makes an index the same index.
+   */
+  async getDescendingIndexColumns(table: Table<any>): Promise<{ [keyName: string]: string[] }> {
+    const qb = new QueryBuilder('STATISTICS')
+      .condition({ field: 'TABLE_SCHEMA', operator: '=', value: this.dbDriver.getDbName() })
+      .condition({ field: 'TABLE_NAME', operator: '=', value: table.name })
+      .condition({ field: 'COLLATION', operator: '=', value: 'D' });
+    const generateStatement = (config: ParameterizationConfig) => qb.toSql({ dbName: 'INFORMATION_SCHEMA', ...config });
+    const results: any[] = await this.dbDriver.runQuery(generateStatement);
+    const descending: { [keyName: string]: string[] } = {};
+    for (const row of results) {
+      (descending[row['INDEX_NAME']] ??= []).push(row['COLUMN_NAME']);
+    }
+
+    return descending;
+  }
 }

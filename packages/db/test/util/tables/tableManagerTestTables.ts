@@ -33,6 +33,23 @@ export class UserTestTable extends Table<User> {
   ];
 }
 
+export interface FeedEntry extends Record {
+  owner: string;
+  postedOn: Date;
+}
+
+/** A newest-first feed: the index stores `posted_on` DESCENDING within an owner. */
+export class FeedEntryTable extends Table<FeedEntry> {
+  name = 'db_test_tm_feed_entry';
+  columns: Table<FeedEntry>['columns'] = withRecordColumns<FeedEntry>({
+    owner: new StringColumn('owner'),
+    postedOn: new DateColumn('posted_on'),
+  });
+  indexes: Table<FeedEntry>['indexes'] = [
+    { name: 'db_test_tm_feed_entry_owner_posted_index', columns: ['owner', 'postedOn'], descending: ['postedOn'] },
+  ];
+}
+
 export interface MappedIndexUser extends Record {
   emailAddress: string;
   accountStatus: string;
@@ -94,5 +111,6 @@ export class ColumnTypesTable extends Table<ColumnTypes> {
 export const tableManagerTestTables = {
   User: new UserTestTable() as Table<User>,
   MappedIndexUser: new MappedIndexUserTable() as Table<MappedIndexUser>,
+  FeedEntry: new FeedEntryTable() as Table<FeedEntry>,
   ColumnTypes: new ColumnTypesTable() as Table<ColumnTypes>,
 };

@@ -30,6 +30,8 @@ interface Index {
   name?: string;
   columns: string | string[];
   unique?: boolean;
+  /** The key columns stored in DESCENDING order (column names, a subset of `columns`); the rest ascend. */
+  descending?: string[];
 }
 
 interface ForeignKey {

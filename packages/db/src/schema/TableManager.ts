@@ -456,6 +456,7 @@ export class TableManager {
 
   private async getIndexOperations(table: Table<any>) {
     const existingIndexes = await this.schemaMetadata.getIndexes(table);
+    const existingDescending = await this.schemaMetadata.getDescendingIndexColumns(table);
     const indexesToDrop: {
       name?: string;
       columns: string | string[];
@@ -465,29 +466,44 @@ export class TableManager {
       name?: string;
       columns: string | string[];
       unique?: boolean;
+      descending?: string[];
     }[] = [];
-    const currentIndexMap: { [serializedColumns: string]: boolean } = {};
-    const existingIndexMap: { [serializedColumns: string]: boolean } = {};
+    const currentIndexMap: { [serializedIndex: string]: boolean } = {};
+    const existingIndexMap: { [serializedIndex: string]: boolean } = {};
     for (const keyName in existingIndexes) {
-      existingIndexMap[JSON.stringify(existingIndexes[keyName])] = true;
+      existingIndexMap[this.serializeIndexKey(existingIndexes[keyName], existingDescending[keyName])] = true;
     }
 
     if (table.indexes) {
       for (const index of table.indexes) {
         const columns = index.columns.map((x) => table.columns[x as string]!.name);
-        const serializedColumns = JSON.stringify(columns);
-        currentIndexMap[serializedColumns] = true;
-        if (!existingIndexMap[serializedColumns]) {
-          indexesToCreate.push({ name: index.name, columns, unique: index.unique });
+        const descending = (index.descending ?? []).map((x) => table.columns[x as string]!.name);
+        const undeclared = descending.filter((column) => !columns.includes(column));
+        if (undeclared.length > 0) {
+          throw new Error(
+            `(${table.name}) Index ${index.name ?? JSON.stringify(columns)} declares descending column(s) ` +
+              `${JSON.stringify(undeclared)} that are not among its key columns`
+          );
+        }
+
+        const serializedIndex = this.serializeIndexKey(columns, descending);
+        currentIndexMap[serializedIndex] = true;
+        if (!existingIndexMap[serializedIndex]) {
+          indexesToCreate.push({
+            name: index.name,
+            columns,
+            unique: index.unique,
+            ...(descending.length > 0 ? { descending } : {}),
+          });
         }
       }
     }
 
     for (const keyName in existingIndexes) {
       const existingIndex = existingIndexes[keyName];
-      const serializedColumns = JSON.stringify(existingIndex);
+      const serializedIndex = this.serializeIndexKey(existingIndex, existingDescending[keyName]);
       if (
-        !currentIndexMap[serializedColumns] &&
+        !currentIndexMap[serializedIndex] &&
         keyName != 'PRIMARY' &&
         keyName != 'PRIMARY_KEY' &&
         !keyName.endsWith('_unique') &&
@@ -499,6 +515,15 @@ export class TableManager {
     }
 
     return { indexesToCreate, indexesToDrop };
+  }
+
+  /**
+   * An index's identity for the schema diff: its key columns in order, each with its direction. An
+   * all-ascending index serializes to its bare column list, so a declared direction is the only
+   * thing that can tell two indexes over the same columns apart.
+   */
+  private serializeIndexKey(columns: string[], descending: string[] = []): string {
+    return JSON.stringify(columns.map((column) => (descending.includes(column) ? `${column} DESC` : column)));
   }
 
   /**

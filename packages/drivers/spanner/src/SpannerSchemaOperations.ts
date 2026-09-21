@@ -176,9 +176,14 @@ export class SpannerSchemaOperations implements SchemaOperations {
   }
 
   private createTableStatements(table: Table<any>): string[] {
-    const indexes: { name?: string; columns: string[]; unique?: boolean }[] = [];
-    for (const { name, columns, unique } of table.indexes) {
-      indexes.push({ name, columns: columns.map((x) => table.columns[x as string]!.name), unique });
+    const indexes: { name?: string; columns: string[]; unique?: boolean; descending?: string[] }[] = [];
+    for (const { name, columns, unique, descending } of table.indexes) {
+      indexes.push({
+        name,
+        columns: columns.map((x) => table.columns[x as string]!.name),
+        unique,
+        ...(descending?.length ? { descending: descending.map((x) => table.columns[x as string]!.name) } : {}),
+      });
     }
 
     const serializedColumns: { name: string; type: string; nullable?: boolean }[] = [];

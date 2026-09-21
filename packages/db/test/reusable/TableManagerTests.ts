@@ -14,6 +14,7 @@ import {
 import { DbTestEnvironment } from '../util/DbTestEnvironment';
 import {
   ColumnTypesTable,
+  FeedEntryTable,
   MappedIndexUser,
   MappedIndexUserTable,
   tableManagerTestTables,
@@ -41,6 +42,7 @@ export const tableManagerTests = (
       await dropTable(tableManagerTestTables.ColumnTypes);
       await dropTable(tableManagerTestTables.User);
       await dropTable(tableManagerTestTables.MappedIndexUser);
+      await dropTable(tableManagerTestTables.FeedEntry);
     });
 
     test('create primary key', async () => {
@@ -538,6 +540,54 @@ export const tableManagerTests = (
       expect(JSON.stringify(indexes['db_test_user_email_index'])).toBe(JSON.stringify(['email']));
       expect(JSON.stringify(indexes['db_test_user_active_name_index'])).toBe(JSON.stringify(['active', 'name']));
       expect(JSON.stringify(indexes['db_test_user_active_email_index'])).toBeFalsy();
+    });
+
+    test('creates an index with a descending key column; an all-ascending index reports none', async () => {
+      const feedTable = new FeedEntryTable();
+      await tableManager.loadTable(feedTable);
+      const indexes = await tableManager.schemaMetadata.getIndexes(feedTable);
+      expect(indexes['db_test_tm_feed_entry_owner_posted_index']).toEqual(['owner', 'posted_on']);
+      const descending = await tableManager.schemaMetadata.getDescendingIndexColumns(feedTable);
+      expect(descending['db_test_tm_feed_entry_owner_posted_index']).toEqual(['posted_on']);
+
+      const userTable = new UserTestTable();
+      await tableManager.loadTable(userTable);
+      expect(await tableManager.schemaMetadata.getDescendingIndexColumns(userTable)).toEqual({});
+    });
+
+    test("a declared direction is part of an index's identity: changing it replaces the index; an unchanged one is left alone", async () => {
+      const feedTable = new FeedEntryTable();
+      feedTable.indexes = [{ name: 'db_test_tm_feed_entry_owner_posted_index', columns: ['owner', 'postedOn'] }];
+      await tableManager.loadTable(feedTable);
+      expect(await tableManager.schemaMetadata.getDescendingIndexColumns(feedTable)).toEqual({});
+
+      // Same columns, now newest-first: the ascending index goes and the descending one takes its place.
+      feedTable.indexes = [
+        { name: 'db_test_tm_feed_entry_owner_posted_index', columns: ['owner', 'postedOn'], descending: ['postedOn'] },
+      ];
+      await tableManager.loadTable(feedTable);
+      expect(await tableManager.schemaMetadata.getIndexes(feedTable)).toMatchObject({
+        db_test_tm_feed_entry_owner_posted_index: ['owner', 'posted_on'],
+      });
+      expect(await tableManager.schemaMetadata.getDescendingIndexColumns(feedTable)).toEqual({
+        db_test_tm_feed_entry_owner_posted_index: ['posted_on'],
+      });
+
+      // Loading the same declaration again changes nothing.
+      const changes = await (
+        tableManager as unknown as {
+          getTableChanges(table: Table<any>): Promise<{ indexesToCreate: unknown[]; indexesToDrop: unknown[] }>;
+        }
+      ).getTableChanges(feedTable);
+      expect(changes.indexesToCreate).toEqual([]);
+      expect(changes.indexesToDrop).toEqual([]);
+    });
+
+    test('a descending column that is not one of the index key columns is refused by name', async () => {
+      const feedTable = new FeedEntryTable();
+      await tableManager.loadTable(feedTable);
+      feedTable.indexes = [{ name: 'db_test_tm_feed_entry_owner_index', columns: ['owner'], descending: ['postedOn'] }];
+      await expect(tableManager.loadTable(feedTable)).rejects.toThrow(/descending column\(s\) \["posted_on"\]/);
     });
   };
 };
