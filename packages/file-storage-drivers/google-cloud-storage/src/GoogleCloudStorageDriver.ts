@@ -23,16 +23,17 @@ const NETWORK_ERROR_CODES = ['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOU
 export class GoogleCloudStorageDriver implements FileStorageDriver {
   private storage: Storage;
   private bucketName: string;
+  private objectPrefix: string;
 
   constructor(config?: GoogleCloudStorageConfig) {
-    const { projectId, bucketName, storageOptions } = config ? config : this.getDefaultConfig();
+    const { projectId, bucketName, objectPrefix, storageOptions } = config ? config : this.getDefaultConfig();
     this.storage = new Storage({ ...storageOptions, projectId });
     this.bucketName = bucketName;
+    this.objectPrefix = objectPrefix ?? '';
   }
 
   async createFile(file: File, fileData: string): Promise<void> {
-    const bucket = this.storage.bucket(this.bucketName);
-    const gcsFile = bucket.file(file.id);
+    const gcsFile = this.object(file.id);
 
     // The GCS object stores the file's TRUE bytes (the interface string is base64 transport).
     // Raw bytes at rest are what make signed-URL serving correct: the browser reads the object
@@ -52,13 +53,13 @@ export class GoogleCloudStorageDriver implements FileStorageDriver {
   }
 
   async getFileData(fileId: string): Promise<string> {
-    const file = this.storage.bucket(this.bucketName).file(fileId);
+    const file = this.object(fileId);
     const [fileContent] = await this.guarded('getFileData', fileId, () => file.download());
     return fileContent.toString('base64');
   }
 
   async updateFileData(fileId: string, data: string): Promise<void> {
-    const gcsFile = this.storage.bucket(this.bucketName).file(fileId);
+    const gcsFile = this.object(fileId);
     const bytes = Buffer.from(data, 'base64');
 
     // Writing an object's bytes creates a new generation, and a new generation holds only the
@@ -86,7 +87,7 @@ export class GoogleCloudStorageDriver implements FileStorageDriver {
   }
 
   async updateFile(file: File): Promise<void> {
-    const gcsFile = this.storage.bucket(this.bucketName).file(file.id);
+    const gcsFile = this.object(file.id);
     await this.guarded('updateFile', file.id, () =>
       gcsFile.setMetadata({
         contentType: file.type,
@@ -100,7 +101,7 @@ export class GoogleCloudStorageDriver implements FileStorageDriver {
   }
 
   async getSignedUrl(fileId: string, options?: { ttlMs?: number }): Promise<string> {
-    const gcsFile = this.storage.bucket(this.bucketName).file(fileId);
+    const gcsFile = this.object(fileId);
     const [url] = await this.guarded('getSignedUrl', fileId, () =>
       gcsFile.getSignedUrl({
         version: 'v4',
@@ -112,10 +113,18 @@ export class GoogleCloudStorageDriver implements FileStorageDriver {
   }
 
   async deleteFile(fileId: string): Promise<void> {
-    const gcsFile = this.storage.bucket(this.bucketName).file(fileId);
+    const gcsFile = this.object(fileId);
     // ignoreNotFound implements the driver contract's idempotency: a retried row delete must not
     // wedge because a prior attempt already removed the blob. Every other failure throws loudly.
     await this.guarded('deleteFile', fileId, () => gcsFile.delete({ ignoreNotFound: true }));
+  }
+
+  /**
+   * THE one place an object's name is decided (`<objectPrefix><file id>`): every operation
+   * addresses its object through here, so a configured prefix holds for all of them or none.
+   */
+  private object(fileId: string) {
+    return this.storage.bucket(this.bucketName).file(`${this.objectPrefix}${fileId}`);
   }
 
   /**
