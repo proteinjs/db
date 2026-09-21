@@ -9,6 +9,13 @@ export const getDefaultGoogleCloudStorageConfigFactory = () =>
 export type GoogleCloudStorageConfig = {
   bucketName: string;
   projectId: string;
+  /**
+   * Prepended, verbatim, to the name of every object this driver writes, reads, signs or deletes
+   * (`<objectPrefix><file id>`). Lets several independent deployments share one bucket while each
+   * deployment's files stay listable and removable as a group. Include the separator yourself
+   * (`'deployment-a/'`). Unset: an object is named by the file id alone.
+   */
+  objectPrefix?: string;
   storageOptions?: StorageOptions;
 };
 

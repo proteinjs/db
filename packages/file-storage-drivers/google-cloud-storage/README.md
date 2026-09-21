@@ -34,3 +34,17 @@ export class FileStorageDriverFactory implements DefaultFileStorageDriverFactory
   }
 }
 ```
+
+## Sharing one bucket
+
+Set `objectPrefix` to keep the files of several independent deployments apart inside one bucket. Every object the driver writes, reads, signs or deletes is named `<objectPrefix><file id>`, so one deployment's files can be listed or removed as a group by their prefix. The prefix is used verbatim — include the separator yourself.
+
+```typescript
+new GoogleCloudStorageDriver({
+  projectId: 'your-project-id',
+  bucketName: 'your-bucket-name',
+  objectPrefix: 'deployment-a/',
+});
+```
+
+Leave it unset and an object is named by the file id alone. Changing the prefix of a deployment that already holds files does not move them.
