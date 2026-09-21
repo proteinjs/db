@@ -14,8 +14,8 @@ import { CapturedLog, lineOf } from './util/printedLine';
  * The contract: the failure line carries the SQL text (placeholders only), the parameters
  * DESCRIBED — each one's position, the kind of its value and, for strings, arrays and bytes, its
  * length; one private helper (`describeParams`) owns that form — and a summary of the failure (the
- * error's name, the vendor's codes, the server's own message). The vendor error itself no longer
- * rides the line. (The dev-only switch that adds the values back is LogValuesSwitch.test.ts; it is
+ * error's name, the vendor's codes, the driver's own sentence — KnexFailureLine). The vendor error
+ * itself no longer rides the line. (The dev-only switch that adds the values back is LogValuesSwitch.test.ts; it is
  * off here.) A statement's bindings are typed as an array, but the query layer also accepts a
  * bindings DICTIONARY (`:name` placeholders) and the driver forwards what it was handed: a
  * dictionary is described by entry name. (Every other shape the driver can be handed, and a log
@@ -26,13 +26,10 @@ import { CapturedLog, lineOf } from './util/printedLine';
  * that prints what it catches still prints the interpolated SQL; that is the query layer's
  * behaviour and this contract does not change it.
  *
- * SCOPE, by name: this suite holds what the DRIVER prints of the parameters it was handed. It does
- * NOT hold the vendor-echo class — the server's own message can quote a bound value (`Duplicate
- * entry '…' for key 'PRIMARY'`), and that text reaches the line's cause summary and the thrown
- * error exactly as it did before. Closing that class means changing what the driver throws; that
- * work is parked on the branch `fix/driver-logs-never-carry-param-values`, pending a decision. So
- * the canaries below are bound to parameters the server does not echo, and the one value it does
- * echo — the colliding key — is left out of the assertions on purpose.
+ * SCOPE, by name: this suite holds what the DRIVER prints of the parameters it was handed. The
+ * vendor-echo class — the server's own message quoting a bound value (`Duplicate entry '…' for key
+ * 'PRIMARY'`) — is VendorTextNeverOnALine.test.ts: no line carries the server's message, and a
+ * caller's line about the error it caught carries the driver's sentence in its place.
  *
  * No server is needed: the REAL query layer and dialect run over a stub connection that rejects
  * the way the client library does (its own `format` builds the interpolated `sql`), so the
@@ -140,11 +137,10 @@ describe('The driver never prints a bound value; what it throws is the vendor`s 
 
     const failures = captured.filter((log) => log.logLevel === 'error' && log.message === 'Failed when executing sql');
     expect(failures).toHaveLength(1);
-    // (`ECHOED_KEY` is NOT asserted: the server quotes the colliding key in its own message — the
-    // vendor-echo class this suite leaves out by name; see the header.)
     for (const log of captured) {
       expect(lineOf(log)).not.toContain(SECRET_TOKEN);
       expect(lineOf(log)).not.toContain(SECRET_EMAIL);
+      expect(lineOf(log)).not.toContain(ECHOED_KEY);
     }
     const [failure] = failures;
     expect(failure.obj.sql).toBe(INSERT);
@@ -160,7 +156,7 @@ describe('The driver never prints a bound value; what it throws is the vendor`s 
       code: 'ER_DUP_ENTRY',
       errno: 1062,
       sqlState: '23000',
-      sqlMessage: `Duplicate entry '${ECHOED_KEY}' for key 'PRIMARY'`,
+      sentence: 'a row with that key already exists',
     });
     expect(Object.keys(failure.obj)).not.toContain('paramValues');
     // The vendor error itself — the carrier of the interpolated SQL — is not on the line.
@@ -188,11 +184,10 @@ describe('The driver never prints a bound value; what it throws is the vendor`s 
     const failures = captured.filter((log) => log.logLevel === 'error');
     expect(failures).toHaveLength(1);
     expect(failures[0].obj.params).toEqual([{ type: 'string', length: SECRET_TOKEN.length }]);
-    // This statement's first binding IS the token, so the stub server echoes it: the summary's
-    // `sqlMessage` is the vendor-echo class. Everything else on the line is the driver's.
-    const { sqlMessage, ...ownFacts } = failures[0].obj.cause;
-    expect(sqlMessage).toContain(SECRET_TOKEN);
-    expect(lineOf({ ...failures[0], obj: { ...failures[0].obj, cause: ownFacts } })).not.toContain(SECRET_TOKEN);
+    // This statement's first binding IS the token, so the stub server echoes it in its own
+    // message — which no line carries.
+    expect(Object.keys(failures[0].obj.cause)).not.toContain('sqlMessage');
+    expect(lineOf(failures[0])).not.toContain(SECRET_TOKEN);
   });
 
   test('a failed statement inside a transaction: the same line, and the transaction rejects with the vendor`s error itself', async () => {
