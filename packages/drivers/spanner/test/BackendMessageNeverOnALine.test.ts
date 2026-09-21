@@ -414,6 +414,28 @@ describe('the backend`s message never reaches a log line — the doors only a st
     );
   });
 
+  test('the vendor error UNDER the env-token auth error, logged on its own: it is marked too', async () => {
+    statics.ENV_TOKEN_AUTH = { invalidate: () => undefined };
+    statics.SPANNER_DB = { run: () => Promise.reject(vendor(16, `16 UNAUTHENTICATED: bad token near ${VALUE}`)) };
+
+    const caught = (await settle(
+      driver.runQuery(() => ({ sql: 'SELECT 1', namedParams: { params: { id: VALUE }, types: { id: 'string' } } }))
+    )) as Error & { cause: Error };
+
+    expect((caught as Error).name).toBe('SpannerEnvTokenAuthError');
+    expect(String(caught.cause.message)).toContain(VALUE);
+    captured = [];
+    callerLogger.error({ message: 'A caller`s line about the cause alone', error: caught.cause });
+    callerLogger.warn({ message: 'A caller`s line about the cause alone', obj: { cause: caught.cause } });
+    expect(captured).toHaveLength(2);
+    for (const log of captured) {
+      expect(lineOf(log)).not.toContain(VALUE);
+    }
+    expect(captured[0].error.message).toBe(
+      'The env-delivered access token was rejected (UNAUTHENTICATED, code 16): the credentials of the caller were not accepted'
+    );
+  });
+
   test('the driver`s own op-deadline error quotes nothing of the backend`s: it is not marked, and a line about it says what the driver said', async () => {
     statics.SPANNER_DB = { run: () => new Promise(() => undefined) };
     driver = new SpannerDriver({
@@ -435,6 +457,37 @@ describe('the backend`s message never reaches a log line — the doors only a st
     expect(callersLine.obj.cause).toBe(caught.cause);
     const [failure] = captured.filter((log) => log.message === 'Failed when executing query');
     expect(failure.error).toBe(caught);
+  });
+
+  test('a background error of the session pool: the line carries the status, the sentence and the pool — nothing of the vendor`s', async () => {
+    const { EventEmitter } = require('events');
+    const { SpannerLivenessMonitor } = require('@proteinjs/db-driver-spanner');
+    const database = Object.assign(new EventEmitter(), {
+      pool_: { size: 3, available: 1, borrowed: 2, pendingCreation: 0, totalWaiters: 0 },
+    });
+    const monitor = new SpannerLivenessMonitor(database).start();
+    (monitor as { logger: Logger }).logger = capturing('SpannerLivenessMonitor');
+    jest.spyOn(monitor, 'verifyLiveness').mockResolvedValue(undefined);
+    try {
+      database.emit('error', vendor(14, `14 UNAVAILABLE: no route while sending ${VALUE}`));
+
+      const poolLines = captured.filter((log) =>
+        log.message?.startsWith('Spanner session pool emitted a background error')
+      );
+      expect(poolLines).toHaveLength(1);
+      expect(Object.keys(poolLines[0].obj).sort()).toEqual(['cause', 'pool']);
+      expect(poolLines[0].obj.cause).toEqual({
+        code: 14,
+        status: 'UNAVAILABLE',
+        message: 'the database could not be reached',
+      });
+      for (const log of captured) {
+        expect(lineOf(log)).not.toContain(VALUE);
+      }
+    } finally {
+      monitor.stop();
+      jest.restoreAllMocks();
+    }
   });
 
   test('a connectivity probe that fails: the line carries the status and the sentence', async () => {
