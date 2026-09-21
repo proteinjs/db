@@ -1,0 +1,10 @@
+{
+  "branch": "feat/descending-index",
+  "packages": ["query", "db", "drivers/spanner", "drivers/knex"],
+  "suites": [
+    "packages/query/test/CreateIndex.test.ts",
+    "packages/drivers/spanner/test/TableManager.test.ts",
+    "packages/drivers/knex/test/TableManager.test.ts"
+  ],
+  "removes": []
+}
