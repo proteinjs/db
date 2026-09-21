@@ -2,8 +2,13 @@ import { ErrorLine, LogLineErrors } from '@proteinjs/logger';
 import { GRPC_STATUS_NAMES, OperationCauseSummary, SpannerOperationError } from './SpannerOperationError';
 import { SpannerLogValues } from './SpannerLogValues';
 
-/** A failure as the driver's own line carries it under `cause`: the status and the driver's sentence. */
-export type FailureCause = { code?: number; status?: string; sentence: string };
+/**
+ * A failure as the driver's own line carries it under `cause`: the status, and as `message` the
+ * driver's sentence for it. The field NAMES are what readers of the line parse (an error-report
+ * pipeline reads `cause.code`, `cause.status` and `cause.message`): they do not change — what
+ * `message` holds does.
+ */
+export type FailureCause = Pick<OperationCauseSummary, 'code' | 'status' | 'message'>;
 
 /**
  * The ONE owner of how a failure of the backend reads on a LOG LINE: its gRPC status and a
@@ -21,9 +26,15 @@ export type FailureCause = { code?: number; status?: string; sentence: string };
  *
  * The backend's text rides a line only behind the dev-only values switch (SpannerLogValues —
  * what the backend echoes IS a bound value): with both gates open a marked error prints as it
- * is, and `causeOf` adds the backend's message. Asked at each line, like the switch itself.
+ * is, and `causeOf` carries the backend's message as its `message`. Asked at each line, like the
+ * switch itself.
+ *
+ * An error the DRIVER worded itself (its own op deadline) quotes nothing of the backend's: it is
+ * declared (`driverWorded`), and neither it nor the typed error that wraps it is ever marked —
+ * a line about it says what the driver said.
  */
 export class SpannerFailureLine {
+  private static readonly DRIVER_WORDED = new WeakSet<object>();
   private static readonly NO_STATUS = 'the failure carried no status code';
   private static readonly SENTENCES: { [code: number]: string } = {
     1: 'the call was cancelled',
@@ -54,7 +65,7 @@ export class SpannerFailureLine {
    * best: an error already marked keeps its line.
    */
   static mark<T>(error: T, what?: string, statusFrom: unknown = error): T {
-    if (!LogLineErrors.isMarked(error)) {
+    if (!SpannerFailureLine.isDriverWorded(error) && !LogLineErrors.isMarked(error)) {
       LogLineErrors.mark(error, () =>
         SpannerLogValues.enabled() ? undefined : SpannerFailureLine.lineOf(error, what, statusFrom)
       );
@@ -63,16 +74,27 @@ export class SpannerFailureLine {
   }
 
   /**
-   * The failure as the driver's own line carries it under `cause`: the status and the sentence —
-   * and, behind the values switch, the backend's message beside them.
+   * Declares `error` worded by the driver itself — nothing of the backend's is in it — and
+   * answers the same error: `mark` leaves it, and a typed operation error whose cause it is, to
+   * print as they are.
    */
-  static causeOf(error: unknown): FailureCause | (FailureCause & Pick<OperationCauseSummary, 'message'>) {
+  static driverWorded<T extends object>(error: T): T {
+    SpannerFailureLine.DRIVER_WORDED.add(error);
+    return error;
+  }
+
+  /**
+   * The failure as the driver's own line carries it under `cause`: the status, and as `message`
+   * the driver's sentence — behind the values switch, the backend's own message in its place.
+   */
+  static causeOf(error: unknown): FailureCause {
     const code = SpannerFailureLine.codeOf(error);
-    const cause: FailureCause = {
+    return {
       ...(code !== undefined ? { code, status: SpannerFailureLine.statusOf(code) } : {}),
-      sentence: SpannerFailureLine.sentenceOf(code),
+      message: SpannerLogValues.enabled()
+        ? SpannerOperationError.summarize(error).message
+        : SpannerFailureLine.sentenceOf(code),
     };
-    return SpannerLogValues.enabled() ? { ...cause, message: SpannerOperationError.summarize(error).message } : cause;
   }
 
   private static lineOf(error: unknown, what: string | undefined, statusFrom: unknown): ErrorLine {
@@ -92,6 +114,12 @@ export class SpannerFailureLine {
       sentence: `${what ?? 'The database call failed'}${named}: ${sentence}`,
       ...(status !== undefined ? { facts: { status } } : {}),
     };
+  }
+
+  private static isDriverWorded(error: unknown): boolean {
+    const worded = (each: unknown) =>
+      typeof each === 'object' && each !== null && SpannerFailureLine.DRIVER_WORDED.has(each);
+    return worded(error) || (error instanceof SpannerOperationError && worded(error.cause));
   }
 
   private static codeOf(error: unknown): number | undefined {

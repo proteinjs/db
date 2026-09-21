@@ -224,7 +224,7 @@ describe('Batched DDL', () => {
     expect((failureLog![0].obj as { cause?: unknown }).cause).toEqual({
       code: 9,
       status: 'FAILED_PRECONDITION',
-      sentence: 'the statement cannot run against the database as it stands',
+      message: 'the statement cannot run against the database as it stands',
     });
     expect((failureLog![0].obj as { statements?: unknown }).statements).toEqual(statements);
 

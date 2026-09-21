@@ -725,9 +725,12 @@ export class SpannerDriver implements DbDriver {
         // Deliberately no grpc `code` on this error: the liveness monitor's probe/exit
         // escalation stays owned by genuine grpc errors; hang-shaped death is owned by the
         // recycle counter.
+        // The driver's own words, nothing of the backend's: a line about it prints it as it is.
         reject(
-          new Error(
-            `Spanner op exceeded its ${deadlineMs}ms deadline: ${op} (configure via SpannerConfig.operationDeadlineMs)`
+          SpannerFailureLine.driverWorded(
+            new Error(
+              `Spanner op exceeded its ${deadlineMs}ms deadline: ${op} (configure via SpannerConfig.operationDeadlineMs)`
+            )
           )
         );
       }, deadlineMs);
