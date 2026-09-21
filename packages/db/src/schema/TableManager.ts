@@ -272,6 +272,10 @@ export class TableManager {
    * never calls it). Every outcome that reaches the intended-definition gate is logged LOUDLY at
    * WARN — tolerance fired (treated as applied) OR the re-read failed (genuine conflict / still
    * absent, re-throwing) — so an unexpected activation is visible in prod logs rather than silent.
+   * Each of those lines carries the ERROR itself (`obj.error`), never text copied out of it: the
+   * backend words a schema error itself and can quote row data in it (a failed backfill names the
+   * duplicate key), and only an error OBJECT can be recognized by the logger as one its driver
+   * marked to print as a status and a sentence (`LogLineErrors`).
    */
   private async reconcileConcurrentSchemaChange(tables: Table<any>[], error: unknown): Promise<void> {
     if (!this.schemaOperations.isAlreadyExistsError?.(error)) {
@@ -279,14 +283,14 @@ export class TableManager {
     }
 
     const tableNames = tables.map((table) => table.name).join(', ');
-    const reason = this.schemaErrorReason(error);
 
     for (const table of tables) {
-      await this.verifyIntendedDefinition(table, tableNames, reason, error);
+      await this.verifyIntendedDefinition(table, tableNames, error);
     }
 
     this.logger.warn({
-      message: `[schema reconcile] tolerated concurrent ALREADY_EXISTS for table(s) '${tableNames}' — re-read verified the object present with the intended definition, treating as applied (a concurrent actor won the race). reason: ${reason}`,
+      message: `[schema reconcile] tolerated concurrent ALREADY_EXISTS for table(s) '${tableNames}' — re-read verified the object present with the intended definition, treating as applied (a concurrent actor won the race).`,
+      obj: { error },
     });
   }
 
@@ -302,12 +306,7 @@ export class TableManager {
    * success; only a definition still absent or mismatched after every attempt is a genuine
    * conflict — logged at WARN, then the ORIGINAL error re-throws.
    */
-  private async verifyIntendedDefinition(
-    table: Table<any>,
-    tableNames: string,
-    reason: string,
-    error: unknown
-  ): Promise<void> {
+  private async verifyIntendedDefinition(table: Table<any>, tableNames: string, error: unknown): Promise<void> {
     let remainingChanges: TableChanges | undefined;
     for (let attempt = 1; attempt <= TableManager.RECONCILE_VERIFY_ATTEMPTS; attempt++) {
       if (attempt > 1) {
@@ -329,7 +328,8 @@ export class TableManager {
       // Still absent after every re-read — not the concurrent-winner case; surface the original
       // error rather than masking it.
       this.logger.warn({
-        message: `[schema reconcile] caught ALREADY_EXISTS for table(s) '${tableNames}' but '${table.name}' is still absent after ${TableManager.RECONCILE_VERIFY_ATTEMPTS} re-reads — NOT a concurrent apply; re-throwing. reason: ${reason}`,
+        message: `[schema reconcile] caught ALREADY_EXISTS for table(s) '${tableNames}' but '${table.name}' is still absent after ${TableManager.RECONCILE_VERIFY_ATTEMPTS} re-reads — NOT a concurrent apply; re-throwing.`,
+        obj: { error },
       });
       throw error;
     }
@@ -337,17 +337,10 @@ export class TableManager {
     // The object exists but the live schema still differs from the intended definition, so a
     // concurrent actor did NOT apply our exact change (a genuine conflict). Propagate.
     this.logger.warn({
-      message: `[schema reconcile] caught ALREADY_EXISTS for table '${table.name}' but the live schema does NOT match the intended definition after ${TableManager.RECONCILE_VERIFY_ATTEMPTS} re-reads (genuine conflict) — re-throwing. reason: ${reason}`,
-      obj: { remainingChanges },
+      message: `[schema reconcile] caught ALREADY_EXISTS for table '${table.name}' but the live schema does NOT match the intended definition after ${TableManager.RECONCILE_VERIFY_ATTEMPTS} re-reads (genuine conflict) — re-throwing.`,
+      obj: { remainingChanges, error },
     });
     throw error;
-  }
-
-  /** Concise, loggable reason from a schema-update error: the backend names the offending object
-   *  in `details` (validation phase) or `message` (apply phase). */
-  private schemaErrorReason(error: unknown): string {
-    const candidate = error as { details?: unknown; message?: unknown } | undefined;
-    return String(candidate?.details ?? candidate?.message ?? error);
   }
 
   private delay(ms: number): Promise<void> {

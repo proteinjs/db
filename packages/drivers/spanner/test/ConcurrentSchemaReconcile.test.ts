@@ -1,5 +1,6 @@
 import { IntegerColumn, Record, StringColumn, Table, TableChanges, withRecordColumns } from '@proteinjs/db';
 import { SpannerDriver } from '@proteinjs/db-driver-spanner';
+import { LogLineErrors } from '@proteinjs/logger';
 import { getDropTestTable } from './util/getDropTestTable';
 import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
 import '../generated/test/index';
@@ -151,6 +152,12 @@ describe('Concurrent schema reconcile', () => {
     );
     expect(toleratedWarn).toBeDefined();
     expect(String(toleratedWarn![0].message)).toContain('db_test_reconcile');
+    // The line is handed the backend's ERROR (which the driver marked at the schema update's
+    // door, so the logger prints its status and the driver's sentence) — never its text.
+    expect(String(toleratedWarn![0].message)).not.toMatch(/Duplicate column name|reason:/);
+    const toleratedError = (toleratedWarn![0] as { obj?: { error?: unknown } }).obj?.error;
+    expect(String((toleratedError as Error).message)).toMatch(/Duplicate column name/);
+    expect(LogLineErrors.isMarked(toleratedError)).toBe(true);
 
     // The column exists exactly once, with the intended type (StringColumn defaults to STRING(255)).
     const columnMetadata = await tableManager.schemaMetadata.getColumnMetadata(grownTable());
@@ -250,6 +257,9 @@ describe('Concurrent schema reconcile', () => {
     );
     expect(conflictWarn).toBeDefined();
     expect(String(conflictWarn![0].message)).toContain('db_test_reconcile_conflict');
+    expect(String(conflictWarn![0].message)).not.toMatch(/Duplicate|reason:/);
+    expect((conflictWarn![0] as { obj?: { error?: unknown } }).obj?.error).toBe(duplicateError);
+    expect(LogLineErrors.isMarked(duplicateError)).toBe(true);
   }, 60000);
 
   test('UNRELATED ERROR CLASS: a non-already-exists DDL error propagates unchanged', async () => {
