@@ -1,6 +1,10 @@
 {
   "branch": "fix/driver-errors-render-safely-on-log-lines",
-  "packages": ["db", "drivers/spanner", "drivers/knex"],
+  "packages": [
+    "db",
+    "drivers/spanner",
+    "drivers/knex"
+  ],
   "suites": [
     "packages/db/test/SchemaReconcileLines.test.ts",
     "packages/drivers/spanner/test/BackendMessageNeverOnALine.test.ts",
