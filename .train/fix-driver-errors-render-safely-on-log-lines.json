@@ -1,8 +1,11 @@
 {
   "branch": "fix/driver-errors-render-safely-on-log-lines",
-  "packages": ["drivers/spanner", "drivers/knex"],
+  "packages": ["db", "drivers/spanner", "drivers/knex"],
   "suites": [
+    "packages/db/test/SchemaReconcileLines.test.ts",
     "packages/drivers/spanner/test/BackendMessageNeverOnALine.test.ts",
+    "packages/drivers/spanner/test/FailureLineShape.test.ts",
+    "packages/drivers/spanner/test/ConcurrentSchemaReconcile.test.ts",
     "packages/drivers/spanner/test/TransactionRetryParity.test.ts",
     "packages/drivers/spanner/test/ThrownErrorIdentity.test.ts",
     "packages/drivers/spanner/test/OperationFailureCause.test.ts",
@@ -13,6 +16,7 @@
     "packages/drivers/spanner/test/RetriedAbortLogging.test.ts",
     "packages/drivers/spanner/test/EnvTokenAuth.test.ts",
     "packages/drivers/spanner/test/SpannerLivenessMonitor.test.ts",
+    "packages/drivers/spanner/test/SpannerOperationDeadline.test.ts",
     "packages/drivers/knex/test/VendorTextNeverOnALine.test.ts",
     "packages/drivers/knex/test/StatementParamLogging.test.ts",
     "packages/drivers/knex/test/LogValuesSwitch.test.ts",
