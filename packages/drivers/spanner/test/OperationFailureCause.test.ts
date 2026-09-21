@@ -148,7 +148,7 @@ describe('Data-op failures carry their cause (emulator)', () => {
     expect(log.obj.cause).toEqual({
       code: 6,
       status: 'ALREADY_EXISTS',
-      sentence: 'what the statement creates already exists (a row with that key, or a schema object)',
+      message: 'what the statement creates already exists (a row with that key, or a schema object)',
     });
     // The parameters are described — a type per name, a length for strings — never quoted.
     const described = Object.values(log.obj.params as { [name: string]: { type: string; length?: number } });
