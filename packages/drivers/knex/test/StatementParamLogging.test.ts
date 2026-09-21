@@ -156,7 +156,7 @@ describe('The driver never prints a bound value; what it throws is the vendor`s 
       code: 'ER_DUP_ENTRY',
       errno: 1062,
       sqlState: '23000',
-      sentence: 'a row with that key already exists',
+      message: 'a row with that key already exists',
     });
     expect(Object.keys(failure.obj)).not.toContain('paramValues');
     // The vendor error itself — the carrier of the interpolated SQL — is not on the line.
