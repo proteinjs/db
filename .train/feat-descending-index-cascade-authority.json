@@ -1,0 +1,10 @@
+{
+  "branch": "feat/descending-index-cascade-authority",
+  "packages": ["query", "db", "drivers/spanner", "drivers/knex"],
+  "suites": [
+    "packages/query/test/CreateIndex.test.ts",
+    "packages/drivers/spanner/test/CascadeDelete.test.ts",
+    "packages/drivers/spanner/test/TableManager.test.ts"
+  ],
+  "removes": []
+}
