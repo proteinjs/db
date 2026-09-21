@@ -111,6 +111,9 @@ const TASK_TABLE = 'db_test_cd_tasks';
 const PILOT_TABLE = 'db_test_cd_pilots';
 const ROBOT_TABLE = 'db_test_cd_robots';
 const MISSION_TABLE = 'db_test_cd_missions';
+const BULLETIN_TABLE = 'db_test_cd_bulletins';
+const NOTICE_TABLE = 'db_test_cd_notices';
+const MEMO_TABLE = 'db_test_cd_memos';
 
 /**
  * ---------- Table Classes ----------
@@ -261,6 +264,48 @@ export class MissionTable extends Table<Mission> {
   });
 }
 
+// --- Reverse cascade AUTHORITY: holders behind a column query (a caller reaches only its own rows)
+//     Notice -> Bulletin with the SYSTEM's authority; Memo -> Bulletin with the caller's (the default)
+/** The owner a non-system query is restricted to — what a per-owner column query looks like. */
+export const CASCADE_TEST_CALLER = 'the-caller';
+export interface Bulletin extends Record {
+  title: string;
+}
+export interface OwnedHolder extends Record {
+  owner: string;
+  subjectTableName?: string | null;
+  subject?: Reference<Bulletin> | null;
+}
+export class BulletinTable extends Table<Bulletin> {
+  name = BULLETIN_TABLE;
+  columns: Table<Bulletin>['columns'] = withRecordColumns<Bulletin>({
+    title: new StringColumn('title'),
+  });
+}
+const ownedHolderColumns = (authority: 'caller' | 'system') =>
+  withRecordColumns<OwnedHolder>({
+    owner: new StringColumn('owner', {
+      addToQuery: async (qb, runAsSystem) => {
+        if (!runAsSystem) {
+          qb.condition({ field: 'owner', operator: '=', value: CASCADE_TEST_CALLER });
+        }
+      },
+    }),
+    subjectTableName: new DynamicReferenceTableNameColumn('subject_table_name', 'subject'),
+    subject: new DynamicReferenceColumn<Bulletin>('subject', 'subject_table_name', false, {
+      reverseCascadeDelete: true,
+      reverseCascadeAuthority: authority,
+    }),
+  });
+export class NoticeTable extends Table<OwnedHolder> {
+  name = NOTICE_TABLE;
+  columns: Table<OwnedHolder>['columns'] = ownedHolderColumns('system');
+}
+export class MemoTable extends Table<OwnedHolder> {
+  name = MEMO_TABLE;
+  columns: Table<OwnedHolder>['columns'] = ownedHolderColumns('caller');
+}
+
 export const cascadeDeleteTestTables = {
   MemberRef: new MemberRefTable() as Table<MemberRef>,
   GroupRef: new GroupRefTable() as Table<GroupRef>,
@@ -277,4 +322,7 @@ export const cascadeDeleteTestTables = {
   Pilot: new PilotTable() as Table<Pilot>,
   Robot: new RobotTable() as Table<Robot>,
   Mission: new MissionTable() as Table<Mission>,
+  Bulletin: new BulletinTable() as Table<Bulletin>,
+  Notice: new NoticeTable() as Table<OwnedHolder>,
+  Memo: new MemoTable() as Table<OwnedHolder>,
 };

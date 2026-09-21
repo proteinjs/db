@@ -16,6 +16,8 @@ import {
 import { QueryBuilder } from '@proteinjs/db-query';
 import { DbTestEnvironment } from '../util/DbTestEnvironment';
 import {
+  Bulletin,
+  CASCADE_TEST_CALLER,
   cascadeDeleteTestTables,
   GroupArr,
   GroupDyn,
@@ -236,6 +238,46 @@ export const cascadeDeleteTests = (
 
         const missionsAfterPilot = await db.query(missionTable, {});
         expect(missionsAfterPilot.length).toBe(0);
+      });
+
+      test("reverseCascadeAuthority: 'system' removes every holder, the ones the caller cannot reach included; the default removes the caller's own", async () => {
+        const bulletinTable = cascadeDeleteTestTables.Bulletin;
+        const noticeTable = cascadeDeleteTestTables.Notice;
+        const memoTable = cascadeDeleteTestTables.Memo;
+        const systemDb = new Db(driver, undefined, transactionContextFactory, true);
+
+        const bulletin = await db.insert(bulletinTable, { title: 'Gone tomorrow' });
+        const kept = await db.insert(bulletinTable, { title: 'Still here' });
+        const holder = (owner: string, subjectId: string) => ({
+          owner,
+          subjectTableName: bulletinTable.name,
+          subject: new Reference<Bulletin>(bulletinTable.name, subjectId),
+        });
+        for (const table of [noticeTable, memoTable]) {
+          await systemDb.insert(table, holder(CASCADE_TEST_CALLER, bulletin.id));
+          await systemDb.insert(table, holder('someone-else', bulletin.id));
+          await systemDb.insert(table, holder('someone-else', kept.id));
+        }
+        // The premise: the caller reaches only its own holders.
+        expect((await db.query(noticeTable, {})).map((row) => row.owner)).toEqual([CASCADE_TEST_CALLER]);
+
+        const deleted = await db.delete(
+          bulletinTable,
+          new QueryBuilder<Bulletin>(bulletinTable.name).condition({ field: 'id', operator: '=', value: bulletin.id })
+        );
+        expect(deleted).toBe(1);
+
+        // System authority: both owners' holders of the deleted bulletin are gone; the other bulletin's stays.
+        const notices = await systemDb.query(noticeTable, {});
+        expect(notices.map((row) => [row.owner, row.subject?._id])).toEqual([['someone-else', kept.id]]);
+        // The default (caller) authority: the caller's own holder is gone, the other owner's survives.
+        const memos = await systemDb.query(memoTable, {});
+        expect(memos.map((row) => [row.owner, row.subject?._id]).sort()).toEqual(
+          [
+            ['someone-else', bulletin.id],
+            ['someone-else', kept.id],
+          ].sort()
+        );
       });
     });
   };

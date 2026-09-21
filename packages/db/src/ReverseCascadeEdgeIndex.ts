@@ -12,6 +12,8 @@ export type ReverseCascadeEdge = {
   columnPropertyName: string;
   /** Position in the registry walk (table order, then column order) — lookups preserve it. */
   order: number;
+  /** Whose authority the cascade runs with — the column's `reverseCascadeAuthority`. */
+  authority: 'caller' | 'system';
 } & (
   | { refKind: 'reference' | 'referenceArray' }
   | { refKind: 'dynamicReference'; dynamicRefTableColumnPropertyName: string }
@@ -91,6 +93,7 @@ export class ReverseCascadeEdgeIndex {
           this.dynamicEdges.push({
             referencingTable,
             columnPropertyName,
+            authority: column.reverseCascadeAuthority === 'system' ? 'system' : 'caller',
             refKind: 'dynamicReference',
             dynamicRefTableColumnPropertyName,
             order: order++,
@@ -119,7 +122,13 @@ export class ReverseCascadeEdgeIndex {
           this.edgesByTargetTable.set(column.referenceTable, targetEdges);
         }
 
-        targetEdges.push({ referencingTable, columnPropertyName, refKind, order: order++ });
+        targetEdges.push({
+          referencingTable,
+          columnPropertyName,
+          authority: column.reverseCascadeAuthority === 'system' ? 'system' : 'caller',
+          refKind,
+          order: order++,
+        });
       }
     }
   }

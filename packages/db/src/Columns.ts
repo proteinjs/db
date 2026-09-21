@@ -8,9 +8,20 @@ import { Reference } from './reference/Reference';
 import { QueryBuilderFactory } from './QueryBuilderFactory';
 import { Serializer } from '@proteinjs/serializer';
 
+/**
+ * Whose authority a reverse cascade runs with. `'caller'` (the default): the holders the deleting
+ * caller can themselves read and delete die with the record — a holder the caller cannot reach
+ * (another owner's row behind a column query) survives. `'system'`: every holder dies with the
+ * record, whoever can reach it — for holders that are copies or projections of the record, where a
+ * survivor would outlive its subject in a place the deleter cannot see or clean.
+ */
+export type ReverseCascadeAuthority = 'caller' | 'system';
+
 export interface ReferenceColumnOptions extends ColumnOptions {
   /** If true, when a record in the referenced table is deleted, this record is deleted */
   reverseCascadeDelete?: boolean;
+  /** With `reverseCascadeDelete`: whose authority the cascade runs with (see {@link ReverseCascadeAuthority}). */
+  reverseCascadeAuthority?: ReverseCascadeAuthority;
 }
 
 export class IntegerColumn implements Column<number, number> {
@@ -221,6 +232,7 @@ export class ReferenceArrayColumn<T extends Record> extends ObjectColumn<Referen
    * @param options generic column options
    */
   public reverseCascadeDelete: boolean;
+  public reverseCascadeAuthority: ReverseCascadeAuthority;
 
   constructor(
     name: string,
@@ -230,6 +242,7 @@ export class ReferenceArrayColumn<T extends Record> extends ObjectColumn<Referen
   ) {
     super(name, options);
     this.reverseCascadeDelete = !!options?.reverseCascadeDelete;
+    this.reverseCascadeAuthority = options?.reverseCascadeAuthority ?? 'caller';
   }
 
   async serialize(fieldValue: ReferenceArray<T> | null | undefined): Promise<string | null> {
@@ -292,6 +305,7 @@ export class ReferenceColumn<T extends Record> extends StringColumn<Reference<T>
    * @param options generic column options
    */
   public reverseCascadeDelete: boolean;
+  public reverseCascadeAuthority: ReverseCascadeAuthority;
 
   constructor(
     name: string,
@@ -305,6 +319,7 @@ export class ReferenceColumn<T extends Record> extends StringColumn<Reference<T>
   ) {
     super(name, options, options?.maxLength ?? 36);
     this.reverseCascadeDelete = !!options?.reverseCascadeDelete;
+    this.reverseCascadeAuthority = options?.reverseCascadeAuthority ?? 'caller';
   }
 
   async serialize(fieldValue: Reference<T> | null | undefined): Promise<string | null> {
@@ -449,6 +464,7 @@ export class DynamicReferenceTableNameColumn extends StringColumn<string> {
 
 export class DynamicReferenceColumn<T extends Record> extends StringColumn<Reference<T>> {
   public reverseCascadeDelete: boolean;
+  public reverseCascadeAuthority: ReverseCascadeAuthority;
 
   constructor(
     name: string,
@@ -473,6 +489,7 @@ export class DynamicReferenceColumn<T extends Record> extends StringColumn<Refer
       options?.maxLength ?? 36
     );
     this.reverseCascadeDelete = !!options?.reverseCascadeDelete;
+    this.reverseCascadeAuthority = options?.reverseCascadeAuthority ?? 'caller';
   }
 
   async serialize(fieldValue: Reference<T> | null | undefined): Promise<string | null> {

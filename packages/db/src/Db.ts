@@ -466,6 +466,10 @@ export class Db<R extends Record = Record> implements DbService<R> {
    *  - ReferenceColumn
    *  - DynamicReferenceColumn
    *  - ReferenceArrayColumn (stringified JSON) via LIKE-prefilter + exact check
+   *
+   * Each edge runs with the authority its column declares (`reverseCascadeAuthority`): the
+   * caller's by default — the holders the caller can reach — or the system's, on this instance's
+   * driver and ambient transaction, so every holder dies with the record whoever can reach it.
    */
   private async runColumnReverseCascadeDeletions(table: Table<any>, deletedRecords: Record[]): Promise<void> {
     const deletedIds = deletedRecords.map((r) => r.id);
@@ -476,10 +480,11 @@ export class Db<R extends Record = Record> implements DbService<R> {
     const deletedIdSet = new Set<string>(deletedIds);
     for (const edge of ReverseCascadeEdgeIndex.get().getEdges(table.name)) {
       const { referencingTable, columnPropertyName } = edge;
+      const db: Db<any> = edge.authority === 'system' ? this.newSystemDb() : this;
 
       if (edge.refKind === 'dynamicReference') {
         const qb = new QueryBuilderFactory().getQueryBuilder(referencingTable);
-        await this.addColumnQueries(referencingTable, qb, 'read');
+        await db.addColumnQueries(referencingTable, qb, 'read');
 
         qb.condition({ field: edge.dynamicRefTableColumnPropertyName as any, operator: '=', value: table.name as any });
         qb.condition({ field: columnPropertyName as any, operator: 'IN', value: deletedIds as any });
@@ -489,13 +494,13 @@ export class Db<R extends Record = Record> implements DbService<R> {
           obj: { referencingTable: referencingTable.name, columnPropertyName, deletedIds },
         });
 
-        const deleteCount = await this.delete(referencingTable, qb);
+        const deleteCount = await db.delete(referencingTable, qb);
         this.logger.info({
           message: `Reverse cascade (dynamic) deleted ${deleteCount} record${deleteCount == 1 ? '' : 's'}`,
         });
       } else if (edge.refKind === 'reference') {
         const qb = new QueryBuilderFactory().getQueryBuilder(referencingTable);
-        await this.addColumnQueries(referencingTable, qb, 'read');
+        await db.addColumnQueries(referencingTable, qb, 'read');
         qb.condition({ field: columnPropertyName as any, operator: 'IN', value: deletedIds as any });
 
         this.logger.info({
@@ -503,12 +508,12 @@ export class Db<R extends Record = Record> implements DbService<R> {
           obj: { referencingTable: referencingTable.name, columnPropertyName, deletedIds },
         });
 
-        const deleteCount = await this.delete(referencingTable, qb);
+        const deleteCount = await db.delete(referencingTable, qb);
         this.logger.info({
           message: `Reverse cascade (ReferenceColumn) deleted ${deleteCount} record${deleteCount == 1 ? '' : 's'}`,
         });
       } else {
-        await this.reverseDeleteReferenceArrayHolders(referencingTable, columnPropertyName, deletedIds, deletedIdSet);
+        await db.reverseDeleteReferenceArrayHolders(referencingTable, columnPropertyName, deletedIds, deletedIdSet);
       }
     }
   }
