@@ -134,8 +134,15 @@ export abstract class Table<T extends Record> implements Loadable, CustomSeriali
    * `unique: true` creates a UNIQUE index (composite uniqueness lives here; single-column
    * uniqueness can also use `ColumnOptions.unique`). Name unique indexes with a `_unique`
    * suffix — schema metadata classifies unique indexes by that suffix.
+   *
+   * `descending` names the key columns stored in DESCENDING order (a subset of `columns`; the
+   * rest ascend). Declare it for a list read newest-first and paged from the top — e.g.
+   * `{ columns: ['owner', 'created'], descending: ['created'] }` serves `ORDER BY created DESC
+   * LIMIT n` within an owner in index order, so a page's cost does not grow with the rows behind
+   * it. The direction is part of the index's identity: schema sync creates it as declared, and a
+   * declared direction that differs from the stored one replaces the index.
    */
-  public indexes: { columns: (keyof T)[]; name?: string; unique?: boolean }[] = [];
+  public indexes: { columns: (keyof T)[]; name?: string; unique?: boolean; descending?: (keyof T)[] }[] = [];
   /** When records are deleted, delete records having references pointing to deleted records */
   public cascadeDeleteReferences: () => { table: string; referenceColumn: string }[] = () => [];
   /** Options for configuring SourceRecords (see {@link SourceRecordOptions}) */

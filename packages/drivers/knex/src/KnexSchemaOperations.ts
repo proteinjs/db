@@ -46,6 +46,7 @@ export class KnexSchemaOperations implements SchemaOperations {
 
         if (table.indexes) {
           for (const index of table.indexes) {
+            this.refuseDescendingIndex(table, index);
             const columnNames = index.columns.map(
               (columnPropertyName) => table.columns[columnPropertyName as string].name
             );
@@ -120,6 +121,7 @@ export class KnexSchemaOperations implements SchemaOperations {
         }
 
         for (const index of tableChanges.indexesToCreate) {
+          this.refuseDescendingIndex(table, index);
           if (index.unique) {
             tableBuilder.unique(typeof index.columns === 'string' ? [index.columns] : index.columns, index.name);
           } else {
@@ -178,5 +180,17 @@ export class KnexSchemaOperations implements SchemaOperations {
     }
 
     return columnBuilder;
+  }
+
+  /**
+   * This driver's schema builder creates ascending keys only. A table that declares a descending
+   * index column is refused by name rather than given an index that silently ignores the direction.
+   */
+  private refuseDescendingIndex(table: Table<any>, index: { name?: string; descending?: unknown[] }): void {
+    if (index.descending?.length) {
+      throw new Error(
+        `(${table.name}) Index ${index.name ?? ''} declares descending columns, which this driver does not create`
+      );
+    }
   }
 }

@@ -63,6 +63,8 @@ interface Index {
   name?: string;
   columns: string | string[];
   unique?: boolean;
+  /** The key columns stored in DESCENDING order (column names, a subset of `columns`); the rest ascend. */
+  descending?: string[];
 }
 
 export interface AlterTableParams {
@@ -171,7 +173,10 @@ export class StatementFactory<T> {
   }
 
   createIndex(index: Index, tableName: string): Statement {
-    const sql = `CREATE${index.unique ? ' UNIQUE' : ''} INDEX ${StatementUtil.getIndexName(tableName, index)} ON \`${tableName}\`(\`${typeof index.columns === 'string' ? index.columns : index.columns.join('`, `')}\`)`;
+    const columns = typeof index.columns === 'string' ? [index.columns] : index.columns;
+    const descending = new Set(index.descending ?? []);
+    const keyParts = columns.map((column) => `\`${column}\`${descending.has(column) ? ' DESC' : ''}`);
+    const sql = `CREATE${index.unique ? ' UNIQUE' : ''} INDEX ${StatementUtil.getIndexName(tableName, index)} ON \`${tableName}\`(${keyParts.join(', ')})`;
     return { sql };
   }
 

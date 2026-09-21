@@ -124,4 +124,22 @@ export class SpannerSchemaMetadata extends SchemaMetadata {
 
     return indexes;
   }
+
+  async getDescendingIndexColumns(table: Table<any>): Promise<{ [keyName: string]: string[] }> {
+    const qb = new QueryBuilder('INDEX_COLUMNS')
+      .condition({ field: 'TABLE_NAME', operator: '=', value: table.name })
+      .condition({ field: 'COLUMN_ORDERING', operator: '=', value: 'DESC' });
+    const generateStatement = (config: ParameterizationConfig) => qb.toSql({ dbName: 'INFORMATION_SCHEMA', ...config });
+    const results: any[] = await this.dbDriver.runQuery(generateStatement);
+    const descending: { [keyName: string]: string[] } = {};
+    for (const row of results) {
+      if (!row['INDEX_NAME']) {
+        continue;
+      }
+
+      (descending[row['INDEX_NAME']] ??= []).push(row['COLUMN_NAME']);
+    }
+
+    return descending;
+  }
 }
