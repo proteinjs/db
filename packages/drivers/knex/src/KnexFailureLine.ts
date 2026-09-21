@@ -1,13 +1,16 @@
 import { ErrorLine, LogLineErrors } from '@proteinjs/logger';
 import { KnexLogValues } from './KnexLogValues';
 
-/** A failure as the driver's own line carries it under `cause`: the error's name, the vendor's codes and the driver's sentence. */
+/**
+ * A failure as the driver's own line carries it under `cause`: the error's name, the vendor's
+ * codes and, as `message`, the driver's sentence — the field a reader of any driver's line parses.
+ */
 export type FailureCause = {
   name?: string;
   code?: string;
   errno?: number;
   sqlState?: string;
-  sentence: string;
+  message: string;
   /** The server's own message — behind the dev-only values switch, never otherwise. */
   sqlMessage?: string;
 };
@@ -82,17 +85,17 @@ export class KnexFailureLine {
       ...(typeof code === 'string' ? { code } : {}),
       ...(typeof errno === 'number' ? { errno } : {}),
       ...(typeof sqlState === 'string' ? { sqlState } : {}),
-      sentence: KnexFailureLine.sentenceOf(code),
+      message: KnexFailureLine.sentenceOf(code),
       ...(typeof sqlMessage === 'string' ? { sqlMessage } : {}),
     };
   }
 
   private static lineOf(error: unknown, what: string): ErrorLine {
-    const { name: _name, sentence, sqlMessage: _sqlMessage, ...codes } = KnexFailureLine.causeOf(error);
+    const { name: _name, message, sqlMessage: _sqlMessage, ...codes } = KnexFailureLine.causeOf(error);
     const named = [codes.code, codes.errno !== undefined ? `errno ${codes.errno}` : undefined].filter(Boolean);
     return {
       ...(codes.code !== undefined ? { code: codes.code } : {}),
-      sentence: `${what}${named.length ? ` (${named.join(', ')})` : ''}: ${sentence}`,
+      sentence: `${what}${named.length ? ` (${named.join(', ')})` : ''}: ${message}`,
       facts: codes,
     };
   }

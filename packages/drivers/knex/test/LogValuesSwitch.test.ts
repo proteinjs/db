@@ -147,7 +147,7 @@ describe('the dev-only values switch: real values ride the driver`s failure line
       code: 'ER_NO_SUCH_TABLE',
       errno: 1146,
       sqlState: '42S02',
-      sentence: 'a table the statement names does not exist',
+      message: 'a table the statement names does not exist',
       ...(on ? { sqlMessage: `Table 'test.credential' doesn't exist` } : {}),
     });
     if (!on) {

@@ -135,7 +135,7 @@ describe('the vendor`s text never reaches a log line; the thrown error still car
       code: 'ER_DUP_ENTRY',
       errno: 1062,
       sqlState: '23000',
-      sentence: 'a row with that key already exists',
+      message: 'a row with that key already exists',
     });
     const [callersLine] = captured.filter((log) => log.message === 'A caller`s own line about what it caught');
     expect(callersLine.error.message).toBe(
