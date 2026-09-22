@@ -59,6 +59,19 @@ export class SpannerDriver implements DbDriver {
    * transactions come from; an entry dies with its handle.
    */
   private static readonly RUNNER_ATTEMPTS = new WeakMap<Transaction, number>();
+  /**
+   * The statement lane of every transaction handle: the tail of the statements issued on it, in
+   * issue order. A read-write transaction is a SEQUENCE on the wire — the client numbers every
+   * request it sends on a transaction (`seqno`) at the moment the call is made, and Spanner
+   * refuses a DML whose number arrives after a higher one (`INVALID_ARGUMENT: Request has an
+   * out-of-order seqno`), failing the caller's statement and with it the transaction; a first
+   * statement not yet answered also leaves the transaction's id unknown, so a concurrent second
+   * BEGINS a transaction of its own. Callers compose freely (`Promise.all` of updates inside a
+   * transaction body is a natural shape); the driver owns the order: every statement issued on a
+   * handle is handed to the wire once the statement before it has been answered. Process-wide
+   * like the handles; an entry dies with its handle.
+   */
+  private static readonly STATEMENT_LANES = new WeakMap<Transaction, Promise<unknown>>();
   private logger = new Logger({ name: this.constructor.name });
   private config: SpannerConfig;
   public getTable: ((name: string) => Table<any>) | undefined;
@@ -297,18 +310,20 @@ export class SpannerDriver implements DbDriver {
         this.logger.debug({ message: `Executing query`, obj: { sql, ...this.loggedParams(namedParams) } })
       );
       const wire = this.wireParams(namedParams);
-      const [rows] = await this.withDeadline(
-        'spanner query',
-        sql,
-        runner.run({
+      const [rows] = await this.inStatementOrder(runner, () =>
+        this.withDeadline(
+          'spanner query',
           sql,
-          params: wire.params,
-          types: wire.types,
-          // The gRPC deadline is what actually cancels the RPC on a dead channel: the stream
-          // errors, the library ends the snapshot, and the borrowed session RETURNS to the
-          // pool. The withDeadline race alone would fail the caller but leak the session.
-          gaxOptions: { timeout: this.operationDeadlineMs() },
-        })
+          runner.run({
+            sql,
+            params: wire.params,
+            types: wire.types,
+            // The gRPC deadline is what actually cancels the RPC on a dead channel: the stream
+            // errors, the library ends the snapshot, and the borrowed session RETURNS to the
+            // pool. The withDeadline race alone would fail the caller but leak the session.
+            gaxOptions: { timeout: this.operationDeadlineMs() },
+          })
+        )
       );
       const durationMs = Number(process.hrtime.bigint() - startTime) / 1_000_000;
       this.logger.debug({
@@ -373,12 +388,14 @@ export class SpannerDriver implements DbDriver {
       // learned its id (unprotected even on real Spanner). The unary RPC has none of that
       // machinery — see dmlGaxOptions() for the per-backend retry policy on it.
       const wire = this.wireParams(namedParams);
-      const [rowCounts] = await this.withDeadline(
-        'spanner dml',
-        sql,
-        runner.batchUpdate([{ sql, params: wire.params, types: wire.types }], {
-          gaxOptions: this.dmlGaxOptions(),
-        })
+      const [rowCounts] = await this.inStatementOrder(runner, () =>
+        this.withDeadline(
+          'spanner dml',
+          sql,
+          runner.batchUpdate([{ sql, params: wire.params, types: wire.types }], {
+            gaxOptions: this.dmlGaxOptions(),
+          })
+        )
       );
       const rowCount = rowCounts[0] ?? 0;
       const durationMs = Number(process.hrtime.bigint() - startTime) / 1_000_000;
@@ -391,6 +408,29 @@ export class SpannerDriver implements DbDriver {
       const durationMs = Number(process.hrtime.bigint() - startTime) / 1_000_000;
       throw this.operationFailure('dml', sql, namedParams, error, durationMs, callSiteStack, runner);
     }
+  }
+
+  /**
+   * Issue a statement on `runner` in its turn: a transaction handle's statements go to the wire
+   * in issue order, each once the one before it has been ANSWERED (see STATEMENT_LANES) — a
+   * statement that failed still yields its turn, so a rejected statement never blocks the next
+   * (the runner decides what a failure means). A Database handle (a single-use read) has no
+   * sequence and sends at once.
+   */
+  private inStatementOrder<T>(runner: Database | Transaction, send: () => Promise<T>): Promise<T> {
+    if (!(runner instanceof Transaction)) {
+      return send();
+    }
+    const ahead = SpannerDriver.STATEMENT_LANES.get(runner) ?? Promise.resolve();
+    const turn = ahead.then(send, send);
+    SpannerDriver.STATEMENT_LANES.set(
+      runner,
+      turn.then(
+        () => undefined,
+        () => undefined
+      )
+    );
+    return turn;
   }
 
   /**
