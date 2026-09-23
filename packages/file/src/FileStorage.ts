@@ -6,7 +6,13 @@ import { FileStorageService, getFileStorageService } from './services/FileStorag
 import { FileStorageDriver } from './FileStorageDriver';
 import { getFileReachabilityResolvers } from './FileReachabilityResolver';
 import { FileCopyRefused, getFileCopyForOthers } from './FileCopyForOthers';
-import { FILE_VARIANT_KINDS, FileVariant, FileVariantKind, getFileVariantMaker } from './FileVariantMaker';
+import {
+  FILE_VARIANT_KINDS,
+  FileVariant,
+  FileVariantKind,
+  FileVariantNotMade,
+  getFileVariantMaker,
+} from './FileVariantMaker';
 import { Loadable, SourceRepository } from '@proteinjs/reflection';
 import { Logger } from '@proteinjs/logger';
 import { DbFileStorageDriver } from './DbFileStorageDriver';
@@ -32,6 +38,8 @@ export interface DefaultFileStorageDriverFactory extends Loadable {
  */
 export class FileStorage implements FileStorageService {
   private static driver: FileStorageDriver;
+  /** The read path's derivations running in this process, by file and kind — see {@link deriveOnce}. */
+  private static derivations = new Map<string, Promise<string | undefined>>();
 
   public serviceMetadata = {
     auth: {
@@ -131,8 +139,8 @@ export class FileStorage implements FileStorageService {
    * the variant is stored as the owner's own File whoever's read made it, and is served like any
    * File afterwards — with the same non-owner copy rule.
    * @returns The variant's File row, or `undefined` when the caller cannot read the original, no
-   *          maker is registered, or the maker does not apply to this file for this kind (the
-   *          consumer then draws the original).
+   *          maker is registered, the maker does not apply to this file for this kind, or the
+   *          maker could not make it of these bytes (the consumer then draws the original).
    */
   async getVariant(fileId: string, kind: FileVariantKind): Promise<File | undefined> {
     const file = await this.getFile(fileId);
@@ -147,9 +155,8 @@ export class FileStorage implements FileStorageService {
     if (!maker || !maker.appliesTo(file, kind)) {
       return undefined;
     }
-    const original = Buffer.from(await FileStorage.getDriver().getFileData(file.id), 'base64');
-    const variantId = await this.makeVariant(file, kind, original);
-    return await getScopedDbAsSystem().get(tables.File, { id: variantId });
+    const variantId = await this.deriveOnce(file, kind);
+    return variantId ? await getScopedDbAsSystem().get(tables.File, { id: variantId }) : undefined;
   }
 
   /**
@@ -364,16 +371,61 @@ export class FileStorage implements FileStorageService {
   }
 
   /**
+   * The read path's derivation, ONCE per file and kind at a time in this process: the readers
+   * that ask for the same absent variant while one derives (a shared document opened by many on
+   * one tick — every face asks the same URL) wait for that derivation's answer instead of each
+   * reading the original, encoding it and storing an object the row's word would then discard.
+   * Across processes the row's word in one transaction ({@link makeVariant}) still decides: this
+   * bounds the cost, that bounds the outcome. A maker that cannot make the variant of these
+   * bytes (a picture its decoder cannot read) answers `undefined` — nothing is stored, the reader
+   * draws the file itself, the next reader asks again — said in the log, never as a failed read;
+   * any other failure (the store, the database) is the reader's as it would be for any File.
+   */
+  private deriveOnce(file: File, kind: FileVariantKind): Promise<string | undefined> {
+    const key = `${file.id}:${kind}`;
+    const running = FileStorage.derivations.get(key);
+    if (running) {
+      return running;
+    }
+    const derivation = (async () => {
+      const original = Buffer.from(await FileStorage.getDriver().getFileData(file.id), 'base64');
+      try {
+        return await this.makeVariant(file, kind, original);
+      } catch (error) {
+        if (!FileVariantNotMade.is(error)) {
+          throw error;
+        }
+        new Logger({ name: 'FileStorage' }).warn({
+          message: `No ${kind} variant could be made of file ${file.id}; the file itself is served`,
+          obj: { reason: error.reason },
+        });
+        return undefined;
+      }
+    })().finally(() => FileStorage.derivations.delete(key));
+    FileStorage.derivations.set(key, derivation);
+    return derivation;
+  }
+
+  /**
    * Makes the variant (the maker's answer from the original's bytes), stores it as a File in the
    * OWNER's scope naming its original, and names it on the original's row. Two readers may derive
    * the same kind at once: the row's word wins — decided in ONE transaction, exactly as the copy
-   * for others is named — and the variant that lost is deleted after the commit.
+   * for others is named — and the variant that lost is deleted after the commit. The maker's own
+   * failure (it could not make the variant of these bytes) is thrown as {@link FileVariantNotMade}
+   * with the maker's reason, so the doors can tell it from a failure of the store or the database;
+   * nothing is stored on it.
    * @returns The id of the variant the row names.
    */
   private async makeVariant(file: File, kind: FileVariantKind, bytes: Buffer): Promise<string> {
     const maker = getFileVariantMaker()!;
     const driver = FileStorage.getDriver();
-    const made: FileVariant = await maker.make(file, bytes, kind);
+    let made: FileVariant;
+    try {
+      made = await maker.make(file, bytes, kind);
+    } catch (cause) {
+      // The maker's contract: a throw means no variant can be made of these bytes.
+      throw new FileVariantNotMade(file.id, kind, cause);
+    }
     // As system, in the OWNER's scope: the variant is the owner's file (their storage, their purge).
     const system = getDbAsSystem();
     const variant = await system.insert(tables.File, {

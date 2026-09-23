@@ -43,3 +43,42 @@ export interface FileVariantMaker extends Loadable {
 
 export const getFileVariantMaker = (): FileVariantMaker | undefined =>
   SourceRepository.get().object<FileVariantMaker>('@proteinjs/db-file/FileVariantMaker');
+
+/**
+ * What a derivation becomes when the registered maker could not make the variant of these
+ * bytes: nothing is stored. Thrown by `FileStorage` in place of whatever the maker threw (the
+ * maker's own one-line reason kept as `reason`), so the ingest door can report it to the caller
+ * holding the bytes and the read path can tell it from a failure of the store or the database
+ * (and serve the file itself). Read by shape ({@link FileVariantNotMade.is}), like
+ * `FileCopyRefused`, so it holds across duplicate copies of this package.
+ */
+export class FileVariantNotMade extends Error {
+  private static readonly NAME = 'FileVariantNotMade';
+  /** Free text that reaches a message is one line and bounded. */
+  private static readonly MAX_REASON_CHARS = 300;
+  readonly fileId: string;
+  readonly kind: FileVariantKind;
+  readonly reason: string;
+
+  constructor(fileId: string, kind: FileVariantKind, cause: unknown) {
+    const reason = FileVariantNotMade.plain(cause);
+    super(`No ${kind} variant could be made of file ${fileId}${reason ? `: ${reason}` : ''}`);
+    this.name = FileVariantNotMade.NAME;
+    Object.setPrototypeOf(this, FileVariantNotMade.prototype);
+    this.fileId = fileId;
+    this.kind = kind;
+    this.reason = reason;
+  }
+
+  static is(error: unknown): error is FileVariantNotMade {
+    return (error as { name?: unknown } | null | undefined)?.name === FileVariantNotMade.NAME;
+  }
+
+  private static plain(cause: unknown): string {
+    const message = cause instanceof Error ? cause.message : typeof cause === 'string' ? cause : '';
+    const line = message.replace(/\s+/g, ' ').trim();
+    return line.length > FileVariantNotMade.MAX_REASON_CHARS
+      ? `${line.slice(0, FileVariantNotMade.MAX_REASON_CHARS)}…`
+      : line;
+  }
+}
