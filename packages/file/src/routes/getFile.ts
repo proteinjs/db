@@ -1,6 +1,7 @@
 import { Route } from '@proteinjs/server-api';
 import { getFileStorage } from '../FileStorage';
 import { FileStorageError } from '../FileStorageError';
+import { FileCopyRefused } from '../FileCopyForOthers';
 import { UserAuth } from '@proteinjs/user';
 import { resolveByteRange } from './byteRange';
 
@@ -68,6 +69,12 @@ export const getFile: Route = {
       if (FileStorageError.isNotFound(error)) {
         // The row is there and its bytes are not: the same answer as a row that is not there.
         response.status(404).send('File not found');
+        return;
+      }
+      if (FileCopyRefused.is(error)) {
+        // A deliberate refusal, not a failure: no copy of this file can be made for anyone but its
+        // owner (the maker said why on its own line). Quiet, and never a 500.
+        response.status(403).send('File not available');
         return;
       }
       console.error(`Error fetching file (${fileId}):`, error);
