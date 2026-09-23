@@ -716,6 +716,12 @@ export class SourceRecordLoader {
     if (value === null || typeof value !== 'object') {
       return JSON.stringify(value);
     }
+    // Mirror JSON.stringify: a Date is its ISO text — never an object with no own keys, which
+    // would read every two dates as equal (a serialized DateTimeColumn value IS a Date; the
+    // stamp's digest already reads dates this way, `SourceRecordStamp.canonical`).
+    if (value instanceof Date) {
+      return JSON.stringify(value);
+    }
     if (Array.isArray(value)) {
       // Mirror JSON.stringify: undefined array elements serialize as `null`.
       return '[' + value.map((v) => (v === undefined ? 'null' : this.canonicalStringify(v))).join(',') + ']';

@@ -1173,6 +1173,46 @@ export const sourceRecordSyncTests = (
         expect(await widgetRow('F2')).toBeUndefined();
       });
 
+      test('a date-valued declared column CHANGED in the file lands — a corrected release day is drift like any other value, and the corrected row is a no-op on the next load', async () => {
+        await bootFile(
+          await writeDeclaration('dated.json', [
+            { sku: 'D1', name: 'Dated', price: 1, releasedAt: moment.utc('2026-03-04T00:00:00Z') },
+          ])
+        );
+        expect(moment.utc((await widgetRow('D1')).releasedAt as moment.Moment).toISOString()).toBe(
+          '2026-03-04T00:00:00.000Z'
+        );
+
+        const corrected = await writeDeclaration('dated-2.json', [
+          { sku: 'D1', name: 'Dated', price: 1, releasedAt: moment.utc('2026-03-05T00:00:00Z') },
+        ]);
+        const second = await bootFile(corrected);
+        expect(second[widgetTable.name]).toMatchObject({ updates: 1, unchanged: 0, kept: 0 });
+        expect(moment.utc((await widgetRow('D1')).releasedAt as moment.Moment).toISOString()).toBe(
+          '2026-03-05T00:00:00.000Z'
+        );
+
+        const third = await bootFile(corrected);
+        expect(third[widgetTable.name]).toMatchObject({ updates: 0, unchanged: 1 });
+      });
+
+      test("a product edit of a DATE-valued declared column is the product's like any other: kept, never adopted, never written over by the file's day", async () => {
+        const filePath = await writeDeclaration('dated-product.json', [
+          { sku: 'P1', name: 'Dated', price: 1, releasedAt: moment.utc('2026-03-04T00:00:00Z') },
+        ]);
+        await bootFile(filePath);
+        await getDbAsSystem().update(widgetTable, { releasedAt: moment.utc('2026-03-05T00:00:00Z') }, { sku: 'P1' });
+
+        const second = await bootFile(filePath);
+
+        expect(second[widgetTable.name]).toMatchObject({ kept: 1, adopted: 0, updates: 0, unchanged: 0 });
+        expect(moment.utc((await widgetRow('P1')).releasedAt as moment.Moment).toISOString()).toBe(
+          '2026-03-05T00:00:00.000Z'
+        );
+        // And a third boot says the same — the row stays the product's, boot after boot.
+        expect((await bootFile(filePath))[widgetTable.name]).toMatchObject({ kept: 1, adopted: 0, updates: 0 });
+      });
+
       test('a declaration FILE on a table that soft-removes (an update policy): its rows insert — a file declares no id, so nothing is claimed by id; a row the file drops is patched, never deleted, once; listing it again reverts the patch on the same row', async () => {
         const softTable = sourceRecordSyncTestTables.SyncSoftRemovedWidget;
         const softRow = async (sku: string) => (await getDbAsSystem().get(softTable, { sku })) as SyncSoftRemovedWidget;
