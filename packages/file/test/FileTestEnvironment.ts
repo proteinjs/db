@@ -62,6 +62,9 @@ export class FileTestEnvironment {
     // implementations from the generated source graph; a graph-less harness lookup THROWS).
     // Default: no registered resolvers. Suites exercising the seam overwrite this entry.
     objectCache['@proteinjs/db-file/FileReachabilityResolver'] = [];
+    // The copy-for-others seam a non-owner read consults (same graph-less rule). Default: no
+    // maker — everyone is served the original. Suites exercising the seam overwrite this entry.
+    objectCache['@proteinjs/db-file/FileCopyForOthers'] = [];
     Session.setData({
       sessionId: 'test-session',
       user: 'guest',
