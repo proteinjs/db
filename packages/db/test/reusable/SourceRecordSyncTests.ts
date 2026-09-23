@@ -304,6 +304,49 @@ export const sourceRecordSyncTests = (
       expect((await db.get(machineTable, { id: owned.id })).updated.valueOf()).toBe(stampBefore);
     });
 
+    test('an owned row that lost its ownership marker outside the sync is refused like any unowned row — never re-stamped, the row and its runtime fields standing; the marker set back is the recovery', async () => {
+      const db = getDbAsSystem();
+      const bridge = machineDeclaration({
+        id: 'declared-lost-id',
+        email: 'bridge@test.local',
+        displayName: 'Ops bridge',
+      });
+      // Boot 1: the declaration lands as a fresh insert — owned and stamped; a credential is minted at runtime.
+      expect((await boot([bridge]))[machineTable.name]).toMatchObject({ inserts: 1, refused: 0 });
+      const owned = await db.get(machineTable, { email: 'bridge@test.local' });
+      expect(owned).toMatchObject({
+        id: 'declared-lost-id',
+        isLoadedFromSource: true,
+        sourcePackage: DEFAULT_TEST_SOURCE,
+      });
+      await db.update(machineTable, { id: owned.id, runtimeNote: 'the-minted-hash' });
+
+      // The marker is cleared outside the sync (a migration, a hand edit — the service door protects it).
+      await db.update(machineTable, { id: owned.id, isLoadedFromSource: false });
+
+      // Boot 2: the sync no longer owns the row, so the declaration is refused and the row is left as
+      // it is — its declared fields, its credential and its status stand; nothing re-stamps it.
+      const refusedBoot = await boot([bridge]);
+      expect(refusedBoot[machineTable.name]).toMatchObject({ inserts: 0, updates: 0, adopted: 0, refused: 1 });
+      const after = await db.get(machineTable, { id: owned.id });
+      expect(after).toMatchObject({
+        email: 'bridge@test.local',
+        displayName: 'Ops bridge',
+        status: 'active',
+        runtimeNote: 'the-minted-hash',
+        isLoadedFromSource: false,
+      });
+      expect(await db.get(machineTable, { id: 'declared-lost-id-other' })).toBeUndefined();
+
+      // The recovery is the marker set back: the next boot owns the row again and writes nothing else.
+      await db.update(machineTable, { id: owned.id, isLoadedFromSource: true });
+      expect((await boot([bridge]))[machineTable.name]).toMatchObject({ inserts: 0, refused: 0, unchanged: 1 });
+      expect(await db.get(machineTable, { id: owned.id })).toMatchObject({
+        runtimeNote: 'the-minted-hash',
+        isLoadedFromSource: true,
+      });
+    });
+
     test('an id-keyed declaration still claims a runtime row holding its own declared id — the id is minted by the declaration, never shared', async () => {
       const db = getDbAsSystem();
       // A row written before the table was source-loaded, under the id the declaration carries
