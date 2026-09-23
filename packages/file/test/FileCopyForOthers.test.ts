@@ -434,6 +434,29 @@ describe('the copy for others — the route, both serving shapes', () => {
     expect(mine.redirectUrl).toEqual(`https://signed.test/blob/${file.id}?sig=test`);
   });
 
+  it("a file no copy can be made of: a recipient's GET /file/:id is a quiet 403 — not a 500, no error printed; the owner's still serves", async () => {
+    const driver = new SignedUrlDriver();
+    testEnv.setDriver(driver);
+    const file = await createOwnerFile('unrewritable-route.jpg', 'image/jpeg');
+    reachableFileIds.add(file.id);
+    makerFails = true;
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      testEnv.actAs(recipient);
+      const theirs = await invokeRoute(file.id);
+      testEnv.actAs(owner);
+      const mine = await invokeRoute(file.id);
+
+      expect(theirs.statusCode).toEqual(403);
+      expect(theirs.redirectUrl).toBeUndefined();
+      expect(consoleError).not.toHaveBeenCalled();
+      expect(mine.statusCode).toEqual(302);
+      expect(mine.redirectUrl).toEqual(`https://signed.test/blob/${file.id}?sig=test`);
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
   it("a signed URL for a file the maker does not apply to still names the original's object", async () => {
     const driver = new SignedUrlDriver();
     testEnv.setDriver(driver);
