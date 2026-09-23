@@ -9,6 +9,7 @@ export * from './src/tables/FileDataTable';
 export * from './src/services/FileStorageService';
 
 export * from './src/routes/getFileRoute';
+export * from './src/routes/getFileVariantRoute';
 
 export * from './src/FileReachabilityResolver';
 export * from './src/FileCopyForOthers';

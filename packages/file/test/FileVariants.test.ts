@@ -1,12 +1,14 @@
 import { getDbAsSystem, QueryBuilderFactory } from '@proteinjs/db';
 import { SourceRepository } from '@proteinjs/reflection';
-import { UserAuth, UserRepo, User } from '@proteinjs/user';
+import { UserAuth, UserRepo, User, guestUser } from '@proteinjs/user';
 import { File } from '../src/tables/FileTable';
 import { tables } from '../src/tables/tables';
 import { FileStorage } from '../src/FileStorage';
 import { FileStorageDriver } from '../src/FileStorageDriver';
 import { FileVariantKind } from '../src/FileVariantMaker';
 import { getFile } from '../src/routes/getFile';
+import { getFileVariant } from '../src/routes/getFileVariant';
+import { getFileVariantRoute } from '../src/routes/getFileVariantRoute';
 import { FileTestEnvironment } from './FileTestEnvironment';
 
 /**
@@ -85,6 +87,16 @@ const invokeRoute = async (fileId: string): Promise<ResponseRecorder> => {
   const response = new ResponseRecorder();
   await getFile.onRequest(
     { params: { id: fileId }, headers: {} } as unknown as RouteRequest,
+    response as unknown as RouteResponse
+  );
+  return response;
+};
+
+/** `GET /file/:id/variant/:kind` — the URL a surface asks for a file's variant by (a plain `<img src>`). */
+const invokeVariantRoute = async (fileId: string, kind: string): Promise<ResponseRecorder> => {
+  const response = new ResponseRecorder();
+  await getFileVariant.onRequest(
+    { params: { id: fileId, kind }, headers: {} } as unknown as RouteRequest,
     response as unknown as RouteResponse
   );
   return response;
@@ -436,5 +448,88 @@ describe('access — a variant is readable by whoever can read its original, and
     testEnv.actAs(recipient);
     expect(await new FileStorage().getFile(copy.id)).toBeUndefined();
     expect(ownersOwn.equals(stageBytes)).toBe(true);
+  });
+});
+
+describe('the route — GET /file/:id/variant/:kind is the one URL a surface asks a variant by (an existing row derives on the first request)', () => {
+  it('names its path as the file route does', () => {
+    expect(getFileVariantRoute.path('abc', 'stage')).toEqual('/file/abc/variant/stage');
+    expect(getFileVariant.path).toEqual('/file/:id/variant/:kind');
+  });
+
+  it("the first request derives the stage and serves ITS bytes with ITS headers; the second is served the same row without the maker; the original's own route is untouched", async () => {
+    const file = await createOwnerPicture('old-row.jpg');
+
+    const first = await invokeVariantRoute(file.id, 'stage');
+    const second = await invokeVariantRoute(file.id, 'stage');
+
+    expect(makerCalls.map((call) => call.kind)).toEqual(['stage']);
+    const stageId = (await rowAsSystem(file.id))!.stage!._id!;
+    for (const served of [first, second]) {
+      expect(served.statusCode).toBeUndefined();
+      expect((served.body as Buffer).equals(variantOf('stage', originalBytes))).toBe(true);
+      expect(served.headers['content-type']).toEqual('image/webp');
+      expect(served.headers['content-disposition']).toEqual(
+        `inline; filename="${encodeURIComponent(`(stage) old-row.jpg`)}"`
+      );
+    }
+    expect((await rowAsSystem(stageId))!.variantOf?._id).toEqual(file.id);
+    const original = await invokeRoute(file.id);
+    expect((original.body as Buffer).equals(originalBytes)).toBe(true);
+    expect(original.headers['content-type']).toEqual('image/jpeg');
+  });
+
+  it('a file the maker does not apply to is served as ITSELF through the variant route (the consumer always gets a picture); nothing is made', async () => {
+    const clip = await createOwnerPicture('clip.mp4', 'video/mp4');
+
+    const served = await invokeVariantRoute(clip.id, 'stage');
+
+    expect(served.statusCode).toBeUndefined();
+    expect((served.body as Buffer).equals(originalBytes)).toBe(true);
+    expect(served.headers['content-type']).toEqual('video/mp4');
+    expect(makerCalls).toEqual([]);
+    expect((await rowAsSystem(clip.id))!.stage?._id ?? null).toBeNull();
+  });
+
+  it('a kind the library does not know, a file the caller cannot read, and no session each answer without a byte', async () => {
+    const photo = await createOwnerPicture('private.jpg');
+    expect((await invokeVariantRoute(photo.id, 'poster')).statusCode).toEqual(404);
+    expect(makerCalls).toEqual([]);
+
+    testEnv.actAs(stranger);
+    expect((await invokeVariantRoute(photo.id, 'stage')).statusCode).toEqual(404);
+    expect(makerCalls).toEqual([]);
+    expect((await rowAsSystem(photo.id))!.stage?._id ?? null).toBeNull();
+
+    testEnv.actAs(guestUser as unknown as User);
+    expect((await invokeVariantRoute(photo.id, 'stage')).statusCode).toEqual(401);
+  });
+
+  it("a recipient's request through the route derives the stage as the OWNER's File and is served the COPY of it (the non-owner rule, on the route); the owner the stage itself", async () => {
+    registerCopyMaker();
+    const file = await createOwnerPicture('shared-old.jpg', 'image/jpeg', Buffer.concat([originalBytes, COPY_MARK]));
+    reachableFileIds.add(file.id);
+    objectCache()['@proteinjs/db-file/FileVariantMaker'] = [
+      {
+        appliesTo: (candidate: File, kind: FileVariantKind) => candidate.type.startsWith('image/') && kind === 'stage',
+        make: async (candidate: File, bytes: Buffer) => ({
+          bytes: Buffer.concat([Buffer.from('STAGE:'), bytes.subarray(0, 8), COPY_MARK]),
+          type: 'image/webp',
+        }),
+      },
+    ];
+
+    testEnv.actAs(recipient);
+    const theirs = await invokeVariantRoute(file.id, 'stage');
+    testEnv.actAs(owner);
+    const mine = await invokeVariantRoute(file.id, 'stage');
+
+    const stageRow = (await rowAsSystem((await rowAsSystem(file.id))!.stage!._id!))!;
+    expect(stageRow.scope).toEqual(owner.id);
+    expect((theirs.body as Buffer).includes(COPY_MARK)).toBe(false);
+    expect((mine.body as Buffer).includes(COPY_MARK)).toBe(true);
+    expect((mine.body as Buffer).equals(driver.store.get(stageRow.id)!)).toBe(true);
+    expect(copyMakerCalls).toEqual([stageRow.id]);
+    expect((await fileRowsInScope(recipient.id)).map((row) => row.id)).toEqual([]);
   });
 });
