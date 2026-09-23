@@ -30,3 +30,39 @@ export interface FileCopyForOthers extends Loadable {
 
 export const getFileCopyForOthers = (): FileCopyForOthers | undefined =>
   SourceRepository.get().object<FileCopyForOthers>('@proteinjs/db-file/FileCopyForOthers');
+
+/**
+ * What a non-owner's read becomes when the registered maker could not make a copy: the file is
+ * served to no one but its owner. Thrown by `FileStorage` in place of whatever the maker threw
+ * (the maker's own one-line reason kept as `reason`), so every door — the route, the browser
+ * service, a server-side reader — can tell a deliberate refusal from a failure. Read by shape
+ * ({@link FileCopyRefused.is}), so it holds across duplicate copies of this package.
+ */
+export class FileCopyRefused extends Error {
+  private static readonly NAME = 'FileCopyRefused';
+  /** Free text that reaches a message is one line and bounded. */
+  private static readonly MAX_REASON_CHARS = 300;
+  readonly fileId: string;
+  readonly reason: string;
+
+  constructor(fileId: string, cause: unknown) {
+    const reason = FileCopyRefused.plain(cause);
+    super(`File ${fileId} is not available to anyone but its owner${reason ? `: ${reason}` : ''}`);
+    this.name = FileCopyRefused.NAME;
+    Object.setPrototypeOf(this, FileCopyRefused.prototype);
+    this.fileId = fileId;
+    this.reason = reason;
+  }
+
+  static is(error: unknown): error is FileCopyRefused {
+    return (error as { name?: unknown } | null | undefined)?.name === FileCopyRefused.NAME;
+  }
+
+  private static plain(cause: unknown): string {
+    const message = cause instanceof Error ? cause.message : typeof cause === 'string' ? cause : '';
+    const line = message.replace(/\s+/g, ' ').trim();
+    return line.length > FileCopyRefused.MAX_REASON_CHARS
+      ? `${line.slice(0, FileCopyRefused.MAX_REASON_CHARS)}…`
+      : line;
+  }
+}

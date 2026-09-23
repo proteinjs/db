@@ -5,7 +5,7 @@ import { tables } from './tables/tables';
 import { FileStorageService, getFileStorageService } from './services/FileStorageService';
 import { FileStorageDriver } from './FileStorageDriver';
 import { getFileReachabilityResolvers } from './FileReachabilityResolver';
-import { getFileCopyForOthers } from './FileCopyForOthers';
+import { FileCopyRefused, getFileCopyForOthers } from './FileCopyForOthers';
 import { Loadable, SourceRepository } from '@proteinjs/reflection';
 import { Logger } from '@proteinjs/logger';
 import { DbFileStorageDriver } from './DbFileStorageDriver';
@@ -253,7 +253,13 @@ export class FileStorage implements FileStorageService {
     const maker = getFileCopyForOthers()!;
     const driver = FileStorage.getDriver();
     const original = Buffer.from(await driver.getFileData(file.id), 'base64');
-    const copyBytes = await maker.make(file, original);
+    let copyBytes: Buffer;
+    try {
+      copyBytes = await maker.make(file, original);
+    } catch (cause) {
+      // The maker's contract: a throw means no copy can be made — the file is the owner's alone.
+      throw new FileCopyRefused(file.id, cause);
+    }
     // As system, in the OWNER's scope: the copy is the owner's file (their storage, their purge).
     const system = getDbAsSystem();
     const copy = await system.insert(tables.File, {
