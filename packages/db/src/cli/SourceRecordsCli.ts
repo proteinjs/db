@@ -42,19 +42,19 @@ export class SourceRecordsCli {
   async run(argv: string[]): Promise<number> {
     const [command, ...rest] = argv;
     if (command !== 'pull') {
-      this.io.log(SourceRecordsCli.usage());
+      this.say(SourceRecordsCli.usage());
       return command === 'help' || command === '--help' || command === undefined ? 0 : 2;
     }
     let flags: { from: string; table: string; out: string };
     try {
       flags = SourceRecordsCli.parsePullFlags(rest);
     } catch (error) {
-      this.io.log(`source-records pull: ${(error as Error).message}\n\n${SourceRecordsCli.usage()}`);
+      this.say(`source-records pull: ${(error as Error).message}\n\n${SourceRecordsCli.usage()}`);
       return 2;
     }
     const auth = this.authHeaders();
     if (!auth) {
-      this.io.log(
+      this.say(
         `source-records pull: no auth — set ${SOURCE_RECORDS_COOKIE_ENV} (the session cookie header for ${flags.from}) ` +
           `or ${SOURCE_RECORDS_BEARER_ENV} (a bearer token) in the environment`
       );
@@ -63,13 +63,13 @@ export class SourceRecordsCli {
     try {
       const outcome = await this.pull(flags.from, flags.table, flags.out, auth);
       const { declaration, wrote, path } = outcome;
-      this.io.log(
+      this.say(
         `${declaration.table}: ${declaration.rowCount} ${declaration.rowCount == 1 ? 'row' : 'rows'} from ` +
           `${declaration.environment} → ${path} (${wrote ? 'written' : 'unchanged'})`
       );
       return 0;
     } catch (error) {
-      this.io.log(`source-records pull: ${(error as Error).message}`);
+      this.say(`source-records pull: ${(error as Error).message}`);
       return 1;
     }
   }
@@ -140,6 +140,22 @@ export class SourceRecordsCli {
     const declaration = Serializer.deserialize(body.serializedReturn);
     // The reply is validated like a file: the same document, the same rules.
     return SourceRecordDeclarationDocument.parse(JSON.stringify(declaration), `the export from ${from}`);
+  }
+
+  /**
+   * The one output seam: every line the command prints passes here, and the auth values the
+   * environment holds are redacted from it — a transport or a server that echoes the request
+   * (headers included) into an error still never gets a cookie or a bearer onto the terminal.
+   */
+  private say(line: string): void {
+    let redacted = line;
+    for (const name of [SOURCE_RECORDS_COOKIE_ENV, SOURCE_RECORDS_BEARER_ENV]) {
+      const value = this.io.env[name];
+      if (value) {
+        redacted = redacted.split(value).join(`<${name}>`);
+      }
+    }
+    this.io.log(redacted);
   }
 
   private authHeaders(): { [name: string]: string } | undefined {

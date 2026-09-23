@@ -102,12 +102,12 @@ describe('source-records pull', () => {
   });
 
   it('a re-pull with no change is a no-op: the file (its header time included) is left untouched, and says so', async () => {
-    const h = harness(serving(declaration(rows, '2026-01-01T00:00:00.000Z')), { [SOURCE_RECORDS_COOKIE_ENV]: 's' });
+    const h = harness(serving(declaration(rows, '2026-01-01T00:00:00.000Z')), { [SOURCE_RECORDS_COOKIE_ENV]: 'session=fixture-cookie' });
     await h.cli.run(['pull', '--from', 'https://example.test', '--table', 'widgets', '--out', 'w.json']);
     const first = h.files.get('w.json');
 
     // The server exports again, later — same rows, a newer header time.
-    const later = harness(serving(declaration(rows, '2026-06-01T00:00:00.000Z')), { [SOURCE_RECORDS_COOKIE_ENV]: 's' });
+    const later = harness(serving(declaration(rows, '2026-06-01T00:00:00.000Z')), { [SOURCE_RECORDS_COOKIE_ENV]: 'session=fixture-cookie' });
     later.files.set('w.json', first as string);
     expect(
       await later.cli.run(['pull', '--from', 'https://example.test', '--table', 'widgets', '--out', 'w.json'])
@@ -119,10 +119,10 @@ describe('source-records pull', () => {
   });
 
   it('a change in the rows rewrites the file with the new header time', async () => {
-    const h = harness(serving(declaration(rows)), { [SOURCE_RECORDS_COOKIE_ENV]: 's' });
+    const h = harness(serving(declaration(rows)), { [SOURCE_RECORDS_COOKIE_ENV]: 'session=fixture-cookie' });
     await h.cli.run(['pull', '--from', 'https://example.test', '--table', 'widgets', '--out', 'w.json']);
     const changed = harness(serving(declaration([...rows, { sku: 'C', name: 'Sea' }], '2026-06-01T00:00:00.000Z')), {
-      [SOURCE_RECORDS_COOKIE_ENV]: 's',
+      [SOURCE_RECORDS_COOKIE_ENV]: 'session=fixture-cookie',
     });
     changed.files.set('w.json', h.files.get('w.json') as string);
     expect(
@@ -145,7 +145,7 @@ describe('source-records pull', () => {
 
   it("the server's refusal is the exit (1) with its own words; a non-200 too", async () => {
     const denied = harness(() => ({ status: 200, body: { error: 'Not authorized to run service' } }), {
-      [SOURCE_RECORDS_COOKIE_ENV]: 's',
+      [SOURCE_RECORDS_COOKIE_ENV]: 'session=fixture-cookie',
     });
     expect(
       await denied.cli.run(['pull', '--from', 'https://example.test', '--table', 'widgets', '--out', 'w.json'])
@@ -153,15 +153,32 @@ describe('source-records pull', () => {
     expect(denied.lines).toEqual(['source-records pull: Not authorized to run service']);
     expect(denied.writes).toEqual([]);
 
-    const down = harness(() => ({ status: 502, body: 'gateway' }), { [SOURCE_RECORDS_COOKIE_ENV]: 's' });
+    const down = harness(() => ({ status: 502, body: 'gateway' }), { [SOURCE_RECORDS_COOKIE_ENV]: 'session=fixture-cookie' });
     expect(
       await down.cli.run(['pull', '--from', 'https://example.test', '--table', 'widgets', '--out', 'w.json'])
     ).toBe(1);
     expect(down.lines[0]).toMatch(/answered 502/);
   });
 
+  it('a transport whose failure echoes the request (headers included) never gets the cookie or the bearer into a printed line — the one output seam redacts them', async () => {
+    const secrets: { [name: string]: string }[] = [
+      { [SOURCE_RECORDS_COOKIE_ENV]: 'session=SECRET-COOKIE-7f3a' },
+      { [SOURCE_RECORDS_BEARER_ENV]: 'SECRET-BEARER-9c1d' },
+    ];
+    for (const env of secrets) {
+      const { cli, lines } = harness(() => ({ status: 200, body: {} }), env);
+      cli['io'].fetch = async (url, init) => {
+        throw new Error(`fetch failed: ${url} ${JSON.stringify(init)}`);
+      };
+      expect(await cli.run(['pull', '--from', 'http://localhost:1', '--table', 't', '--out', 'out.json'])).toBe(1);
+      const printed = lines.join('\n');
+      expect(printed).toContain('fetch failed');
+      expect(printed).not.toContain('SECRET-');
+    }
+  });
+
   it('bad usage is exit 2 with the usage: a missing flag, a non-url --from, an unknown command', async () => {
-    const h = harness(serving(declaration(rows)), { [SOURCE_RECORDS_COOKIE_ENV]: 's' });
+    const h = harness(serving(declaration(rows)), { [SOURCE_RECORDS_COOKIE_ENV]: 'session=fixture-cookie' });
     expect(await h.cli.run(['pull', '--from', 'https://example.test', '--table', 'widgets'])).toBe(2);
     expect(h.lines[0]).toMatch(/--out is required/);
     expect(await h.cli.run(['pull', '--from', 'example.test', '--table', 'widgets', '--out', 'w'])).toBe(2);
