@@ -245,7 +245,9 @@ export class FileStorage implements FileStorageService {
   /**
    * Makes the copy (the maker's bytes, from the original's), stores it as a File in the owner's
    * scope and names it on the original's row. Two non-owners reading at once may both get here:
-   * the row's word wins — a copy made second is deleted and the first is served.
+   * the row's word wins — decided in ONE transaction (the read of the row and the write of its
+   * word together, so racing writers are serialized and the loser's transaction, retried, finds
+   * the winner named) — and a copy that lost is deleted after the commit, the first is served.
    */
   private async makeCopyForOthers(file: File): Promise<string> {
     const maker = getFileCopyForOthers()!;
@@ -265,13 +267,20 @@ export class FileStorage implements FileStorageService {
     });
     await driver.createFile(copy, copyBytes.toString('base64'));
 
-    const current = await system.get(tables.File, { id: file.id });
-    if (current?.copyForOthers?._id) {
+    const named = await system.runTransaction(async () => {
+      const current = await system.get(tables.File, { id: file.id });
+      if (current?.copyForOthers?._id) {
+        return current.copyForOthers._id;
+      }
+      await system.update(tables.File, { id: file.id, copyForOthers: new Reference<File>(tables.File.name, copy.id) });
+      return copy.id;
+    });
+    if (named !== copy.id) {
+      // Outside the transaction: the row's delete takes the bytes with it (the delete watcher), a
+      // side effect that must not ride a transaction the runner may retry.
       await system.delete(tables.File, { id: copy.id });
-      return current.copyForOthers._id;
     }
-    await system.update(tables.File, { id: file.id, copyForOthers: new Reference<File>(tables.File.name, copy.id) });
-    return copy.id;
+    return named;
   }
 
   /** The row forgets its copy for others first (nothing serves a copy the row no longer names), then the copy's row goes — its bytes with it, through the delete watcher. */
