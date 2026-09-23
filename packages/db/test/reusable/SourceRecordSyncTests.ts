@@ -1012,6 +1012,45 @@ export const sourceRecordSyncTests = (
         expect((await widgetRow('E')).name).toBe('Mine again');
       });
 
+      test("the upgrade: rows the loader wrote BEFORE stamps existed (loaded from source, a package, no stamp) are the declaration's — stamped once, never re-inserted; one that drifted before stamps is brought back to the declaration once; one no longer declared is removed; the second boot writes nothing", async () => {
+        const db = getDbAsSystem();
+        // The old loader's rows, as it left them on every consumer's database today.
+        const legacy = (sku: string, name: string) => ({
+          id: `w-${sku}`,
+          sku,
+          name,
+          price: 10,
+          isLoadedFromSource: true,
+          sourcePackage: '@test/pkg-w',
+          sourcePackageVersion: '1.0.0',
+        });
+        for (const row of [legacy('L1', 'L1'), legacy('L2', 'drifted before stamps'), legacy('L3', 'L3')]) {
+          await db.insert(widgetTable, row);
+        }
+        for (const row of await widgetRows()) {
+          expect(row.declarationStamp).toBeFalsy();
+        }
+
+        // The first boot with the stamp: L1 and L2 declared (L2's declaration says 'L2'), L3 dropped.
+        const first = await bootWidgets([widget('L1', 'L1'), widget('L2', 'L2')]);
+        expect(loop(first)).toMatchObject({ inserts: 0, updates: 2, adopted: 0, kept: 0, deletes: 1, unowned: 0 });
+        expect(await widgetRows()).toHaveLength(2);
+        expect(await widgetRow('L1')).toMatchObject({ id: 'w-L1', name: 'L1' });
+        expect((await widgetRow('L1')).declarationStamp).toBeTruthy();
+        expect(await widgetRow('L2')).toMatchObject({ id: 'w-L2', name: 'L2' });
+        expect(await widgetRow('L3')).toBeUndefined();
+
+        // The second boot: converged, nothing written.
+        const second = await bootWidgets([widget('L1', 'L1'), widget('L2', 'L2')]);
+        expect(loop(second)).toMatchObject({ inserts: 0, updates: 0, adopted: 0, kept: 0, deletes: 0, unchanged: 2 });
+
+        // From here the precedence holds: a product edit on L1 is kept through the next declaration change.
+        await db.update(widgetTable, { name: 'Mine now' }, { sku: 'L1' });
+        const third = await bootWidgets([widget('L1', 'L1 v2'), widget('L2', 'L2')]);
+        expect(loop(third)).toMatchObject({ kept: 1, updates: 0, unchanged: 1 });
+        expect((await widgetRow('L1')).name).toBe('Mine now');
+      });
+
       test('idempotent: a second load of the same declaration changes nothing — counts and stamps', async () => {
         await bootWidgets([widget('A', 'A'), widget('B', 'B')]);
         const before = await widgetRows();
