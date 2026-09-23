@@ -1224,6 +1224,72 @@ export const sourceRecordSyncTests = (
         expect(adopted[widgetTable.name]).toMatchObject({ inserts: 0, updates: 0, unchanged: 3 });
       });
 
+      test('a product edit of a RUNTIME column never moves authorship — the next file change lands on the declared columns and the runtime column survives', async () => {
+        await bootFile(await writeDeclaration('b1-v1.json', [{ sku: 'X', name: 'X1', price: 1 }]));
+        await getDbAsSystem().update(widgetTable, { stockNote: 'runtime-owned' }, { sku: 'X' });
+        const second = await bootFile(await writeDeclaration('b1-v2.json', [{ sku: 'X', name: 'X2', price: 2 }]));
+        expect(second[widgetTable.name]).toMatchObject({ updates: 1, kept: 0, adopted: 0 });
+        expect(await widgetRow('X')).toMatchObject({ name: 'X2', price: 2, stockNote: 'runtime-owned' });
+      });
+
+      test('a product edit of a DECLARED column is kept through every later file change — until the file says what the product said, which adopts it', async () => {
+        await bootFile(await writeDeclaration('b2-v1.json', [{ sku: 'Y', name: 'Y1', price: 1 }]));
+        await getDbAsSystem().update(widgetTable, { name: 'Mine' }, { sku: 'Y' });
+        const v2 = await bootFile(await writeDeclaration('b2-v2.json', [{ sku: 'Y', name: 'Y2', price: 1 }]));
+        expect(v2[widgetTable.name]).toMatchObject({ kept: 1, updates: 0 });
+        const v3 = await bootFile(await writeDeclaration('b2-v3.json', [{ sku: 'Y', name: 'Y3', price: 3 }]));
+        expect(v3[widgetTable.name]).toMatchObject({ kept: 1, updates: 0 });
+        expect(await widgetRow('Y')).toMatchObject({ name: 'Mine', price: 1 });
+        // The loop closes: a pull that carries the product's edit makes the row the declaration's again.
+        const v4 = await bootFile(await writeDeclaration('b2-v4.json', [{ sku: 'Y', name: 'Mine', price: 1 }]));
+        expect(v4[widgetTable.name]).toMatchObject({ adopted: 1, kept: 0 });
+        const v5 = await bootFile(await writeDeclaration('b2-v5.json', [{ sku: 'Y', name: 'Theirs again', price: 1 }]));
+        expect(v5[widgetTable.name]).toMatchObject({ updates: 1, kept: 0 });
+        expect((await widgetRow('Y')).name).toBe('Theirs again');
+      });
+
+      test('a file with a duplicate key is refused before anything loads', async () => {
+        const filePath = await writeDeclaration('b4.json', [
+          { sku: 'D', name: 'one', price: 1 },
+          { sku: 'D', name: 'two', price: 2 },
+        ]);
+        await expect(bootFile(filePath)).rejects.toThrow(/Two source record declarations share the natural key 'sku' = 'D'/);
+        expect(await widgetRows()).toHaveLength(0);
+      });
+
+      test('a file keyed on another column than the table syncs on is refused by name', async () => {
+        const filePath = path.join(scratch, 'b5a.json');
+        const base = await SourceRecordDeclarationDocument.fromRecords(widgetTable, [{ sku: 'K', name: 'K', price: 1 }], header);
+        fs.writeFileSync(filePath, SourceRecordDeclarationDocument.render({ ...base, key: 'name' }));
+        await expect(bootFile(filePath)).rejects.toThrow(/keys on 'name'; the table syncs on 'sku'/);
+        expect(await widgetRows()).toHaveLength(0);
+      });
+
+      test('key VALUES renamed in the file — one rename is a remove + insert; renaming most of them trips the guard', async () => {
+        await bootFile(await writeDeclaration('b5b-v1.json', [{ sku: 'A', name: 'A', price: 1 }, { sku: 'B', name: 'B', price: 1 }]));
+        const one = await bootFile(await writeDeclaration('b5b-v2.json', [{ sku: 'A2', name: 'A', price: 1 }, { sku: 'B', name: 'B', price: 1 }]));
+        expect(one[widgetTable.name]).toMatchObject({ deletes: 1, inserts: 1 });
+        expect(await widgetRow('A')).toBeUndefined();
+        expect(await widgetRow('A2')).toMatchObject({ name: 'A' });
+        await bootFile(await writeDeclaration('b5b-v3.json', [{ sku: 'A2', name: 'A', price: 1 }, { sku: 'B', name: 'B', price: 1 }, { sku: 'C', name: 'C', price: 1 }]));
+        await expect(
+          bootFile(await writeDeclaration('b5b-v4.json', [{ sku: 'A3', name: 'A', price: 1 }, { sku: 'B3', name: 'B', price: 1 }, { sku: 'C3', name: 'C', price: 1 }]))
+        ).rejects.toThrow(/remove 3 of the 3 rows/);
+        expect(await widgetRows()).toHaveLength(3);
+      });
+
+      test('the export leaves out every column not declared — the secret, the runtime column, id, created, updated, the stamps', async () => {
+        await bootFile(await writeDeclaration('b7.json', [{ sku: 'E', name: 'E', price: 1 }]));
+        await getDbAsSystem().update(widgetTable, { apiKey: 'sk-secret-never', stockNote: 'runtime' }, { sku: 'E' });
+        objectCache()['@proteinjs/db/SourceRecordExportConfigFactory'] = [{ getConfig: () => ({ environment: 'chk' }) }];
+        const exported = await new SourceRecordExport().export(widgetTable.name);
+        const text = SourceRecordDeclarationDocument.render(exported);
+        expect(exported.columns).toEqual(['name', 'price', 'releasedAt', 'sku']);
+        for (const absent of ['sk-secret-never', 'apiKey', 'stockNote', 'runtime', '"id"', 'created', 'updated', 'declarationStamp', 'isLoadedFromSource', 'sourcePackage']) {
+          expect(text).not.toContain(absent);
+        }
+      });
+
       test('the export door refuses a table with no declaration columns, a non-source table, and an environment that cannot name itself', async () => {
         objectCache()['@proteinjs/db/SourceRecordExportConfigFactory'] = [
           { getConfig: () => ({ environment: 'fixture-env' }) },
