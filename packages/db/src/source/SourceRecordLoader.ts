@@ -4,7 +4,10 @@ import { getSourceRecordLoaders, SourceRecord, getSourceRecordTables } from './S
 import { Table } from '../Table';
 import { Db, getDbAsSystem } from '../Db';
 import { SourceRecordRepo } from './SourceRecordRepo';
-import { RecordSerializer } from '../Record';
+import { RecordSerializer, SerializedRecord } from '../Record';
+import { SourceRecordStamp } from './SourceRecordStamp';
+import { getSourceRecordDeclarationFiles } from './SourceRecordDeclarationFile';
+import { SourceRecordDeclarationDocument } from './SourceRecordDeclaration';
 
 type DeclaredRecord = {
   /** The owning package (the declaring loader's package) — the grain the sync prunes within. */
@@ -31,7 +34,30 @@ export type SourceRecordTableLoadSummary = {
   skippedNewer: number;
   /** Source-loaded rows with no owner stamp that no declaration in this build claims. */
   unowned: number;
+  /**
+   * PRODUCT-AUTHORED rows this load met and left exactly as they were — a row the product
+   * created or edited that a declaration names, or that no declaration names any more. The
+   * precedence: the product's rows are never touched, whatever the declaration says.
+   */
+  kept: number;
 };
+
+/** The removal guard's refusal: a load that would remove more than the table's named fraction. */
+export class SourceRecordRemovalRefusedError extends Error {
+  constructor(
+    public tableName: string,
+    public removing: number,
+    public owned: number,
+    public maxRemovedFraction: number
+  ) {
+    super(
+      `(${tableName}) Refusing to remove ${removing} of the ${owned} rows this build owns — more than the table's ` +
+        `maxRemovedFraction ${maxRemovedFraction}. A wrong or empty declaration? Nothing on the table was changed.`
+    );
+    this.name = 'SourceRecordRemovalRefusedError';
+    Object.setPrototypeOf(this, SourceRecordRemovalRefusedError.prototype);
+  }
+}
 
 export type SourceRecordLoadSummary = { [tableName: string]: SourceRecordTableLoadSummary };
 
@@ -100,6 +126,7 @@ export class SourceRecordLoader {
       let updateCount = 0;
       let unchangedCount = 0;
       let adoptedCount = 0;
+      let keptCount = removed.keptCount;
       let skippedNewer = removed.skippedNewer;
       for (const { source, qualifiedName, name, record } of records) {
         let sourceRecord = record;
@@ -152,28 +179,30 @@ export class SourceRecordLoader {
             sourceRecord = { ...sourceRecord, id: existingRecord.id };
           }
 
-          if (existingRecord.isLoadedFromSource !== true) {
-            // A pre-existing (runtime-created) row is being taken over by a declaration —
-            // deliberate, but loud: a declaration asserts ownership of the row's identity.
+          const declaredColumns = SourceRecordStamp.declaredColumnNames(table, sourceRecord);
+          if ((await this.authorship(table, existingRecord)) === 'product') {
+            // THE PRECEDENCE: a product-authored row is never touched — unless it already IS
+            // the declaration (every declared column equal), in which case it is adopted:
+            // stamped as the declaration's from then on, nothing else written.
+            if (await this.hasChanges(table, this.withoutStamps(sourceRecord), existingRecord)) {
+              keptCount += 1;
+              new SourceRecordRepo().loadSourceRecord(table.name, existingRecord);
+              continue;
+            }
             adoptedCount += 1;
             this.logger.info({
-              message: `(${table.name}) Adopting existing record into source ownership`,
-              obj: { [keyProperty]: (sourceRecord as any)[keyProperty], id: existingRecord.id },
+              message: `(${table.name}) Adopting a product-authored record equal to its declaration into source ownership`,
             });
           } else if (reclaimedSoftRemoved) {
             // A soft-removed row re-claimed by its declaration under a changed natural key:
             // adopted in place and reactivated from the declaration by the update below.
             adoptedCount += 1;
             this.logger.info({
-              message: `(${table.name}) Adopting soft-removed record re-declared under a changed ${keyProperty}`,
-              obj: {
-                id: existingRecord.id,
-                [`removed_${keyProperty}`]: (existingRecord as any)[keyProperty],
-                [keyProperty]: (sourceRecord as any)[keyProperty],
-              },
+              message: `(${table.name}) Adopting a soft-removed record re-declared under a changed ${keyProperty}`,
             });
           }
 
+          sourceRecord.declarationStamp = await this.stampFor(table, sourceRecord, declaredColumns);
           if (await this.hasChanges(table, sourceRecord, existingRecord)) {
             await db.update(table, sourceRecord);
             updateCount += 1;
@@ -181,6 +210,11 @@ export class SourceRecordLoader {
             unchangedCount += 1;
           }
         } else {
+          sourceRecord.declarationStamp = await this.stampFor(
+            table,
+            sourceRecord,
+            SourceRecordStamp.declaredColumnNames(table, sourceRecord)
+          );
           const dbSourceRecord = await db.insert(table, sourceRecord);
           sourceRecord = { ...sourceRecord, ...dbSourceRecord };
           insertCount += 1;
@@ -200,7 +234,9 @@ export class SourceRecordLoader {
         removedUpdates: removed.removedUpdateCount,
         skippedNewer,
         unowned,
+        kept: keptCount,
       };
+      // The one line per table: the table's name and the counts — never a row's contents.
       this.logger.info({
         message: `(${table.name}) Loaded ${records.length} ${records.length == 1 ? 'record' : 'records'} from source`,
         obj: summary[table.name],
@@ -215,10 +251,13 @@ export class SourceRecordLoader {
    * version or older, that NO package in this build still declares
    * (`is_loaded_from_source = true AND source_package IN <build's packages> AND <key> NOT IN
    * <build's declared keys for the table>`, minus rows stamped by a newer version of their
-   * package) are handled per the table's `onSourceRemoved` policy — delete (default), keep, or
-   * update with a patch. The update leg applies the patch only to rows whose fields actually
-   * differ (idempotent boots), through `Db.update` so table watchers observe each write.
-   * See {@link load} for the ownership model.
+   * package, minus PRODUCT-AUTHORED rows — edited by the product since the loader wrote them,
+   * kept whatever the declaration says) are handled per the table's `onSourceRemoved` policy —
+   * delete (default), keep, or update with a patch. The update leg applies the patch only to
+   * rows whose fields actually differ (idempotent boots), through `Db.update` so table watchers
+   * observe each write, and re-stamps the row as the loader's own write. The removal guard
+   * (`sourceRecordOptions.maxRemovedFraction`) refuses the whole load of the table before
+   * anything is removed. See {@link load} for the ownership model.
    */
   private async reconcileRemoved(
     db: Db,
@@ -226,10 +265,11 @@ export class SourceRecordLoader {
     keyProperty: string,
     buildSources: Set<string>,
     allDeclaredKeys: unknown[]
-  ): Promise<{ deleteCount: number; removedUpdateCount: number; skippedNewer: number }> {
+  ): Promise<{ deleteCount: number; removedUpdateCount: number; skippedNewer: number; keptCount: number }> {
+    const none = { deleteCount: 0, removedUpdateCount: 0, skippedNewer: 0, keptCount: 0 };
     const policy = table.sourceRecordOptions.onSourceRemoved ?? 'delete';
     if (policy === 'keep' || buildSources.size == 0) {
-      return { deleteCount: 0, removedUpdateCount: 0, skippedNewer: 0 };
+      return none;
     }
 
     const qb = QueryBuilder.fromObject<SourceRecord>({ isLoadedFromSource: true }, table.name);
@@ -241,42 +281,76 @@ export class SourceRecordLoader {
     const candidates: SourceRecord[] = await db.query(table, qb);
     const stampedNewer = (candidate: SourceRecord) =>
       this.isNewerStamp(candidate.sourcePackageVersion, this.sourceVersion(candidate.sourcePackage as string));
-    const removedRecords = candidates.filter((candidate) => !stampedNewer(candidate));
-    const skippedNewer = candidates.length - removedRecords.length;
+    const reconcilable = candidates.filter((candidate) => !stampedNewer(candidate));
+    const skippedNewer = candidates.length - reconcilable.length;
     if (skippedNewer > 0) {
       this.logger.info({
         message: `(${table.name}) Left ${skippedNewer} record${skippedNewer == 1 ? '' : 's'} stamped by a newer version of ${skippedNewer == 1 ? 'its' : 'their'} package — not treated as removed`,
-        obj: { [keyProperty]: candidates.filter(stampedNewer).map((candidate) => (candidate as any)[keyProperty]) },
       });
     }
 
-    if (removedRecords.length == 0) {
-      return { deleteCount: 0, removedUpdateCount: 0, skippedNewer };
+    const removedRecords: SourceRecord[] = [];
+    let keptCount = 0;
+    for (const candidate of reconcilable) {
+      if ((await this.authorship(table, candidate)) === 'product') {
+        keptCount += 1;
+      } else {
+        removedRecords.push(candidate);
+      }
     }
+
+    if (removedRecords.length == 0) {
+      return { ...none, skippedNewer, keptCount };
+    }
+
+    await this.guardRemoval(db, table, buildSources, removedRecords.length);
 
     if (policy === 'delete') {
       const deleteQb = QueryBuilder.fromObject<SourceRecord>({ isLoadedFromSource: true }, table.name);
       deleteQb.condition({ field: 'id', operator: 'IN', value: removedRecords.map((record) => record.id) });
-      return { deleteCount: await db.delete(table, deleteQb), removedUpdateCount: 0, skippedNewer };
+      return { deleteCount: await db.delete(table, deleteQb), removedUpdateCount: 0, skippedNewer, keptCount };
     }
 
     let removedUpdateCount = 0;
     for (const removedRecord of removedRecords) {
       if (await this.hasChanges(table, policy.update, removedRecord)) {
-        await db.update(table, { id: removedRecord.id, ...policy.update });
+        // The patch is the loader's own write: the stamp follows it, over the columns the row
+        // was stamped with plus the patch's, so the row stays declaration-authored.
+        const patched = { ...removedRecord, ...policy.update };
+        const stampedColumns = removedRecord.declarationStamp
+          ? SourceRecordStamp.columnsOf(removedRecord.declarationStamp) ?? []
+          : [];
+        const columns = [...stampedColumns, ...SourceRecordStamp.declaredColumnNames(table, policy.update)];
+        const declarationStamp = await this.stampFor(table, this.withoutStamps(patched), columns);
+        await db.update(table, { id: removedRecord.id, ...policy.update, declarationStamp });
         removedUpdateCount += 1;
         this.logger.info({
-          message: `(${table.name}) Applied onSourceRemoved update to record removed from source`,
-          obj: {
-            id: removedRecord.id,
-            [keyProperty]: (removedRecord as any)[keyProperty],
-            source: removedRecord.sourcePackage,
-          },
+          message: `(${table.name}) Applied onSourceRemoved update to a record removed from source`,
         });
       }
     }
 
-    return { deleteCount: 0, removedUpdateCount, skippedNewer };
+    return { deleteCount: 0, removedUpdateCount, skippedNewer, keptCount };
+  }
+
+  /**
+   * The removal guard: refuse before anything is removed when the removal would take more than
+   * the table's named fraction of the declaration-authored rows this build owns on it (the
+   * rows this reconcile speaks for: `is_loaded_from_source = true AND source_package IN
+   * <build's packages>`, whatever they hold) — and more than one row.
+   */
+  private async guardRemoval(db: Db, table: Table<any>, buildSources: Set<string>, removing: number): Promise<void> {
+    const maxRemovedFraction = table.sourceRecordOptions.maxRemovedFraction ?? 0.5;
+    if (removing <= 1 || maxRemovedFraction >= 1) {
+      return;
+    }
+
+    const ownedQb = QueryBuilder.fromObject<SourceRecord>({ isLoadedFromSource: true }, table.name);
+    ownedQb.condition({ field: 'sourcePackage', operator: 'IN', value: Array.from(buildSources) as any });
+    const owned = await db.getRowCount(table, ownedQb);
+    if (removing > maxRemovedFraction * owned) {
+      throw new SourceRecordRemovalRefusedError(table.name, removing, owned, maxRemovedFraction);
+    }
   }
 
   /**
@@ -325,7 +399,8 @@ export class SourceRecordLoader {
       !holder ||
       holder.isLoadedFromSource !== true ||
       holder.sourcePackage !== source ||
-      allDeclaredKeys.includes((holder as any)[keyProperty])
+      allDeclaredKeys.includes((holder as any)[keyProperty]) ||
+      (await this.authorship(table, holder)) === 'product'
     ) {
       return undefined;
     }
@@ -475,7 +550,66 @@ export class SourceRecordLoader {
       tables[loader.table.name].records.push({ source, qualifiedName, name, record: loader.record });
     }
 
+    // Declaration FILES — the other declaration source: every row of the document is a record
+    // declared by the file's package, under the file's own name (what `source-records pull`
+    // wrote; see SourceRecordDeclarationDocument for the format and its validation).
+    for (const { source, qualifiedName, name, declarationFile } of getSourceRecordDeclarationFiles()) {
+      buildSources.add(source);
+      const { table } = declarationFile;
+      if (!tables[table.name]) {
+        tables[table.name] = { table, records: [] };
+      }
+
+      const document = SourceRecordDeclarationDocument.parse(this.readFile(declarationFile.path), declarationFile.path);
+      for (const record of await SourceRecordDeclarationDocument.toRecords(table, document)) {
+        tables[table.name].records.push({ source, qualifiedName, name, record });
+      }
+    }
+
     return { tables, buildSources };
+  }
+
+  /**
+   * Whose row this is, from the loader's stamp (see {@link SourceRecordStamp}): the DECLARATION's
+   * when the loader wrote it and its declared columns still match the stamp (or the row predates
+   * the stamp — an `isLoadedFromSource` row with none was the loader's, stamped on this load);
+   * the PRODUCT's when the loader never wrote it, or when its declared columns moved since.
+   */
+  private async authorship(table: Table<any>, existingRecord: SourceRecord): Promise<'declaration' | 'product'> {
+    if (existingRecord.isLoadedFromSource !== true) {
+      return 'product';
+    }
+    if (existingRecord.declarationStamp == null) {
+      return 'declaration';
+    }
+
+    const serialized = await new RecordSerializer(table).serialize(this.withoutStamps(existingRecord));
+    return SourceRecordStamp.matches(existingRecord.declarationStamp, serialized) ? 'declaration' : 'product';
+  }
+
+  /** The stamp for a record as the loader is about to write it, over the given column names. */
+  private async stampFor(table: Table<any>, record: any, columnNames: string[]): Promise<string> {
+    const serialized: SerializedRecord = await new RecordSerializer(table).serialize(this.withoutStamps(record));
+    return SourceRecordStamp.render(serialized, columnNames);
+  }
+
+  /** The record minus the loader's own stamps — what a declaration and a row are compared on. */
+  private withoutStamps<T extends object>(record: T): T {
+    const copy: any = { ...record };
+    delete copy.isLoadedFromSource;
+    delete copy.sourcePackage;
+    delete copy.sourcePackageVersion;
+    delete copy.declarationStamp;
+    return copy;
+  }
+
+  /** A declaration file's text, through the ambient require (never seen by bundlers). */
+  private readFile(path: string): string {
+    const nodeRequire: NodeRequire | undefined = typeof require === 'function' ? require : undefined;
+    if (!nodeRequire) {
+      throw new Error(`Cannot read the declaration file ${path}: no file system in this runtime`);
+    }
+    return nodeRequire('fs').readFileSync(path, 'utf8');
   }
 
   /**

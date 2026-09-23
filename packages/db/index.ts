@@ -18,7 +18,18 @@ export * from './src/source/SourceRecordRepo';
 // The sync runner behind Db.init's source-record leg, aliased: its class name is taken in this
 // index by the SourceRecordLoader declaration interface. Public so consumer test harnesses can
 // run one boot of the sync directly (the exports map blocks deep dist imports).
-export { SourceRecordLoader as SourceRecordSyncRunner } from './src/source/SourceRecordLoader';
+export {
+  SourceRecordLoader as SourceRecordSyncRunner,
+  SourceRecordRemovalRefusedError,
+  type SourceRecordLoadSummary,
+  type SourceRecordTableLoadSummary,
+} from './src/source/SourceRecordLoader';
+export * from './src/source/SourceRecordStamp';
+export * from './src/source/SourceRecordDeclaration';
+export * from './src/source/SourceRecordDeclarationFile';
+export * from './src/source/SourceRecordExportConfig';
+export * from './src/source/SourceRecordExport';
+export * from './src/cli/SourceRecordsCli';
 export * from './src/MigrationRunner';
 export * from './src/QueryBuilderFactory';
 export * from './src/TableWatcher';
@@ -51,6 +62,7 @@ export * from './src/tables/MigrationTable';
 
 export * from './src/services/DbService';
 export * from './src/services/MigrationRunnerService';
+export * from './src/services/SourceRecordExportService';
 export * from './src/services/TransactionRunnerService';
 
 export * from '@proteinjs/db-query';

@@ -13,6 +13,9 @@
       "default": "./dist/generated/test/index.js"
     }
   },
+  "bin": {
+    "source-records": "./dist/src/cli/sourceRecords.js"
+  },
   "typesVersions": {
     "*": {
       "test": [

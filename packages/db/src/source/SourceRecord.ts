@@ -76,6 +76,16 @@ export interface SourceRecord extends DbRecord {
    * version could not be resolved) carries no ordering and keeps the last-writer-wins semantics.
    */
   sourcePackageVersion?: string;
+  /**
+   * The loader's own stamp on a row it wrote — the declared columns and a digest of their values
+   * as written (see {@link SourceRecordStamp}). It is how a later load tells a DECLARATION-
+   * AUTHORED row (still as the loader left it: the loader may update or remove it) from a
+   * PRODUCT-AUTHORED one (edited by the product since, or never written by the loader: the
+   * loader never touches it, whatever the declaration says). NULL on rows the loader never
+   * wrote, and on rows written before the stamp existed — those `isLoadedFromSource` rows are
+   * the declaration's (the loader owned them before stamps) and are stamped on their next load.
+   */
+  declarationStamp?: string | null;
 }
 
 const getSourceRecordColumns = (hideFromUi = true) => {
@@ -83,6 +93,7 @@ const getSourceRecordColumns = (hideFromUi = true) => {
     isLoadedFromSource: new BooleanColumn('is_loaded_from_source', { ui: { hidden: hideFromUi } }),
     sourcePackage: new StringColumn('source_package', { ui: { hidden: hideFromUi } }),
     sourcePackageVersion: new StringColumn('source_package_version', { ui: { hidden: hideFromUi } }),
+    declarationStamp: new StringColumn('declaration_stamp', { ui: { hidden: hideFromUi } }, 'MAX'),
   };
 };
 

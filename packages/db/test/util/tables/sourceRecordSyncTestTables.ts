@@ -1,4 +1,7 @@
+import type { Moment } from 'moment';
 import {
+  DateTimeColumn,
+  IntegerColumn,
   Record as DbRecord,
   SourceRecord,
   StringColumn,
@@ -121,7 +124,42 @@ export class SyncDerivedNameTable extends Table<SyncDerivedNameRecord> {
   } as Table<SyncDerivedNameRecord>['sourceRecordOptions'];
 }
 
+export interface SyncWidget extends SourceRecord {
+  /** The natural key a declaration file keys on. */
+  sku: string;
+  name: string;
+  price?: number | null;
+  /** A date-valued declared column — the one typed exception of the declaration file format. */
+  releasedAt?: Moment | null;
+  /** NEVER a declaration column: a secret the export must leave behind, whatever a row holds. */
+  apiKey?: string | null;
+  /** Runtime-owned: never declared, never exported, never flips a row's authorship. */
+  stockNote?: string | null;
+}
+
+/**
+ * The full-loop fixture (a generic "widgets" table): keyed by `sku`, four declaration columns,
+ * a secret column the export never renders, a runtime-owned column. The options literal is cast
+ * so the suites compile red-first against a loader that does not yet know the new options.
+ */
+export class SyncWidgetTable extends Table<SyncWidget> {
+  name = 'db_test_sync_widget';
+  columns: Table<SyncWidget>['columns'] = withSourceRecordColumns<SyncWidget>({
+    sku: new StringColumn('sku', { unique: { unique: true, indexName: 'db_test_sync_widget_sku_unique' } }),
+    name: new StringColumn('name'),
+    price: new IntegerColumn('price'),
+    releasedAt: new DateTimeColumn('released_at'),
+    apiKey: new StringColumn('api_key'),
+    stockNote: new StringColumn('stock_note'),
+  });
+  sourceRecordOptions = {
+    naturalKey: 'sku',
+    declarationColumns: ['sku', 'name', 'price', 'releasedAt'],
+  } as Table<SyncWidget>['sourceRecordOptions'];
+}
+
 export const sourceRecordSyncTestTables = {
+  SyncWidget: new SyncWidgetTable() as Table<SyncWidget>,
   SyncMachineAccount: new SyncMachineAccountTable() as Table<SyncMachineAccount>,
   SyncDefaultPolicy: new SyncDefaultPolicyTable() as Table<SyncDefaultPolicyRecord>,
   InheritedStamp: new InheritedStampTable() as Table<InheritedStampRecord>,

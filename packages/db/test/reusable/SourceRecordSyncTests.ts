@@ -9,6 +9,7 @@ import {
   Table,
   TableWatcher,
   getDbAsSystem,
+  getSourceRecordTables,
   isSourceRecordTable,
   withSourceRecordColumns,
 } from '@proteinjs/db';
@@ -16,12 +17,20 @@ import type { DefaultTransactionContextFactory } from '@proteinjs/db';
 // Relative on purpose: the class shares its name with the SourceRecordLoader declaration
 // interface exported from the package index, so it is not index-exported.
 import { SourceRecordLoader } from '../../src/source/SourceRecordLoader';
+import { SourceRecordDeclarationDocument } from '../../src/source/SourceRecordDeclaration';
+import { SourceRecordExport } from '../../src/source/SourceRecordExport';
+import { SOURCE_RECORD_EXPORT_PERMISSION } from '../../src/services/SourceRecordExportService';
 import { TableWatcherRunner } from '../../src/TableWatcherRunner';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import moment from 'moment';
 import { DbTestEnvironment } from '../util/DbTestEnvironment';
 import {
   DupePreflightTable,
   DupePreflightUniqueEmailTable,
   SyncMachineAccount,
+  SyncWidget,
   sourceRecordSyncTestTables,
 } from '../util/tables/sourceRecordSyncTestTables';
 
@@ -52,10 +61,13 @@ class RecordingMachineAccountWatcher implements TableWatcher<SyncMachineAccount>
 
 /**
  * Emulator-backed outcome tests for the source-record sync's mixed-table semantics:
- * declare-only ownership (human rows structurally untouchable), natural-key adoption
- * (existing row keeps its id and runtime fields), `onSourceRemoved` policies (flag-not-delete
- * through `Db.update` so watchers fire; default delete unchanged), boot-time natural-key
- * validation, and the unique-index duplicate preflight.
+ * declare-only ownership (human rows structurally untouchable), the authorship precedence
+ * (the loader's stamp tells its own rows from the product's; a product-authored row — created or
+ * edited by the product — is never touched, and is adopted in place only when it already equals
+ * its declaration), natural-key matching (an adopted row keeps its id and runtime fields),
+ * `onSourceRemoved` policies (flag-not-delete through `Db.update` so watchers fire; default
+ * delete unchanged), the removal guard, declaration files as a source, the export door,
+ * boot-time natural-key validation, and the unique-index duplicate preflight.
  */
 export const sourceRecordSyncTests = (
   driver: DbDriver,
@@ -150,6 +162,7 @@ export const sourceRecordSyncTests = (
       await db.delete(defaultPolicyTable, {});
       await db.delete(sourceRecordSyncTestTables.InheritedStamp, {});
       await db.delete(sourceRecordSyncTestTables.SyncDerivedName, {});
+      await db.delete(sourceRecordSyncTestTables.SyncWidget, {});
       RecordingMachineAccountWatcher.updates = [];
     });
 
@@ -180,28 +193,38 @@ export const sourceRecordSyncTests = (
       expect(await machineRows()).toHaveLength(2);
     });
 
-    test('declared fields revert on boot; runtime-owned fields survive; converged boots write nothing', async () => {
+    test("a product edit of a declared field is the product's — never reverted; runtime-owned fields survive; converged boots write nothing", async () => {
       const declarations = [
         machineDeclaration({ id: 'machine-1', email: 'machine@test.local', displayName: 'Machine' }),
       ];
       await boot(declarations);
 
-      // Runtime drift on a declared field + a runtime-owned write (the credential stand-in).
+      // A runtime-owned write (the credential stand-in) never moves the row's authorship: the
+      // declaration keeps landing on it.
       const db = getDbAsSystem();
-      await db.update(machineTable, { id: 'machine-1', displayName: 'Drifted', runtimeNote: 'provisioned' });
+      await db.update(machineTable, { id: 'machine-1', runtimeNote: 'provisioned' });
+      await boot([machineDeclaration({ id: 'machine-1', email: 'machine@test.local', displayName: 'Machine v2' })]);
+      const redefined = await db.get(machineTable, { id: 'machine-1' });
+      expect(redefined).toMatchObject({ displayName: 'Machine v2', runtimeNote: 'provisioned' });
 
-      await boot(declarations);
-      const reverted = await db.get(machineTable, { id: 'machine-1' });
-      expect(reverted).toMatchObject({ displayName: 'Machine', runtimeNote: 'provisioned' });
+      // A product edit of a DECLARED field makes the row the product's: the declaration never
+      // lands on it again (the precedence), whatever it says.
+      await db.update(machineTable, { id: 'machine-1', displayName: 'Renamed by the product' });
+      const kept = await boot([
+        machineDeclaration({ id: 'machine-1', email: 'machine@test.local', displayName: 'Machine v3' }),
+      ]);
+      expect(kept[machineTable.name]).toMatchObject({ updates: 0, kept: 1 });
+      const afterEdit = await db.get(machineTable, { id: 'machine-1' });
+      expect(afterEdit).toMatchObject({ displayName: 'Renamed by the product', runtimeNote: 'provisioned' });
 
       // A converged boot is a no-op: the row's `updated` stamp does not churn.
-      const stampBefore = reverted.updated.valueOf();
+      const stampBefore = afterEdit.updated.valueOf();
       await boot(declarations);
       const afterIdleBoot = await db.get(machineTable, { id: 'machine-1' });
       expect(afterIdleBoot.updated.valueOf()).toBe(stampBefore);
     });
 
-    test('natural-key adoption: an existing row is adopted in place — id and runtime fields preserved', async () => {
+    test("natural-key match on a product-made row: kept as the product's when it differs; adopted in place (id and runtime fields preserved) when it already equals the declaration", async () => {
       const db = getDbAsSystem();
       // The hand-made bridge row: env-random id, runtime-provisioned fields, never flagged.
       const handMade = await db.insert(machineTable, {
@@ -210,28 +233,47 @@ export const sourceRecordSyncTests = (
         runtimeNote: 'the-password-hash',
       });
 
-      await boot([machineDeclaration({ id: 'declared-id', email: 'bridge@test.local', displayName: 'Ops bridge' })]);
-
+      // The declaration differs (displayName, status): the product's row wins, nothing lands.
+      const kept = await boot([
+        machineDeclaration({ id: 'declared-id', email: 'bridge@test.local', displayName: 'Ops bridge' }),
+      ]);
+      expect(kept[machineTable.name]).toMatchObject({ kept: 1, adopted: 0, inserts: 0, updates: 0 });
       const rows = await machineRows({ email: 'bridge@test.local' });
       expect(rows).toHaveLength(1);
-      // Adopted: the existing id survives (scoped rows reference it); declared fields reverted;
-      // runtime fields (the credential) preserved; the row is now source-owned.
       expect(rows[0]).toMatchObject({
         id: handMade.id,
-        displayName: 'Ops bridge',
+        displayName: 'Hand-made bridge',
+        runtimeNote: 'the-password-hash',
+      });
+      expect(rows[0].isLoadedFromSource).toBeFalsy();
+      expect(await db.get(machineTable, { id: 'declared-id' })).toBeUndefined();
+
+      // Declared exactly as the row is: adopted — the existing id survives (scoped rows reference
+      // it), runtime fields (the credential) preserved, the row is now source-owned.
+      const equal = machineDeclaration({
+        id: 'declared-id',
+        email: 'bridge@test.local',
+        displayName: 'Hand-made bridge',
+      });
+      await db.update(machineTable, { id: handMade.id, status: 'active' });
+      const adopted = await boot([equal]);
+      expect(adopted[machineTable.name]).toMatchObject({ adopted: 1, kept: 0 });
+      const adoptedRow = await db.get(machineTable, { email: 'bridge@test.local' });
+      expect(adoptedRow).toMatchObject({
+        id: handMade.id,
+        displayName: 'Hand-made bridge',
         status: 'active',
         runtimeNote: 'the-password-hash',
         isLoadedFromSource: true,
       });
-      expect(await db.get(machineTable, { id: 'declared-id' })).toBeUndefined();
 
       // The in-process repo registers the record under the ADOPTED id, not the declared one.
       expect(new SourceRecordRepo().getSourceRecord(machineTable.name, handMade.id)).toBeDefined();
       expect(new SourceRecordRepo().getSourceRecord(machineTable.name, 'declared-id')).toBeUndefined();
 
       // Adoption converges: the id difference is not perpetual drift.
-      const stampBefore = rows[0].updated.valueOf();
-      await boot([machineDeclaration({ id: 'declared-id', email: 'bridge@test.local', displayName: 'Ops bridge' })]);
+      const stampBefore = adoptedRow.updated.valueOf();
+      await boot([equal]);
       const afterIdleBoot = await db.get(machineTable, { id: handMade.id });
       expect(afterIdleBoot.updated.valueOf()).toBe(stampBefore);
     });
@@ -522,12 +564,17 @@ export const sourceRecordSyncTests = (
 
       test('cross-source boots leave a natural-key-adopted row in place — adopted id preserved', async () => {
         const db = getDbAsSystem();
-        // Hand-made row with an environment-random id, adopted by pkg-b via natural key.
-        const handMade = await db.insert(machineTable, { email: 'bridge2@test.local', runtimeNote: 'cred' });
+        // Hand-made row with an environment-random id, equal to pkg-b's declaration — adopted by natural key.
+        const handMade = await db.insert(machineTable, {
+          email: 'bridge2@test.local',
+          status: 'active',
+          runtimeNote: 'cred',
+        });
         await bootAsSource('@test/pkg-b', [
           { table: machineTable, record: { id: 'declared-bridge2', email: 'bridge2@test.local', status: 'active' } },
         ]);
         expect((await db.get(machineTable, { email: 'bridge2@test.local' })).id).toBe(handMade.id);
+        expect((await db.get(machineTable, { email: 'bridge2@test.local' })).isLoadedFromSource).toBe(true);
 
         // A DIFFERENT source booting (with its own machine declaration) must not prune, flag,
         // or disturb the adopted row — same id, same runtime state, still active.
@@ -783,8 +830,10 @@ export const sourceRecordSyncTests = (
         await boot([declaration]);
         expect(await db.get(derivedTable, { id: 'd-1' })).toMatchObject({ name: 'SeededLoader0' });
 
-        // A row written before the derived field existed: backfilled ONCE by the next boot…
-        await db.update(derivedTable, { id: 'd-1', name: null });
+        // A row written before the derived field existed — before the loader's stamp, too (a
+        // stamped row whose declared column moved would be the product's): backfilled ONCE by
+        // the next boot…
+        await db.update(derivedTable, { id: 'd-1', name: null, declarationStamp: null });
         const backfill = await boot([declaration]);
         expect(backfill[derivedTable.name].updates).toBe(1);
         const backfilled = await db.get(derivedTable, { id: 'd-1' });
@@ -848,6 +897,334 @@ export const sourceRecordSyncTests = (
       } finally {
         await dropTable(generationOne);
       }
+    });
+
+    /**
+     * THE FULL LOOP — authorship precedence (the loader's own stamp tells a declaration-authored
+     * row from a product-authored one; the product's rows are never touched, whatever the
+     * declaration says), the outcome counted, idempotent loads, and the removal guard against a
+     * wrong declaration. Generic fixtures: a "widgets" table keyed by sku.
+     */
+    describe('the full loop: authorship precedence on a widgets table', () => {
+      const widgetTable = sourceRecordSyncTestTables.SyncWidget;
+      const widget = (sku: string, name: string, extra: Partial<SyncWidget> = {}) => ({
+        table: widgetTable,
+        record: { id: `w-${sku}`, sku, name, price: 10, ...extra },
+      });
+      /** Rows as read back, typed loosely for the stamp column this loop adds (red-first compiles). */
+      type WidgetRow = SyncWidget & { declarationStamp?: string | null };
+      const widgetRows = async () => (await getDbAsSystem().query(widgetTable, {})) as WidgetRow[];
+      const widgetRow = async (sku: string) => (await getDbAsSystem().get(widgetTable, { sku })) as WidgetRow;
+      /** The table's summary, with the counts this loop adds (typed loosely so the suite compiles red-first). */
+      const loop = (summary: Awaited<ReturnType<typeof bootBuild>>) =>
+        summary[widgetTable.name] as (typeof summary)[string] & { kept: number };
+      const bootWidgets = async (declarations: ReturnType<typeof widget>[], version = '1.0.0') =>
+        await bootAsSource('@test/pkg-w', declarations, version);
+
+      test("a product-created row keyed like a declaration is the product's: kept as it is, never rewritten, never inserted over", async () => {
+        const db = getDbAsSystem();
+        const theirs = await db.insert(widgetTable, { sku: 'A', name: 'Their A', price: 99, stockNote: 'theirs' });
+
+        const summary = await bootWidgets([widget('A', 'Declared A')]);
+
+        expect(loop(summary)).toMatchObject({ inserts: 0, updates: 0, adopted: 0, kept: 1 });
+        const rows = await widgetRows();
+        expect(rows).toHaveLength(1);
+        expect(rows[0]).toMatchObject({ id: theirs.id, name: 'Their A', price: 99, stockNote: 'theirs' });
+        expect(rows[0].isLoadedFromSource).toBeFalsy();
+      });
+
+      test("a product EDIT of a declared column makes the row the product's — a later declaration never lands on it; a runtime-owned edit does not flip authorship", async () => {
+        const db = getDbAsSystem();
+        await bootWidgets([widget('A', 'One'), widget('B', 'Two')]);
+        // The loader's stamp rides every row it writes.
+        expect((await widgetRow('A')).declarationStamp).toBeTruthy();
+
+        await db.update(widgetTable, { name: 'Mine' }, { sku: 'A' }); // a declared column
+        await db.update(widgetTable, { stockNote: 'counted' }, { sku: 'B' }); // runtime-owned
+
+        const summary = await bootWidgets([widget('A', 'One v2'), widget('B', 'Two v2')]);
+
+        expect(loop(summary)).toMatchObject({ updates: 1, kept: 1, inserts: 0, deletes: 0 });
+        expect(await widgetRow('A')).toMatchObject({ name: 'Mine' });
+        expect(await widgetRow('B')).toMatchObject({ name: 'Two v2', stockNote: 'counted', isLoadedFromSource: true });
+      });
+
+      test('absent from the declaration: a declaration-authored row is removed, a product-authored one is kept', async () => {
+        const db = getDbAsSystem();
+        await bootWidgets([widget('A', 'A'), widget('B', 'B'), widget('C', 'C')]);
+        await db.update(widgetTable, { name: 'C, edited by the product' }, { sku: 'C' });
+
+        const summary = await bootWidgets([widget('A', 'A')]);
+
+        expect(loop(summary)).toMatchObject({ deletes: 1, kept: 1, unchanged: 1 });
+        expect(await widgetRow('B')).toBeUndefined();
+        expect(await widgetRow('C')).toMatchObject({ name: 'C, edited by the product' });
+        expect(await widgetRow('A')).toBeDefined();
+      });
+
+      test("a product row EQUAL to its declaration is adopted — stamped as the declaration's from then on, its id preserved — until the product edits it again", async () => {
+        const db = getDbAsSystem();
+        const theirs = await db.insert(widgetTable, { sku: 'E', name: 'Equal', price: 10 });
+
+        const adopted = await bootWidgets([widget('E', 'Equal')]);
+        expect(loop(adopted)).toMatchObject({ adopted: 1, kept: 0, inserts: 0 });
+        expect(await widgetRow('E')).toMatchObject({
+          id: theirs.id,
+          isLoadedFromSource: true,
+          sourcePackage: '@test/pkg-w',
+        });
+        expect((await widgetRow('E')).declarationStamp).toBeTruthy();
+
+        // The declaration now owns it: the next definition lands.
+        const redefined = await bootWidgets([widget('E', 'Equal v2')]);
+        expect(loop(redefined)).toMatchObject({ updates: 1, kept: 0 });
+        expect((await widgetRow('E')).name).toBe('Equal v2');
+
+        // The product takes it back by editing it.
+        await db.update(widgetTable, { name: 'Mine again' }, { sku: 'E' });
+        const kept = await bootWidgets([widget('E', 'Equal v3')]);
+        expect(loop(kept)).toMatchObject({ updates: 0, kept: 1 });
+        expect((await widgetRow('E')).name).toBe('Mine again');
+      });
+
+      test('idempotent: a second load of the same declaration changes nothing — counts and stamps', async () => {
+        await bootWidgets([widget('A', 'A'), widget('B', 'B')]);
+        const before = await widgetRows();
+
+        const summary = await bootWidgets([widget('A', 'A'), widget('B', 'B')]);
+
+        expect(loop(summary)).toMatchObject({ inserts: 0, updates: 0, deletes: 0, adopted: 0, kept: 0, unchanged: 2 });
+        const after = await widgetRows();
+        for (const row of before) {
+          const same = after.find((candidate) => candidate.id === row.id) as WidgetRow;
+          expect(same.updated.valueOf()).toBe(row.updated.valueOf());
+          expect(same.declarationStamp).toBe(row.declarationStamp);
+        }
+      });
+
+      test('the removal guard: a declaration that would remove more than the named fraction refuses by name and touches nothing; one row is never a wrong-file signal', async () => {
+        await bootWidgets([widget('A', 'A'), widget('B', 'B'), widget('C', 'C'), widget('D', 'D')]);
+
+        // 3 of 4 — more than the default half — refused, with nothing removed.
+        await expect(bootWidgets([widget('A', 'A')])).rejects.toThrow(/remove 3 of the 4 rows/);
+        expect(await widgetRows()).toHaveLength(4);
+
+        // Exactly half passes (the guard is "more than"), so does a single row of two.
+        expect(loop(await bootWidgets([widget('A', 'A'), widget('B', 'B')])).deletes).toBe(2);
+        expect(loop(await bootWidgets([widget('A', 'A')])).deletes).toBe(1);
+        expect(await widgetRows()).toHaveLength(1);
+
+        // The fraction is the table's to name: 1 disables the guard. (The loader reconciles the
+        // reflection-registered table instance — the option is set on that one.)
+        await bootWidgets([widget('A', 'A'), widget('B', 'B'), widget('C', 'C'), widget('D', 'D')]);
+        const registered = getSourceRecordTables().find(
+          (table) => table.name === widgetTable.name
+        ) as Table<SyncWidget>;
+        const options = registered.sourceRecordOptions as { maxRemovedFraction?: number };
+        options.maxRemovedFraction = 1;
+        try {
+          expect(loop(await bootWidgets([widget('A', 'A')])).deletes).toBe(3);
+        } finally {
+          delete options.maxRemovedFraction;
+        }
+      });
+    });
+
+    /**
+     * THE FULL LOOP — the declaration FILE as a source, the export door, and the grant behind it.
+     */
+    describe('the full loop: the declaration file and the export door on a widgets table', () => {
+      const widgetTable = sourceRecordSyncTestTables.SyncWidget;
+      const widget = (sku: string, name: string, extra: Partial<SyncWidget> = {}) => ({
+        table: widgetTable,
+        record: { id: `w-${sku}`, sku, name, price: 10, ...extra },
+      });
+      const widgetRows = async () => (await getDbAsSystem().query(widgetTable, {})) as SyncWidget[];
+      const widgetRow = async (sku: string) => (await getDbAsSystem().get(widgetTable, { sku })) as SyncWidget;
+      const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'source-records-'));
+      const fileCache = () => namedObjectCache()['@proteinjs/db/SourceRecordDeclarationFile'];
+      /** One boot of a build carrying ONE declaration file (from `pkg-f`) beside no code declarations. */
+      const bootFile = async (filePath: string, table: Table<any> = widgetTable) => {
+        namedObjectCache()['@proteinjs/db/SourceRecordDeclarationFile'] = [
+          {
+            qualifiedName: '@test/pkg-f/widgetDeclaration',
+            packageName: '@test/pkg-f',
+            object: { table, path: filePath },
+          },
+        ];
+        try {
+          return await bootBuild([], { '@test/pkg-f': '1.0.0' });
+        } finally {
+          delete namedObjectCache()['@proteinjs/db/SourceRecordDeclarationFile'];
+        }
+      };
+      const header = { environment: 'fixture', exportedAt: '2026-01-01T00:00:00.000Z' };
+      const writeDeclaration = async (
+        name: string,
+        records: Partial<SyncWidget>[],
+        table: Table<any> = widgetTable
+      ) => {
+        const filePath = path.join(scratch, name);
+        const declaration = await SourceRecordDeclarationDocument.fromRecords(table, records, header);
+        fs.writeFileSync(filePath, SourceRecordDeclarationDocument.render(declaration));
+        return filePath;
+      };
+
+      afterEach(() => {
+        delete objectCache()['@proteinjs/db/SourceRecordExportConfigFactory'];
+        expect(fileCache()).toBeUndefined();
+      });
+
+      test("a declaration FILE is a declaration source: its rows load under the file's package, dates included; a second load is a no-op", async () => {
+        const filePath = await writeDeclaration('widgets.json', [
+          { sku: 'F2', name: 'File two', price: 7, releasedAt: moment.utc('2026-03-04T00:00:00Z') },
+          { sku: 'F1', name: 'File one', price: 5, releasedAt: null },
+        ]);
+
+        const first = await bootFile(filePath);
+        expect(first[widgetTable.name]).toMatchObject({ inserts: 2, kept: 0 });
+        const f2 = await widgetRow('F2');
+        expect(f2).toMatchObject({
+          name: 'File two',
+          price: 7,
+          sourcePackage: '@test/pkg-f',
+          isLoadedFromSource: true,
+        });
+        expect(moment.utc(f2.releasedAt as moment.Moment).toISOString()).toBe('2026-03-04T00:00:00.000Z');
+        expect((await widgetRow('F1')).releasedAt).toBeFalsy();
+
+        const second = await bootFile(filePath);
+        expect(second[widgetTable.name]).toMatchObject({ inserts: 0, updates: 0, deletes: 0, unchanged: 2 });
+
+        // The file's rows are declaration-authored like any: a product edit is kept, a row the
+        // file drops is removed (one row — never a wrong-file signal).
+        await getDbAsSystem().update(widgetTable, { name: 'Renamed by the product' }, { sku: 'F1' });
+        const third = await bootFile(
+          await writeDeclaration('widgets-2.json', [{ sku: 'F1', name: 'File one', price: 5 }])
+        );
+        expect(third[widgetTable.name]).toMatchObject({ deletes: 1, kept: 1 });
+        expect((await widgetRow('F1')).name).toBe('Renamed by the product');
+        expect(await widgetRow('F2')).toBeUndefined();
+      });
+
+      test('a declaration file is refused by name — a column outside declarationColumns, another table, a missing key — and nothing loads', async () => {
+        const secretFile = path.join(scratch, 'secret.json');
+        const base = await SourceRecordDeclarationDocument.fromRecords(
+          widgetTable,
+          [{ sku: 'S', name: 'S', price: 1 }],
+          header
+        );
+        fs.writeFileSync(
+          secretFile,
+          SourceRecordDeclarationDocument.render({
+            ...base,
+            columns: [...base.columns, 'apiKey'],
+            rows: [{ ...base.rows[0], apiKey: 'sk-never' }],
+          })
+        );
+        await expect(bootFile(secretFile)).rejects.toThrow(/'apiKey', which is not a declaration column/);
+        expect(await widgetRows()).toHaveLength(0);
+
+        const otherTable = path.join(scratch, 'other.json');
+        fs.writeFileSync(otherTable, SourceRecordDeclarationDocument.render({ ...base, table: 'db_test_sync_other' }));
+        await expect(bootFile(otherTable)).rejects.toThrow(/is for table 'db_test_sync_other'/);
+
+        const noKey = path.join(scratch, 'nokey.json');
+        fs.writeFileSync(noKey, SourceRecordDeclarationDocument.render(base).replace('"sku": "S"', '"sku": ""'));
+        await expect(bootFile(noKey)).rejects.toThrow(/has no 'sku'/);
+
+        // A table declaring no declaration columns accepts no file at all.
+        const machineFile = path.join(scratch, 'machine.json');
+        fs.writeFileSync(
+          machineFile,
+          SourceRecordDeclarationDocument.render({
+            ...base,
+            table: machineTable.name,
+            key: 'email',
+            columns: ['email'],
+            rows: [{ email: 'm@test.local' }],
+          })
+        );
+        await expect(bootFile(machineFile, machineTable)).rejects.toThrow(/not a declaration column/);
+        expect(await widgetRows()).toHaveLength(0);
+      });
+
+      test('the export door renders the declaration — the key and the declared columns only, never the secret, rows sorted by key, the environment named — and the round trip is byte-stable', async () => {
+        const db = getDbAsSystem();
+        await bootAsSource('@test/pkg-w', [
+          widget('B', 'Bee', { apiKey: 'sk-secret-b', releasedAt: moment.utc('2026-02-03T04:05:06Z') }),
+          widget('A', 'Ay', { stockNote: 'runtime-only' }),
+        ]);
+        // A product-authored row is exported like any other row.
+        await db.insert(widgetTable, { sku: 'C', name: 'Theirs', price: 3, apiKey: 'sk-secret-c' });
+        objectCache()['@proteinjs/db/SourceRecordExportConfigFactory'] = [
+          { getConfig: () => ({ environment: 'fixture-env' }) },
+        ];
+
+        const declaration = await new SourceRecordExport().export(widgetTable.name);
+
+        expect(declaration).toMatchObject({
+          format: 'source-records/1',
+          table: widgetTable.name,
+          key: 'sku',
+          columns: ['name', 'price', 'releasedAt', 'sku'],
+          environment: 'fixture-env',
+          rowCount: 3,
+        });
+        expect(declaration.rows.map((row) => row.sku)).toEqual(['A', 'B', 'C']);
+        for (const row of declaration.rows) {
+          expect(Object.keys(row).sort()).toEqual(['name', 'price', 'releasedAt', 'sku']);
+        }
+        expect(declaration.rows[1].releasedAt).toBe('2026-02-03T04:05:06.000Z');
+        const text = SourceRecordDeclarationDocument.render(declaration);
+        expect(text).not.toContain('sk-secret');
+        expect(text).not.toContain('runtime-only');
+        expect(text.endsWith('\n')).toBe(true);
+        // Byte-stable: parsing and rendering again is the same bytes; a second export renders the same body.
+        expect(SourceRecordDeclarationDocument.render(SourceRecordDeclarationDocument.parse(text))).toBe(text);
+        const again = await new SourceRecordExport().export(widgetTable.name);
+        expect(SourceRecordDeclarationDocument.sameRows(declaration, again)).toBe(true);
+
+        // THE LOOP: the exported declaration, loaded onto an empty table, exports again identically.
+        await db.delete(widgetTable, {});
+        const filePath = path.join(scratch, 'exported.json');
+        fs.writeFileSync(filePath, text);
+        const loaded = await bootFile(filePath);
+        expect(loaded[widgetTable.name]).toMatchObject({ inserts: 3 });
+        const reExported = await new SourceRecordExport().export(widgetTable.name);
+        expect(SourceRecordDeclarationDocument.sameRows(declaration, reExported)).toBe(true);
+        // …and loaded onto the SOURCE rows themselves (the product-authored row C equal to its
+        // declaration), the product row is adopted: stamped as the declaration's from then on.
+        const adopted = await bootFile(filePath);
+        expect(adopted[widgetTable.name]).toMatchObject({ inserts: 0, updates: 0, unchanged: 3 });
+      });
+
+      test('the export door refuses a table with no declaration columns, a non-source table, and an environment that cannot name itself', async () => {
+        objectCache()['@proteinjs/db/SourceRecordExportConfigFactory'] = [
+          { getConfig: () => ({ environment: 'fixture-env' }) },
+        ];
+        await expect(new SourceRecordExport().export(machineTable.name)).rejects.toThrow(
+          /declares no declaration columns/
+        );
+        await expect(new SourceRecordExport().export('db_test_dupe_preflight')).rejects.toThrow(
+          /Not a source-record table/
+        );
+        delete objectCache()['@proteinjs/db/SourceRecordExportConfigFactory'];
+        await expect(new SourceRecordExport().export(widgetTable.name)).rejects.toThrow(
+          /register a SourceRecordExportConfigFactory/
+        );
+      });
+
+      test("the export door is behind the consumer's grant: the library declares the permission slug; default-deny for everyone else", () => {
+        const service = new SourceRecordExport();
+        expect(service.serviceMetadata?.auth?.permission).toBe(SOURCE_RECORD_EXPORT_PERMISSION);
+        expect(SOURCE_RECORD_EXPORT_PERMISSION).toBe('source-records-export');
+        // No public door, no all-users door, no custom gate that could widen it.
+        expect(service.serviceMetadata?.auth?.public).toBeFalsy();
+        expect(service.serviceMetadata?.auth?.allUsers).toBeFalsy();
+        expect(service.serviceMetadata?.auth?.canAccess).toBeUndefined();
+      });
     });
 
     test('a new source-record table inherits the ownership stamp columns from SourceRecord — never declared per table', async () => {

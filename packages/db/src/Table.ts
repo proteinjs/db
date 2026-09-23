@@ -453,10 +453,12 @@ export type SourceRecordOptions<T = any> = {
   onSourceRemoved?: 'delete' | 'keep' | { update: Partial<T> };
   /**
    * When set, the sync keys records on this column instead of `id` — matching, adoption, and
-   * the removed reconcile all use it. An existing row matched by natural key is ADOPTED in
-   * place: it keeps its id (the declared id is used only for fresh inserts — existing ids may
-   * be referenced from other tables), gets stamped `is_loaded_from_source = true`, and has its
-   * declared fields reverted to source. Drift comparison excludes `id`, so adoption converges.
+   * the removed reconcile all use it. An existing DECLARATION-AUTHORED row matched by natural
+   * key keeps its id (the declared id is used only for fresh inserts — existing ids may be
+   * referenced from other tables) and has its declared fields brought to the declaration. A
+   * PRODUCT-AUTHORED row matched by natural key is the product's: adopted in place (stamped,
+   * nothing else written) only when it already equals the declaration, otherwise kept as it is.
+   * Drift comparison excludes `id`, so adoption converges.
    *
    * Preconditions, validated at boot by the loader (loud failures):
    * - the column is declared unique (`ColumnOptions.unique` or a single-column unique index in
@@ -464,6 +466,21 @@ export type SourceRecordOptions<T = any> = {
    * - every declaration provides the natural key, and no two declarations share a value.
    */
   naturalKey?: keyof T & string;
+  /**
+   * The columns a DECLARATION of this table covers — what the export door renders and what a
+   * declaration file may carry (the sync key is always among them; `id` only when it is the
+   * key). A column not listed is never exported (a secret stays in the database) and is refused
+   * in a declaration file. Undeclared = the table cannot be exported and accepts no declaration
+   * file; code-declared records are unaffected.
+   */
+  declarationColumns?: (keyof T & string)[];
+  /**
+   * The removal guard against a wrong or empty declaration: one load refuses (loudly, touching
+   * nothing on the table) when the rows it would remove exceed this fraction of the
+   * declaration-authored rows the build owns on the table — and more than one row, since a
+   * single removal is never a wrong-file signal. Default 0.5 (more than half); 1 disables it.
+   */
+  maxRemovedFraction?: number;
   ui?: {
     hideColumns?: boolean;
   };
