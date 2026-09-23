@@ -309,6 +309,30 @@ export const sourceRecordSyncTests = (
       expect((await db.get(machineTable, { id: 'machine-1' })).status).toBe('active');
     });
 
+    test('the removal guard on an update-policy table counts only the rows this boot would patch — a row soft-removed by an earlier boot is not "removed" again, so removing one more never refuses, and a converged boot never refuses', async () => {
+      const db = getDbAsSystem();
+      const a = machineDeclaration({ id: 'machine-a', email: 'a@test.local' });
+      const b = machineDeclaration({ id: 'machine-b', email: 'b@test.local' });
+      const c = machineDeclaration({ id: 'machine-c', email: 'c@test.local' });
+      await boot([a, b, c]);
+
+      // Drop b: one row, never a wrong-file signal.
+      expect((await boot([a, c]))[machineTable.name]).toMatchObject({ removedUpdates: 1 });
+      expect((await db.get(machineTable, { id: 'machine-b' })).status).toBe('deactivated');
+
+      // Later, drop c: ONE more row. The soft-removed b still carries is_loaded_from_source and
+      // its stamp, so a guard that counted every candidate would see 2 of 3 and refuse — and
+      // then refuse every boot after. The guard counts what this boot would actually patch.
+      expect((await boot([a]))[machineTable.name]).toMatchObject({ removedUpdates: 1 });
+      expect((await db.get(machineTable, { id: 'machine-c' })).status).toBe('deactivated');
+
+      // Converged: both already patched, nothing to remove, nothing refused, nothing written.
+      RecordingMachineAccountWatcher.updates = [];
+      expect((await boot([a]))[machineTable.name]).toMatchObject({ removedUpdates: 0, deletes: 0 });
+      expect(RecordingMachineAccountWatcher.updates).toHaveLength(0);
+      expect((await db.get(machineTable, { id: 'machine-a' })).status).toBe('active');
+    });
+
     test('soft removal + re-declaration under a renamed natural key: the kept row is adopted by its declared id — reactivated and re-derived, never collided into', async () => {
       const db = getDbAsSystem();
       const keeper = machineDeclaration({ id: 'machine-keep', email: 'keeper@test.local' });

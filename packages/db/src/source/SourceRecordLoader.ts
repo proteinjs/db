@@ -303,31 +303,40 @@ export class SourceRecordLoader {
       return { ...none, skippedNewer, keptCount };
     }
 
-    await this.guardRemoval(db, table, buildSources, removedRecords.length);
-
     if (policy === 'delete') {
+      await this.guardRemoval(db, table, buildSources, removedRecords.length);
       const deleteQb = QueryBuilder.fromObject<SourceRecord>({ isLoadedFromSource: true }, table.name);
       deleteQb.condition({ field: 'id', operator: 'IN', value: removedRecords.map((record) => record.id) });
       return { deleteCount: await db.delete(table, deleteQb), removedUpdateCount: 0, skippedNewer, keptCount };
     }
 
-    let removedUpdateCount = 0;
+    // A soft-removed row stays on the table (still loaded from source, still the loader's), so it
+    // is a candidate on every later boot. What this boot REMOVES is only what the patch would
+    // still change: the guard counts those, never the rows an earlier boot already patched —
+    // else the second single removal on a table would read as "2 of 3" and refuse every boot.
+    const unpatched: SourceRecord[] = [];
     for (const removedRecord of removedRecords) {
       if (await this.hasChanges(table, policy.update, removedRecord)) {
-        // The patch is the loader's own write: the stamp follows it, over the columns the row
-        // was stamped with plus the patch's, so the row stays declaration-authored.
-        const patched = { ...removedRecord, ...policy.update };
-        const stampedColumns = removedRecord.declarationStamp
-          ? (SourceRecordStamp.columnsOf(removedRecord.declarationStamp) ?? [])
-          : [];
-        const columns = [...stampedColumns, ...SourceRecordStamp.declaredColumnNames(table, policy.update)];
-        const declarationStamp = await this.stampFor(table, this.withoutStamps(patched), columns);
-        await db.update(table, { id: removedRecord.id, ...policy.update, declarationStamp });
-        removedUpdateCount += 1;
-        this.logger.info({
-          message: `(${table.name}) Applied onSourceRemoved update to a record removed from source`,
-        });
+        unpatched.push(removedRecord);
       }
+    }
+    await this.guardRemoval(db, table, buildSources, unpatched.length);
+
+    let removedUpdateCount = 0;
+    for (const removedRecord of unpatched) {
+      // The patch is the loader's own write: the stamp follows it, over the columns the row
+      // was stamped with plus the patch's, so the row stays declaration-authored.
+      const patched = { ...removedRecord, ...policy.update };
+      const stampedColumns = removedRecord.declarationStamp
+        ? (SourceRecordStamp.columnsOf(removedRecord.declarationStamp) ?? [])
+        : [];
+      const columns = [...stampedColumns, ...SourceRecordStamp.declaredColumnNames(table, policy.update)];
+      const declarationStamp = await this.stampFor(table, this.withoutStamps(patched), columns);
+      await db.update(table, { id: removedRecord.id, ...policy.update, declarationStamp });
+      removedUpdateCount += 1;
+      this.logger.info({
+        message: `(${table.name}) Applied onSourceRemoved update to a record removed from source`,
+      });
     }
 
     return { deleteCount: 0, removedUpdateCount, skippedNewer, keptCount };
