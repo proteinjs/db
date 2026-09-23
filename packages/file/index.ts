@@ -12,6 +12,7 @@ export * from './src/routes/getFileRoute';
 
 export * from './src/FileReachabilityResolver';
 export * from './src/FileCopyForOthers';
+export * from './src/FileVariantMaker';
 export * from './src/FileStorageDriver';
 export * from './src/FileStorageError';
 export * from './src/DbFileStorageDriver';

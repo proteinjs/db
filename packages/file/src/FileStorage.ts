@@ -6,6 +6,7 @@ import { FileStorageService, getFileStorageService } from './services/FileStorag
 import { FileStorageDriver } from './FileStorageDriver';
 import { getFileReachabilityResolvers } from './FileReachabilityResolver';
 import { FileCopyRefused, getFileCopyForOthers } from './FileCopyForOthers';
+import { FILE_VARIANT_KINDS, FileVariant, FileVariantKind, getFileVariantMaker } from './FileVariantMaker';
 import { Loadable, SourceRepository } from '@proteinjs/reflection';
 import { Logger } from '@proteinjs/logger';
 import { DbFileStorageDriver } from './DbFileStorageDriver';
@@ -83,7 +84,11 @@ export class FileStorage implements FileStorageService {
    * shared-content leg asks the registered {@link FileReachabilityResolver}s whether the caller
    * can read a row that REFERENCES the file (a shared thought's media node) — content access
    * confers file access, through the content's own grant-filtered read, never by widening file
-   * scope. No resolver vouching means the miss stands. Reads only: writes/deletes stay scoped.
+   * scope. A third, derived leg: a VARIANT the seam made (`File.variantOf`) is readable by
+   * whoever can read its original — the same two legs, asked of the original — so a variant
+   * derived after the content was placed (no content row names it yet) is reachable by exactly
+   * the readers of the file it was made from. No leg vouching means the miss stands. Reads only:
+   * writes/deletes stay scoped.
    * @param fileId - The `id` of the file.
    * @returns The file metadata, or `undefined` when the caller can neither own nor reach it.
    */
@@ -102,7 +107,62 @@ export class FileStorage implements FileStorageService {
       }
     }
 
-    return file;
+    return await this.reachableAsVariant(fileId);
+  }
+
+  /**
+   * The variant of this kind of a file — the derived File the row names, or one made now, ONCE,
+   * by the registered {@link FileVariantMaker} (the read path's door: a file made before the
+   * seam existed, or by a producer that did not derive it, gets its variant on the first request
+   * from a surface that draws it; every later request is served the same row without the maker).
+   * Access is the original's ({@link getFile}); the variant is stored as the owner's own File
+   * whoever's read made it, and is served like any File afterwards — through `/file/:id` with
+   * the same non-owner copy rule.
+   * @returns The variant's File row, or `undefined` when the caller cannot read the original, no
+   *          maker is registered, or the maker does not apply to this file for this kind (the
+   *          consumer then draws the original).
+   */
+  async getVariant(fileId: string, kind: FileVariantKind): Promise<File | undefined> {
+    const file = await this.getFile(fileId);
+    if (!file) {
+      return undefined;
+    }
+    const named = file[kind]?._id;
+    if (named) {
+      return await getScopedDbAsSystem().get(tables.File, { id: named });
+    }
+    const maker = getFileVariantMaker();
+    if (!maker || !maker.appliesTo(file, kind)) {
+      return undefined;
+    }
+    const original = Buffer.from(await FileStorage.getDriver().getFileData(file.id), 'base64');
+    const variantId = await this.makeVariant(file, kind, original);
+    return await getScopedDbAsSystem().get(tables.File, { id: variantId });
+  }
+
+  /**
+   * Make and store every variant the registered maker applies to, with the original's bytes in
+   * hand (the ingest's door — one decode of bytes just stored, never a re-read). Each is named on
+   * the row; a kind the maker does not apply to is left unset (the read path may derive it later
+   * if the maker's rule changes). With no maker registered nothing is made.
+   * @returns The file row as it now stands (the variants named) and the variant Files made here.
+   */
+  async deriveVariants(
+    file: File,
+    bytes: Buffer
+  ): Promise<{ file: File; variants: Partial<Record<FileVariantKind, File>> }> {
+    const maker = getFileVariantMaker();
+    const variants: Partial<Record<FileVariantKind, File>> = {};
+    if (maker) {
+      for (const kind of FILE_VARIANT_KINDS) {
+        if (!file[kind]?._id && maker.appliesTo(file, kind)) {
+          const variantId = await this.makeVariant(file, kind, bytes);
+          variants[kind] = await getScopedDbAsSystem().get(tables.File, { id: variantId });
+        }
+      }
+    }
+    const current = await getScopedDbAsSystem().get(tables.File, { id: file.id });
+    return { file: current ?? file, variants };
   }
 
   /**
@@ -168,9 +228,9 @@ export class FileStorage implements FileStorageService {
    * {@link getFileData}: the {@link FileReachabilityResolver} leg widens READS only, so a
    * share recipient who can read the bytes still cannot write them.
    *
-   * New bytes make the copy others were served stale: it is dropped here — the row forgets it,
-   * then the copy's row (and, through the delete watcher, its bytes) goes — and the next
-   * non-owner read makes a fresh one.
+   * New bytes make every derived File stale — the copy others were served, the preview, the
+   * stage variant: each is dropped here — the row forgets it, then its row (and, through the
+   * delete watcher, its bytes) goes — and the next read that wants one makes a fresh one.
    * @param fileId - The `id` of the file.
    * @param data - The new data string to replace the existing data.
    * @throws When the file row does not exist or is not writable by the caller — the same named
@@ -184,7 +244,7 @@ export class FileStorage implements FileStorageService {
     }
 
     await FileStorage.getDriver().updateFileData(fileId, data);
-    await this.dropCopyForOthers(file);
+    await this.dropDerivedFiles(file);
   }
 
   /**
@@ -289,14 +349,82 @@ export class FileStorage implements FileStorageService {
     return named;
   }
 
-  /** The row forgets its copy for others first (nothing serves a copy the row no longer names), then the copy's row goes — its bytes with it, through the delete watcher. */
-  private async dropCopyForOthers(file: File): Promise<void> {
-    const copyId = file.copyForOthers?._id;
-    if (!copyId) {
+  /**
+   * The derived leg of {@link getFile}: a row the seam made as a variant (`variantOf` set) is
+   * served when the caller can read its original — asked through {@link getFile} itself, so the
+   * owner's scope and the shared-content leg both count. Any other row this caller cannot read
+   * stays a miss (the copy for others carries no `variantOf`: its own id is nobody's but the
+   * owner's). One system point read per miss; nothing more.
+   */
+  private async reachableAsVariant(fileId: string): Promise<File> {
+    const row = await getScopedDbAsSystem().get(tables.File, { id: fileId });
+    const originalId = row?.variantOf?._id;
+    if (!originalId) {
+      return undefined as unknown as File;
+    }
+    const original = await this.getFile(originalId);
+    return original ? row! : (undefined as unknown as File);
+  }
+
+  /**
+   * Makes the variant (the maker's answer from the original's bytes), stores it as a File in the
+   * OWNER's scope naming its original, and names it on the original's row. Two readers may derive
+   * the same kind at once: the row's word wins — decided in ONE transaction, exactly as the copy
+   * for others is named — and the variant that lost is deleted after the commit.
+   * @returns The id of the variant the row names.
+   */
+  private async makeVariant(file: File, kind: FileVariantKind, bytes: Buffer): Promise<string> {
+    const maker = getFileVariantMaker()!;
+    const driver = FileStorage.getDriver();
+    const made: FileVariant = await maker.make(file, bytes, kind);
+    // As system, in the OWNER's scope: the variant is the owner's file (their storage, their purge).
+    const system = getDbAsSystem();
+    const variant = await system.insert(tables.File, {
+      name: `(${kind}) ${file.name}`,
+      type: made.type,
+      size: made.bytes.length,
+      ...(made.width !== undefined ? { width: made.width } : {}),
+      ...(made.height !== undefined ? { height: made.height } : {}),
+      variantOf: new Reference<File>(tables.File.name, file.id),
+      scope: file.scope,
+    });
+    await driver.createFile(variant, made.bytes.toString('base64'));
+
+    const named = await system.runTransaction(async () => {
+      const current = await system.get(tables.File, { id: file.id });
+      if (current?.[kind]?._id) {
+        return current[kind]!._id!;
+      }
+      await system.update(tables.File, { id: file.id, [kind]: new Reference<File>(tables.File.name, variant.id) });
+      return variant.id;
+    });
+    if (named !== variant.id) {
+      // Outside the transaction: the row's delete takes the bytes with it (the delete watcher), a
+      // side effect that must not ride a transaction the runner may retry.
+      await system.delete(tables.File, { id: variant.id });
+    }
+    return named;
+  }
+
+  /**
+   * The row forgets each derived File first (nothing serves a copy or a variant the row no longer
+   * names), then their rows go — the bytes with them, through the delete watcher: the copy for
+   * others and every variant kind, one rule.
+   */
+  private async dropDerivedFiles(file: File): Promise<void> {
+    const seats: Array<'copyForOthers' | FileVariantKind> = ['copyForOthers', ...FILE_VARIANT_KINDS];
+    const stale = seats.filter((seat) => !!file[seat]?._id);
+    if (stale.length === 0) {
       return;
     }
     const system = getDbAsSystem();
-    await system.update(tables.File, { id: file.id, copyForOthers: null });
-    await system.delete(tables.File, { id: copyId });
+    const forgotten: Partial<File> & { id: string } = { id: file.id };
+    for (const seat of stale) {
+      forgotten[seat] = null;
+    }
+    await system.update(tables.File, forgotten);
+    for (const seat of stale) {
+      await system.delete(tables.File, { id: file[seat]!._id! });
+    }
   }
 }
