@@ -1,0 +1,15 @@
+{
+  "branch": "fix/writes-declare-their-dependencies",
+  "packages": ["db", "drivers/spanner"],
+  "suites": [
+    "packages/drivers/spanner/test/WritesDeclareTheirDependencies.test.ts",
+    "packages/drivers/spanner/test/StatementsInTransactionOrder.test.ts",
+    "packages/drivers/spanner/test/Transaction.test.ts",
+    "packages/drivers/spanner/test/TransactionSafety.test.ts",
+    "packages/drivers/spanner/test/ServiceUpdateVerbs.test.ts",
+    "packages/drivers/spanner/test/Crud.test.ts",
+    "packages/db/test/TransactionDb.test.ts",
+    "packages/db/test/TableServiceAuth.test.ts"
+  ],
+  "removes": []
+}
