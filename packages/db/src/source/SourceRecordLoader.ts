@@ -318,7 +318,7 @@ export class SourceRecordLoader {
         // was stamped with plus the patch's, so the row stays declaration-authored.
         const patched = { ...removedRecord, ...policy.update };
         const stampedColumns = removedRecord.declarationStamp
-          ? SourceRecordStamp.columnsOf(removedRecord.declarationStamp) ?? []
+          ? (SourceRecordStamp.columnsOf(removedRecord.declarationStamp) ?? [])
           : [];
         const columns = [...stampedColumns, ...SourceRecordStamp.declaredColumnNames(table, policy.update)];
         const declarationStamp = await this.stampFor(table, this.withoutStamps(patched), columns);
@@ -605,11 +605,23 @@ export class SourceRecordLoader {
 
   /** A declaration file's text, through the ambient require (never seen by bundlers). */
   private readFile(path: string): string {
-    const nodeRequire: NodeRequire | undefined = typeof require === 'function' ? require : undefined;
+    const nodeRequire = this.ambientRequire();
     if (!nodeRequire) {
       throw new Error(`Cannot read the declaration file ${path}: no file system in this runtime`);
     }
     return nodeRequire('fs').readFileSync(path, 'utf8');
+  }
+
+  /**
+   * The ambient CJS `require` — the only require carrying `.resolve` (module.require does not) —
+   * or undefined in a runtime without one (browser bundles). Every Node-only module this class
+   * touches (fs, path) is loaded through the returned variable, never a literal `require(...)`,
+   * and the `.resolve` test is what keeps bundlers from folding the variable back into a static
+   * `require` call (a plain `typeof require === 'function' ? require : undefined` is folded, and
+   * the client bundle then fails to resolve 'fs').
+   */
+  private ambientRequire(): NodeRequire | undefined {
+    return typeof require === 'function' && typeof require.resolve === 'function' ? require : undefined;
   }
 
   /**
@@ -730,12 +742,10 @@ export class SourceRecordLoader {
    * (see {@link isNewerStamp}). Logged once per boot so a misconfigured cwd is visible.
    */
   private resolveSourceVersion(source: string): string | undefined {
-    // The ambient CJS `require` — the only require carrying `.resolve` (module.require does
-    // not). Every use below goes through the variable, so bundlers never see a statically
-    // analyzable `require(...)` call; in a browser bundle the runtime attempts throw into
-    // their catches and the method degrades to undefined.
-    const nodeRequire: NodeRequire | undefined =
-      typeof require === 'function' && typeof require.resolve === 'function' ? require : undefined;
+    // The ambient require (see ambientRequire): every use below goes through the variable, so
+    // bundlers never see a statically analyzable `require(...)` call; in a browser bundle the
+    // runtime attempts throw into their catches and the method degrades to undefined.
+    const nodeRequire = this.ambientRequire();
     const cwd = typeof process !== 'undefined' && typeof process.cwd === 'function' ? process.cwd() : undefined;
     if (nodeRequire && cwd) {
       try {
