@@ -1,5 +1,6 @@
 import type { Moment } from 'moment';
 import {
+  BooleanColumn,
   DateTimeColumn,
   IntegerColumn,
   Record as DbRecord,
@@ -158,8 +159,40 @@ export class SyncWidgetTable extends Table<SyncWidget> {
   } as Table<SyncWidget>['sourceRecordOptions'];
 }
 
+export interface SyncSoftRemovedWidget extends SourceRecord {
+  sku: string;
+  name: string;
+  price?: number | null;
+  /** Declared false by the file; patched true by onSourceRemoved when the file drops the row. */
+  retired: boolean;
+}
+
+/**
+ * The full-loop fixture that SOFT-removes (a catalog-shaped table): keyed by `sku`, loaded from a
+ * declaration FILE — whose rows carry no id — and patched, never deleted, when the file drops a
+ * row. The soft-removal widening (a re-declaration claiming a kept row by its declared id) has
+ * nothing to claim here: a file declares no id.
+ */
+export class SyncSoftRemovedWidgetTable extends Table<SyncSoftRemovedWidget> {
+  name = 'db_test_sync_soft_removed_widget';
+  columns: Table<SyncSoftRemovedWidget>['columns'] = withSourceRecordColumns<SyncSoftRemovedWidget>({
+    sku: new StringColumn('sku', {
+      unique: { unique: true, indexName: 'db_test_sync_soft_removed_widget_sku_unique' },
+    }),
+    name: new StringColumn('name'),
+    price: new IntegerColumn('price'),
+    retired: new BooleanColumn('retired'),
+  });
+  sourceRecordOptions = {
+    naturalKey: 'sku',
+    declarationColumns: ['sku', 'name', 'price', 'retired'],
+    onSourceRemoved: { update: { retired: true } },
+  } as Table<SyncSoftRemovedWidget>['sourceRecordOptions'];
+}
+
 export const sourceRecordSyncTestTables = {
   SyncWidget: new SyncWidgetTable() as Table<SyncWidget>,
+  SyncSoftRemovedWidget: new SyncSoftRemovedWidgetTable() as Table<SyncSoftRemovedWidget>,
   SyncMachineAccount: new SyncMachineAccountTable() as Table<SyncMachineAccount>,
   SyncDefaultPolicy: new SyncDefaultPolicyTable() as Table<SyncDefaultPolicyRecord>,
   InheritedStamp: new InheritedStampTable() as Table<InheritedStampRecord>,

@@ -30,6 +30,7 @@ import {
   DupePreflightTable,
   DupePreflightUniqueEmailTable,
   SyncMachineAccount,
+  SyncSoftRemovedWidget,
   SyncWidget,
   sourceRecordSyncTestTables,
 } from '../util/tables/sourceRecordSyncTestTables';
@@ -163,6 +164,7 @@ export const sourceRecordSyncTests = (
       await db.delete(sourceRecordSyncTestTables.InheritedStamp, {});
       await db.delete(sourceRecordSyncTestTables.SyncDerivedName, {});
       await db.delete(sourceRecordSyncTestTables.SyncWidget, {});
+      await db.delete(sourceRecordSyncTestTables.SyncSoftRemovedWidget, {});
       RecordingMachineAccountWatcher.updates = [];
     });
 
@@ -1125,7 +1127,7 @@ export const sourceRecordSyncTests = (
       const header = { environment: 'fixture', exportedAt: '2026-01-01T00:00:00.000Z' };
       const writeDeclaration = async (
         name: string,
-        records: Partial<SyncWidget>[],
+        records: Partial<SyncWidget>[] | Partial<SyncSoftRemovedWidget>[],
         table: Table<any> = widgetTable
       ) => {
         const filePath = path.join(scratch, name);
@@ -1169,6 +1171,55 @@ export const sourceRecordSyncTests = (
         expect(third[widgetTable.name]).toMatchObject({ deletes: 1, kept: 1 });
         expect((await widgetRow('F1')).name).toBe('Renamed by the product');
         expect(await widgetRow('F2')).toBeUndefined();
+      });
+
+      test('a declaration FILE on a table that soft-removes (an update policy): its rows insert — a file declares no id, so nothing is claimed by id; a row the file drops is patched, never deleted, once; listing it again reverts the patch on the same row', async () => {
+        const softTable = sourceRecordSyncTestTables.SyncSoftRemovedWidget;
+        const softRow = async (sku: string) => (await getDbAsSystem().get(softTable, { sku })) as SyncSoftRemovedWidget;
+        const both = await writeDeclaration(
+          'soft-widgets.json',
+          [
+            { sku: 'S1', name: 'Soft one', price: 1, retired: false },
+            { sku: 'S2', name: 'Soft two', price: 2, retired: false },
+          ],
+          softTable
+        );
+        const onlyOne = await writeDeclaration(
+          'soft-widgets-2.json',
+          [{ sku: 'S1', name: 'Soft one', price: 1, retired: false }],
+          softTable
+        );
+
+        const first = await bootFile(both, softTable);
+        expect(first[softTable.name]).toMatchObject({ inserts: 2, deletes: 0, removedUpdates: 0, kept: 0 });
+        const inserted = await softRow('S2');
+        expect(inserted).toMatchObject({ retired: false, isLoadedFromSource: true, sourcePackage: '@test/pkg-f' });
+
+        const second = await bootFile(onlyOne, softTable);
+        expect(second[softTable.name]).toMatchObject({ deletes: 0, removedUpdates: 1, unchanged: 1, inserts: 0 });
+        const patched = await softRow('S2');
+        expect(patched).toMatchObject({
+          id: inserted.id,
+          retired: true,
+          name: 'Soft two',
+          price: 2,
+          isLoadedFromSource: true,
+        });
+        expect(patched.declarationStamp).not.toBe(inserted.declarationStamp);
+
+        const third = await bootFile(onlyOne, softTable);
+        expect(third[softTable.name]).toMatchObject({ deletes: 0, removedUpdates: 0, updates: 0, unchanged: 1 });
+
+        const fourth = await bootFile(both, softTable);
+        expect(fourth[softTable.name]).toMatchObject({
+          inserts: 0,
+          updates: 1,
+          unchanged: 1,
+          deletes: 0,
+          removedUpdates: 0,
+        });
+        expect(await softRow('S2')).toMatchObject({ id: inserted.id, retired: false });
+        expect(await getDbAsSystem().query(softTable, {})).toHaveLength(2);
       });
 
       test('a declaration file is refused by name — a column outside declarationColumns, another table, a missing key — and nothing loads', async () => {

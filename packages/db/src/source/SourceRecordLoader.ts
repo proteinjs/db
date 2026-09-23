@@ -372,6 +372,9 @@ export class SourceRecordLoader {
    * Returns the soft-removed row the declaration re-claims, or undefined. The match is
    * deliberately strict — all of:
    * - the table keeps removed rows (`onSourceRemoved` is an update patch — soft removal);
+   * - the declaration CARRIES an id (a declaration file's rows never do — its key is the
+   *   natural key, and a row it lists again is matched by that key alone; claiming by an
+   *   absent id is no claim, never a query on `id = undefined`);
    * - a row holds the DECLARED id;
    * - that row is source-owned (`is_loaded_from_source = true`) by THIS declaration's package
    *   (never adopt a human/runtime row, or another package's row, by id);
@@ -394,12 +397,12 @@ export class SourceRecordLoader {
     db: Db,
     table: Table<any>,
     keyProperty: string,
-    declaredId: string,
+    declaredId: string | undefined,
     source: string,
     allDeclaredKeys: unknown[]
   ): Promise<SourceRecord | undefined> {
     const policy = table.sourceRecordOptions.onSourceRemoved;
-    if (typeof policy !== 'object') {
+    if (typeof policy !== 'object' || declaredId === undefined) {
       return undefined;
     }
 
