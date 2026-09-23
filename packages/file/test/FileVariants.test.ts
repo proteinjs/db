@@ -33,6 +33,10 @@ const COPY_MARK = Buffer.from('-FOR-OTHERS');
 /** In-memory proxy-shape driver (no signed URLs) — the DbFileStorageDriver serving shape. */
 class ProxyDriver implements FileStorageDriver {
   readonly store = new Map<string, Buffer>();
+  /** Every id whose bytes were read, in order — what a derivation costs the store. */
+  reads: string[] = [];
+  /** Every id whose bytes were deleted, in order. */
+  deletes: string[] = [];
 
   async createFile(file: File, fileData: string): Promise<void> {
     this.store.set(file.id, Buffer.from(fileData, 'base64'));
@@ -40,6 +44,7 @@ class ProxyDriver implements FileStorageDriver {
   }
 
   async getFileData(fileId: string): Promise<string> {
+    this.reads.push(fileId);
     const data = this.store.get(fileId);
     if (data === undefined) {
       throw new Error(`No such object: ${fileId}`);
@@ -52,6 +57,7 @@ class ProxyDriver implements FileStorageDriver {
   }
 
   async deleteFile(fileId: string): Promise<void> {
+    this.deletes.push(fileId);
     this.store.delete(fileId);
   }
 }
@@ -105,6 +111,8 @@ const invokeVariantRoute = async (fileId: string, kind: string): Promise<Respons
 const testEnv = new FileTestEnvironment();
 type UserAuthInternals = { userRepo?: unknown };
 type SourceRepositoryInternals = { objectCache: Record<string, unknown[]> };
+/** The making itself, reached directly: what two PROCESSES do (each past its own in-flight check). */
+type FileStorageInternals = { makeVariant(file: File, kind: FileVariantKind, bytes: Buffer): Promise<string> };
 const objectCache = () => (SourceRepository.get() as unknown as SourceRepositoryInternals).objectCache;
 
 let owner: User;
@@ -118,6 +126,10 @@ let kindsApplied: Set<FileVariantKind> = new Set<FileVariantKind>(['preview', 's
 /** A barrier for the racing case — `makerBarrier = n` holds every maker call until n are inside, then releases them on one tick. */
 let makerBarrier = 0;
 let makerWaiting: Array<() => void> = [];
+/** A hold for the in-flight case — the maker waits on it (when set) so readers can arrive while one derivation runs. */
+let makerHold: Promise<void> | undefined;
+/** The maker cannot make anything of these bytes (a picture the decoder cannot read). */
+let makerRefuses = false;
 const atBarrier = async (): Promise<void> => {
   if (makerBarrier <= 0) {
     return;
@@ -139,6 +151,10 @@ const registerVariantMaker = () => {
       make: async (file: File, bytes: Buffer, kind: FileVariantKind) => {
         makerCalls.push({ fileId: file.id, kind, bytes: Buffer.from(bytes) });
         await atBarrier();
+        await makerHold;
+        if (makerRefuses) {
+          throw new Error('the decoder cannot decode these bytes');
+        }
         return {
           bytes: variantOf(kind, bytes),
           type: 'image/webp',
@@ -198,6 +214,10 @@ beforeEach(() => {
   kindsApplied = new Set<FileVariantKind>(['preview', 'stage']);
   makerBarrier = 0;
   makerWaiting = [];
+  makerHold = undefined;
+  makerRefuses = false;
+  driver.reads = [];
+  driver.deletes = [];
   registerVariantMaker();
   objectCache()['@proteinjs/db-file/FileCopyForOthers'] = [];
   testEnv.setDriver(driver);
@@ -368,24 +388,73 @@ describe('the read path — a File without a stage derives it on the first reque
     expect((await rowAsSystem(photo.id))!.stage?._id ?? null).toBeNull();
   });
 
-  it('two readers deriving at once: the row names one stage, the other is deleted with its bytes', async () => {
+  it('two PROCESSES deriving at once (the row is the only thing they share): the row names one stage, the other is deleted with its bytes', async () => {
     const file = await createOwnerPicture('raced.jpg');
     const storedBefore = driver.store.size;
     makerBarrier = 2;
 
+    // Two servers derive the same stage on one tick: each has read the bytes and reaches the
+    // making directly — nothing in one process can see the other's derivation in flight.
+    const storage = new FileStorage() as unknown as FileStorageInternals;
     const [a, b] = await Promise.all([
-      new FileStorage().getVariant(file.id, 'stage'),
-      new FileStorage().getVariant(file.id, 'stage'),
+      storage.makeVariant(file, 'stage', originalBytes),
+      storage.makeVariant(file, 'stage', originalBytes),
     ]);
 
-    expect(a!.id).toEqual(b!.id);
+    expect(a).toEqual(b);
     const named = (await rowAsSystem(file.id))!.stage!._id!;
-    expect(named).toEqual(a!.id);
+    expect(named).toEqual(a);
     const stagesOfFile = (await fileRowsInScope(owner.id)).filter((row) => row.variantOf?._id === file.id);
     expect(stagesOfFile.map((row) => row.id)).toEqual([named]);
     // One stage's bytes remain of the two made: the loser's row went, and its bytes with it.
     expect(driver.store.size).toEqual(storedBefore + 1);
     expect(driver.store.has(named)).toBe(true);
+  });
+
+  it('N readers asking one process for the same absent stage while it derives cost ONE derivation: one read of the original, one maker call, one object stored, no loser to delete; every reader is served the same row', async () => {
+    const file = await createOwnerPicture('burst.jpg');
+    const storedBefore = driver.store.size;
+    const readsBefore = driver.reads.filter((id) => id === file.id).length;
+    let release!: () => void;
+    makerHold = new Promise<void>((resolve) => (release = resolve));
+
+    const readers = Array.from({ length: 4 }, () => new FileStorage().getVariant(file.id, 'stage'));
+    // The first reader is inside the maker; the others have arrived while it derives.
+    while (makerCalls.length < 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    release();
+    const served = await Promise.all(readers);
+
+    expect(makerCalls).toHaveLength(1);
+    expect(driver.reads.filter((id) => id === file.id).length).toEqual(readsBefore + 1);
+    const named = (await rowAsSystem(file.id))!.stage!._id!;
+    expect(served.map((row) => row!.id)).toEqual([named, named, named, named]);
+    expect(driver.store.size).toEqual(storedBefore + 1);
+    expect(driver.deletes).toEqual([]);
+    // The next reader, after the derivation, is served the row without the maker.
+    expect((await new FileStorage().getVariant(file.id, 'stage'))!.id).toEqual(named);
+    expect(makerCalls).toHaveLength(1);
+  });
+
+  it('a maker that cannot make the stage of these bytes on the read path: nothing is stored, the reader is answered undefined (the file itself is drawn), the next reader asks the maker again', async () => {
+    const file = await createOwnerPicture('unreadable.jpg');
+    makerRefuses = true;
+
+    expect(await new FileStorage().getVariant(file.id, 'stage')).toBeUndefined();
+
+    expect(makerCalls).toHaveLength(1);
+    expect((await rowAsSystem(file.id))!.stage?._id ?? null).toBeNull();
+    expect((await fileRowsInScope(owner.id)).filter((row) => row.variantOf?._id === file.id)).toEqual([]);
+    // Through the route: the file itself, its own headers — never a 500.
+    const served = await invokeVariantRoute(file.id, 'stage');
+    expect(served.statusCode).toBeUndefined();
+    expect((served.body as Buffer).equals(originalBytes)).toBe(true);
+    expect(served.headers['content-type']).toEqual('image/jpeg');
+    expect(makerCalls).toHaveLength(2);
+    // The ingest door is not softened: the maker's failure reaches the caller that holds the bytes.
+    await expect(new FileStorage().deriveVariants(file, originalBytes)).rejects.toThrow('cannot decode');
   });
 });
 
