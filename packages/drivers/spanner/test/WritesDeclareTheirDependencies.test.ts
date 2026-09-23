@@ -111,47 +111,55 @@ describe('a write declares the rows it depends on; the server waits for them', (
   }, 30000);
 
   /** The dependency's insert, dispatched `afterMs` after now — the row landing later. */
-  const insertLater = (row: Line, afterMs: number) => {
-    const insert = sleep(afterMs).then(() => getDbAsSystem().insert(table, row));
+  const insertLater = (row: Partial<Line>, afterMs: number) => {
+    const insert = sleep(afterMs).then(() => getDbAsSystem().insert(table, row as any));
     inserts.push(insert);
     return insert;
   };
 
   test('(a) an UPDATE naming a row whose INSERT lands 500 ms later waits for the row and updates it — never a silent zero-row write', async () => {
     const id = 'declared-row-a';
-    insertLater({ id, text: 'typed before the reload', visible: true }, 500);
+    const insert = insertLater({ id, text: 'typed before the reload', visible: true }, 500);
     const runner = new TransactionRunner() as unknown as Runner;
 
     const before = Date.now();
     await runner.run(updateOps(id, 'typed before the reload, whole'), { afterRows: [id] });
     const elapsed = Date.now() - before;
+    await insert;
 
-    // Pre-change: resolves at once (elapsed < 500 ms — the update matched nothing and returned
-    // OK) and the row, inserted afterwards, keeps the text the update should have replaced.
-    expect(elapsed).toBeGreaterThanOrEqual(450);
+    // Pre-change: the run resolved OK at once — the update matched nothing — and the row,
+    // inserted afterwards, keeps the text the update should have replaced: the tail of the line,
+    // lost silently. With the wait, the update ran after the insert landed.
     expect((await db.get(table, { id })).text).toBe('typed before the reload, whole');
+    expect(elapsed).toBeGreaterThanOrEqual(450);
   }, 30000);
 
   test('the wait is for the row to be VISIBLE to the caller, not merely to exist (a scope whose grant lands after the row)', async () => {
     const id = 'declared-row-visible';
     // The row exists at once — but not to the caller: its grant (modelled by `visible`) lands
     // 400 ms later, in a second write, the way a scope root's owner grant follows its row.
-    await getDbAsSystem().insert(table, { id, text: 'root', visible: false });
-    inserts.push(sleep(400).then(() => getDbAsSystem().update(table, { visible: true }, { id })));
+    await getDbAsSystem().insert(table, { id, text: 'root', visible: false } as any);
+    const grant = sleep(400).then(() => getDbAsSystem().update(table, { visible: true }, { id }));
+    inserts.push(grant);
     const runner = new TransactionRunner() as unknown as Runner;
 
     const before = Date.now();
     await runner.run(updateOps(id, 'root, edited'), { afterRows: [id] });
     const elapsed = Date.now() - before;
+    await grant;
 
-    expect(elapsed).toBeGreaterThanOrEqual(350);
+    // Pre-change: the caller-scoped update matched nothing (the row was not visible to the
+    // caller yet) and resolved OK; the row keeps its text.
     expect((await db.get(table, { id })).text).toBe('root, edited');
+    expect(elapsed).toBeGreaterThanOrEqual(350);
   }, 30000);
 
   test('(c) a row that never exists: a plain failure after the bound — never a hang, never a silent OK; the operations did not run', async () => {
     const absent = 'declared-row-never';
     const child = 'declared-row-child-of-never';
-    const runner = new TransactionRunner(600) as unknown as Runner;
+    // The bound is the constructor's (the service instance keeps the default); typed loosely for
+    // the pre-change build, whose constructor took nothing.
+    const runner = new (TransactionRunner as unknown as new (boundMs: number) => unknown)(600) as Runner;
     // One transaction: a new row, and a text update of the row that never lands. Pre-change the
     // insert lands and the update matches nothing — OK; with the wait, nothing runs.
     const ops = [
@@ -189,7 +197,7 @@ describe('a write declares the rows it depends on; the server waits for them', (
 
   test('(e) a write with nothing to declare is the request it always was: the operations alone, run at once', async () => {
     const id = 'declared-row-e';
-    await getDbAsSystem().insert(table, { id, text: 'plain', visible: true });
+    await getDbAsSystem().insert(table, { id, text: 'plain', visible: true } as any);
     const runSpy = jest.spyOn(TransactionRunner.prototype, 'run');
     try {
       const t = new Transaction();
@@ -205,9 +213,9 @@ describe('a write declares the rows it depends on; the server waits for them', (
       // Declaring a dependency is the one thing that adds to the request.
       const dependent = new Transaction();
       dependent.update(table, { id, text: 'plain, edited twice' } as any);
-      await dependent.run({ afterRows: [id] });
+      await (dependent as unknown as { run: (options?: unknown) => Promise<void> }).run({ afterRows: [id] });
       expect(runSpy.mock.calls[1]).toHaveLength(2);
-      expect(runSpy.mock.calls[1][1]).toEqual({ afterRows: [id] });
+      expect((runSpy.mock.calls[1] as unknown[])[1]).toEqual({ afterRows: [id] });
       expect((await getDb().get(table, { id })).text).toBe('plain, edited twice');
     } finally {
       runSpy.mockRestore();
