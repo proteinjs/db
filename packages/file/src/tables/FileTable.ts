@@ -14,6 +14,16 @@ export interface File extends ScopedRecord {
    */
   preview?: Reference<File>;
   /**
+   * The copy of this file served to anyone who is not its owner — another `File` (the same
+   * store, the owner's scope), made ONCE by the registered {@link FileCopyForOthers} the first
+   * time a non-owner reads the bytes, named here so every later read serves it without remaking
+   * it. `null`/absent means no copy has been made yet: the next non-owner read makes one when the
+   * maker applies to this file, and serves the original when it does not. Dropped when the
+   * original's bytes change (`FileStorage.updateFileData`) and deleted with this file (cascade).
+   * The owner is never served it — their own scoped read serves the original.
+   */
+  copyForOthers?: Reference<File> | null;
+  /**
    * Media metadata — generic file facts (an image/video's pixel dimensions, a video/audio
    * duration) every consumer needs to render without loading bytes, e.g. reserving a media box's
    * aspect ratio before any bytes arrive. Set at ingest for media files; absent for everything
@@ -67,6 +77,8 @@ export class FileTable extends Table<File> {
     size: new IntegerColumn('size'),
     // Self-reference (the preview is itself a File). cascadeDelete: removing a file removes its preview.
     preview: new ReferenceColumn<File>('preview', FILE_TABLE_NAME, true),
+    // Self-reference (the copy is itself a File). cascadeDelete: removing a file removes the copy others were served.
+    copyForOthers: new ReferenceColumn<File>('copy_for_others', FILE_TABLE_NAME, true),
     width: new IntegerColumn('width'),
     height: new IntegerColumn('height'),
     durationMs: new IntegerColumn('duration_ms'),

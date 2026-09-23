@@ -1,12 +1,21 @@
+import { Reference, getDbAsSystem } from '@proteinjs/db';
 import { ScopedRecord, getScopedDb, getScopedDbAsSystem } from '@proteinjs/user';
 import { File } from './tables/FileTable';
 import { tables } from './tables/tables';
 import { FileStorageService, getFileStorageService } from './services/FileStorageService';
 import { FileStorageDriver } from './FileStorageDriver';
 import { getFileReachabilityResolvers } from './FileReachabilityResolver';
+import { getFileCopyForOthers } from './FileCopyForOthers';
 import { Loadable, SourceRepository } from '@proteinjs/reflection';
 import { Logger } from '@proteinjs/logger';
 import { DbFileStorageDriver } from './DbFileStorageDriver';
+
+/**
+ * A file read resolved for the caller: the row, and whether the caller reached it as its OWNER
+ * (their own scoped read) or through the shared-content leg — the fact every serving path
+ * branches on, because only the owner is served the original's bytes.
+ */
+type ResolvedFile = { file: File; ownedByCaller: boolean };
 
 /**
  * A convenience factory function so code using this is portable (can be used in server or browser).
@@ -86,21 +95,7 @@ export class FileStorage implements FileStorageService {
    * @returns The file metadata, or `undefined` when the caller can neither own nor reach it.
    */
   async getFile(fileId: string): Promise<File> {
-    const db = getScopedDb();
-    const file = await db.get(tables.File, { id: fileId });
-    if (file) {
-      return file;
-    }
-
-    for (const resolver of getFileReachabilityResolvers()) {
-      if (await resolver.canReadViaReference(fileId)) {
-        // Reachability established through the caller's grant-filtered content read — the row
-        // itself lives in the owner's scope, so it is served via system read.
-        return await getScopedDbAsSystem().get(tables.File, { id: fileId });
-      }
-    }
-
-    return file;
+    return (await this.resolveFile(fileId))?.file as File;
   }
 
   /**
@@ -113,25 +108,31 @@ export class FileStorage implements FileStorageService {
    * below are deliberately unscoped. Server-side doors that make their OWN documented access
    * decision (the avatar route, issue/ticket attachment doors) read bytes through
    * `FileStorage.getDriver()` instead.
+   *
+   * WHICH bytes: the owner's read serves the original; a read that reached the file through the
+   * shared-content leg serves the {@link FileCopyForOthers} copy ({@link servedFileId}) — the
+   * same substitution `getSignedUrl` makes, so the proxy route, the signed-URL route and every
+   * server-side reader of this door agree.
    * @param fileId - The `id` of the file.
    * @returns The file data as a single string.
    * @throws When the file row does not exist or is not readable by the caller — the same named
    *         miss either way, so existence is not leaked to unauthorized callers.
    */
   async getFileData(fileId: string): Promise<string> {
-    const file = await this.getFile(fileId);
-    if (!file) {
+    const resolved = await this.resolveFile(fileId);
+    if (!resolved) {
       throw new Error(`File not found: ${fileId}`);
     }
 
-    return await FileStorage.getDriver().getFileData(fileId);
+    return await FileStorage.getDriver().getFileData(await this.servedFileId(resolved));
   }
 
   /**
    * Mint a short-lived, read-only URL for the file's bytes (server-only; not part of the
    * browser-facing `FileStorageService`). A signed URL is a bearer capability, so minting
    * verifies the caller can read the file row (the two-legged {@link getFile} read — own scope
-   * or shared-content reachability) before signing.
+   * or shared-content reachability) before signing — and signs the bytes THAT caller is served:
+   * the original for the owner, the {@link FileCopyForOthers} copy for anyone else.
    * @param fileId - The `id` of the file.
    * @param options.ttlMs - How long the URL stays valid; the driver applies its default when omitted.
    * @returns The signed URL, or `undefined` when the driver has no external URL space
@@ -139,8 +140,8 @@ export class FileStorage implements FileStorageService {
    * @throws When the file row does not exist or is not readable by the caller.
    */
   async getSignedUrl(fileId: string, options?: { ttlMs?: number }): Promise<string | undefined> {
-    const file = await this.getFile(fileId);
-    if (!file) {
+    const resolved = await this.resolveFile(fileId);
+    if (!resolved) {
       throw new Error(`File not found: ${fileId}`);
     }
 
@@ -149,7 +150,7 @@ export class FileStorage implements FileStorageService {
       return undefined;
     }
 
-    return await driver.getSignedUrl(fileId, options);
+    return await driver.getSignedUrl(await this.servedFileId(resolved), options);
   }
 
   /**
@@ -159,6 +160,10 @@ export class FileStorage implements FileStorageService {
    * (the same authorization a scoped row update enforces). Deliberately STRICTER than
    * {@link getFileData}: the {@link FileReachabilityResolver} leg widens READS only, so a
    * share recipient who can read the bytes still cannot write them.
+   *
+   * New bytes make the copy others were served stale: it is dropped here — the row forgets it,
+   * then the copy's row (and, through the delete watcher, its bytes) goes — and the next
+   * non-owner read makes a fresh one.
    * @param fileId - The `id` of the file.
    * @param data - The new data string to replace the existing data.
    * @throws When the file row does not exist or is not writable by the caller — the same named
@@ -172,6 +177,7 @@ export class FileStorage implements FileStorageService {
     }
 
     await FileStorage.getDriver().updateFileData(fileId, data);
+    await this.dropCopyForOthers(file);
   }
 
   /**
@@ -198,5 +204,90 @@ export class FileStorage implements FileStorageService {
   async deleteFile(fileId: string): Promise<void> {
     const db = getScopedDb();
     await db.delete(tables.File, { id: fileId });
+  }
+
+  /**
+   * The two-legged read (see {@link getFile}), keeping WHICH leg answered: the caller's own
+   * scoped read means the owner; a resolver vouching means someone the content reached.
+   */
+  private async resolveFile(fileId: string): Promise<ResolvedFile | undefined> {
+    const own = await getScopedDb().get(tables.File, { id: fileId });
+    if (own) {
+      return { file: own, ownedByCaller: true };
+    }
+
+    for (const resolver of getFileReachabilityResolvers()) {
+      if (await resolver.canReadViaReference(fileId)) {
+        // Reachability established through the caller's grant-filtered content read — the row
+        // itself lives in the owner's scope, so it is served via system read.
+        const reached = await getScopedDbAsSystem().get(tables.File, { id: fileId });
+        return reached ? { file: reached, ownedByCaller: false } : undefined;
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
+   * The id whose bytes this caller is served: the file's own for its owner, or for a file with
+   * no maker (or one the maker does not apply to); otherwise the {@link FileCopyForOthers} copy —
+   * the one already named on the row, or made now, once, and named for every later read.
+   */
+  private async servedFileId(resolved: ResolvedFile): Promise<string> {
+    const { file, ownedByCaller } = resolved;
+    if (ownedByCaller) {
+      return file.id;
+    }
+    if (file.copyForOthers?._id) {
+      return file.copyForOthers._id;
+    }
+    const maker = getFileCopyForOthers();
+    if (!maker || !maker.appliesTo(file)) {
+      return file.id;
+    }
+    return await this.makeCopyForOthers(file);
+  }
+
+  /**
+   * Makes the copy (the maker's bytes, from the original's), stores it as a File in the owner's
+   * scope and names it on the original's row. Two non-owners reading at once may both get here:
+   * the row's word wins — a copy made second is deleted and the first is served.
+   */
+  private async makeCopyForOthers(file: File): Promise<string> {
+    const maker = getFileCopyForOthers()!;
+    const driver = FileStorage.getDriver();
+    const original = Buffer.from(await driver.getFileData(file.id), 'base64');
+    const copyBytes = await maker.make(file, original);
+    // As system, in the OWNER's scope: the copy is the owner's file (their storage, their purge).
+    const system = getDbAsSystem();
+    const copy = await system.insert(tables.File, {
+      name: file.name,
+      type: file.type,
+      size: copyBytes.length,
+      ...(file.width !== undefined && file.width !== null ? { width: file.width } : {}),
+      ...(file.height !== undefined && file.height !== null ? { height: file.height } : {}),
+      ...(file.durationMs !== undefined && file.durationMs !== null ? { durationMs: file.durationMs } : {}),
+      scope: file.scope,
+    });
+    await driver.createFile(copy, copyBytes.toString('base64'));
+
+    const current = await system.get(tables.File, { id: file.id });
+    if (current?.copyForOthers?._id) {
+      await system.delete(tables.File, { id: copy.id });
+      return current.copyForOthers._id;
+    }
+    await system.update(tables.File, { id: file.id, copyForOthers: new Reference<File>(tables.File.name, copy.id) });
+    return copy.id;
+  }
+
+  /** The row forgets its copy for others first (nothing serves a copy the row no longer names), then the copy's row goes — its bytes with it, through the delete watcher. */
+  private async dropCopyForOthers(file: File): Promise<void> {
+    const copyId = file.copyForOthers?._id;
+    if (!copyId) {
+      return;
+    }
+    const system = getDbAsSystem();
+    await system.update(tables.File, { id: file.id, copyForOthers: null });
+    await system.delete(tables.File, { id: copyId });
   }
 }
