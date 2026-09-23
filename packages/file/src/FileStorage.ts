@@ -80,15 +80,16 @@ export class FileStorage implements FileStorageService {
    * Retrieves the metadata of a given file — THE file-read access decision every serving path
    * derives from (`/file/:id`, signed-URL minting, the browser service).
    *
-   * Two legs: the caller's own file resolves by the SCOPED read; when that misses, the
-   * shared-content leg asks the registered {@link FileReachabilityResolver}s whether the caller
-   * can read a row that REFERENCES the file (a shared thought's media node) — content access
-   * confers file access, through the content's own grant-filtered read, never by widening file
-   * scope. A third, derived leg: a VARIANT the seam made (`File.variantOf`) is readable by
-   * whoever can read its original — the same two legs, asked of the original — so a variant
-   * derived after the content was placed (no content row names it yet) is reachable by exactly
-   * the readers of the file it was made from. No leg vouching means the miss stands. Reads only:
-   * writes/deletes stay scoped.
+   * Three legs, cheapest first: the caller's own file resolves by the SCOPED read. When that
+   * misses, the derived leg: a VARIANT the seam made (`File.variantOf`) is readable by whoever
+   * can read its original — this same decision, asked of the original — so a variant derived
+   * after the content was placed (no content row names it) is reachable by exactly the readers
+   * of the file it was made from; one system point read decides whether the row is a variant at
+   * all. Last, the shared-content leg asks the registered {@link FileReachabilityResolver}s
+   * whether the caller can read a row that REFERENCES the file (a shared thought's media node) —
+   * content access confers file access, through the content's own grant-filtered read, never by
+   * widening file scope. No leg vouching means the miss stands. Reads only: writes/deletes stay
+   * scoped.
    * @param fileId - The `id` of the file.
    * @returns The file metadata, or `undefined` when the caller can neither own nor reach it.
    */
@@ -99,25 +100,36 @@ export class FileStorage implements FileStorageService {
       return file;
     }
 
+    const row = await getScopedDbAsSystem().get(tables.File, { id: fileId });
+    if (!row) {
+      return undefined as unknown as File;
+    }
+    if (row.variantOf?._id) {
+      // A variant's reachability is its original's — the copy for others carries no `variantOf`,
+      // so its own id stays nobody's but the owner's.
+      return (await this.getFile(row.variantOf._id)) ? row : (undefined as unknown as File);
+    }
+
     for (const resolver of getFileReachabilityResolvers()) {
       if (await resolver.canReadViaReference(fileId)) {
         // Reachability established through the caller's grant-filtered content read — the row
         // itself lives in the owner's scope, so it is served via system read.
-        return await getScopedDbAsSystem().get(tables.File, { id: fileId });
+        return row;
       }
     }
 
-    return await this.reachableAsVariant(fileId);
+    return undefined as unknown as File;
   }
 
   /**
    * The variant of this kind of a file — the derived File the row names, or one made now, ONCE,
-   * by the registered {@link FileVariantMaker} (the read path's door: a file made before the
-   * seam existed, or by a producer that did not derive it, gets its variant on the first request
-   * from a surface that draws it; every later request is served the same row without the maker).
-   * Access is the original's ({@link getFile}); the variant is stored as the owner's own File
-   * whoever's read made it, and is served like any File afterwards — through `/file/:id` with
-   * the same non-owner copy rule.
+   * by the registered {@link FileVariantMaker} (the read path's door, behind
+   * `GET /file/:id/variant/:kind`: a file made before the seam existed, or by a producer that did
+   * not derive it, gets its variant on the first request from a surface that draws it; every
+   * later request is served the same row without the maker). Server-only, like `getSignedUrl` —
+   * the browser asks by URL, never by service call. Access is the original's ({@link getFile});
+   * the variant is stored as the owner's own File whoever's read made it, and is served like any
+   * File afterwards — with the same non-owner copy rule.
    * @returns The variant's File row, or `undefined` when the caller cannot read the original, no
    *          maker is registered, or the maker does not apply to this file for this kind (the
    *          consumer then draws the original).
@@ -347,23 +359,6 @@ export class FileStorage implements FileStorageService {
       await system.delete(tables.File, { id: copy.id });
     }
     return named;
-  }
-
-  /**
-   * The derived leg of {@link getFile}: a row the seam made as a variant (`variantOf` set) is
-   * served when the caller can read its original — asked through {@link getFile} itself, so the
-   * owner's scope and the shared-content leg both count. Any other row this caller cannot read
-   * stays a miss (the copy for others carries no `variantOf`: its own id is nobody's but the
-   * owner's). One system point read per miss; nothing more.
-   */
-  private async reachableAsVariant(fileId: string): Promise<File> {
-    const row = await getScopedDbAsSystem().get(tables.File, { id: fileId });
-    const originalId = row?.variantOf?._id;
-    if (!originalId) {
-      return undefined as unknown as File;
-    }
-    const original = await this.getFile(originalId);
-    return original ? row! : (undefined as unknown as File);
   }
 
   /**

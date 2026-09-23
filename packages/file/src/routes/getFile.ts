@@ -1,25 +1,15 @@
 import { Route } from '@proteinjs/server-api';
 import { getFileStorage } from '../FileStorage';
-import { FileStorageError } from '../FileStorageError';
-import { FileCopyRefused } from '../FileCopyForOthers';
 import { UserAuth } from '@proteinjs/user';
-import { resolveByteRange } from './byteRange';
+import { FileResponder } from './FileResponder';
 
 /**
  * Serves a file's bytes. Auth first: logged-in, then the `FileStorage.getFile` row read as the
- * access decision — the caller's SCOPED read, else the shared-content reachability leg
- * (`FileReachabilityResolver`: the caller may read a file when they may read a row that
- * references it, e.g. a shared thought's media node). Then one of two serving paths:
- *
- * - **302 redirect** to a short-lived signed URL when the driver's store has an external URL
- *   space (GCS). The app URL stays the one stable reference every `<img>`/`<video>`/chip uses;
- *   the client follows the redirect and reads the store directly — native Range/206 for video
- *   seeking, real caching, bytes never transit the app server. The redirect itself is cached
- *   briefly (client-private, well under the signed TTL) so repeated loads reuse one URL.
- * - **Proxy** for drivers with no external URL space (`DbFileStorageDriver`): the interface's
- *   base64 is decoded so every mime — binary or text — serves its true bytes, and HTTP Range
- *   is honored (206/416 via {@link resolveByteRange}) so a `<video>` can SEEK against a
- *   proxy-served blob — streaming parity with the signed-URL path instead of download-then-watch.
+ * access decision — the caller's SCOPED read, else a variant's original, else the shared-content
+ * reachability leg (`FileReachabilityResolver`: the caller may read a file when they may read a
+ * row that references it, e.g. a shared thought's media node). Then {@link FileResponder} — the
+ * one serving path (a 302 to a signed URL, or the proxy with Range) every file route answers
+ * through.
  */
 export const getFile: Route = {
   path: '/file/:id',
@@ -31,54 +21,16 @@ export const getFile: Route = {
     }
 
     const fileId = request.params.id;
-    const fileStorage = getFileStorage();
     try {
       // The file row decides existence (a scoped-or-reachable read, so it is also the access check).
-      const file = await fileStorage.getFile(fileId);
+      const file = await getFileStorage().getFile(fileId);
       if (!file) {
         response.status(404).send('File not found');
         return;
       }
-
-      const signedUrl = await fileStorage.getSignedUrl(fileId);
-      if (signedUrl) {
-        response.setHeader('Cache-Control', 'private, max-age=300');
-        response.redirect(302, signedUrl);
-        return;
-      }
-
-      const fileDataBase64 = await fileStorage.getFileData(fileId);
-      const bytes = Buffer.from(fileDataBase64, 'base64');
-      const safeFilename = encodeURIComponent(file.name);
-      response.setHeader('Content-Disposition', `inline; filename="${safeFilename}"`);
-      response.setHeader('Content-Type', file.type);
-      response.setHeader('Accept-Ranges', 'bytes');
-      const range = resolveByteRange(request.headers?.range, bytes.length);
-      if (range === 'unsatisfiable') {
-        response.setHeader('Content-Range', `bytes */${bytes.length}`);
-        response.status(416).send('Range Not Satisfiable');
-        return;
-      }
-      if (range) {
-        response.setHeader('Content-Range', `bytes ${range.start}-${range.end}/${bytes.length}`);
-        response.status(206).send(bytes.subarray(range.start, range.end + 1));
-        return;
-      }
-      response.send(bytes);
+      await FileResponder.serve(file, request, response);
     } catch (error) {
-      if (FileStorageError.isNotFound(error)) {
-        // The row is there and its bytes are not: the same answer as a row that is not there.
-        response.status(404).send('File not found');
-        return;
-      }
-      if (FileCopyRefused.is(error)) {
-        // A deliberate refusal, not a failure: no copy of this file can be made for anyone but its
-        // owner (the maker said why on its own line). Quiet, and never a 500.
-        response.status(403).send('File not available');
-        return;
-      }
-      console.error(`Error fetching file (${fileId}):`, error);
-      response.status(500).send('Internal Server Error');
+      FileResponder.fail(fileId, error, response);
     }
   },
 };
