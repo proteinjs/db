@@ -1,0 +1,12 @@
+{
+  "branch": "feat/source-records-full-loop",
+  "packages": ["db"],
+  "suites": [
+    "packages/db/test/SourceRecordStamp.test.ts",
+    "packages/db/test/SourceRecordDeclaration.test.ts",
+    "packages/db/test/SourceRecordsCli.test.ts",
+    "packages/db/test/SourceRecordLoader.test.ts",
+    "packages/drivers/spanner/test/SourceRecordSync.test.ts"
+  ],
+  "removes": []
+}
