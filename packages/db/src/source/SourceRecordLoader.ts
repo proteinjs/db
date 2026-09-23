@@ -25,6 +25,12 @@ export type SourceRecordTableLoadSummary = {
   updates: number;
   unchanged: number;
   adopted: number;
+  /**
+   * Declarations whose natural key is held by a row the sync does not own (written at runtime —
+   * a person's own row, say): refused for this boot, that row left exactly as it is (see
+   * {@link SourceRecordOptions.naturalKey}).
+   */
+  refused: number;
   deletes: number;
   removedUpdates: number;
   /** Rows stamped by a newer version of their declaring package — left exactly as they are. */
@@ -59,6 +65,12 @@ export class SourceRecordLoader {
    *   tables it no longer declares anything for: dropping the last declaration is a removal.
    * - Rows with no owner stamp (written before `source_package` existed) are claimed by the
    *   declaration that still matches them; the rest are reported as unowned and left alone.
+   * - A declaration never takes over a row the sync does not own through a natural key: a
+   *   natural key (an email, say) is an identity the world shares, so a runtime row holding it
+   *   may be anyone's — that declaration is REFUSED for the boot (the row untouched, the boot
+   *   continuing, one warning naming the declaration, counted `refused`). A declared id, minted
+   *   by the declaration itself, still claims a runtime row holding it (see
+   *   {@link SourceRecordOptions.naturalKey}).
    * - The version stamp records the version that last WROTE the row (its insert or its last
    *   redefinition). A newer version whose declaration is unchanged writes nothing — it neither
    *   re-stamps the version nor bumps `updated` — so a release that touches no declaration
@@ -100,6 +112,7 @@ export class SourceRecordLoader {
       let updateCount = 0;
       let unchangedCount = 0;
       let adoptedCount = 0;
+      let refusedCount = 0;
       let skippedNewer = removed.skippedNewer;
       for (const { source, qualifiedName, name, record } of records) {
         let sourceRecord = record;
@@ -135,6 +148,21 @@ export class SourceRecordLoader {
         }
 
         if (existingRecord) {
+          if (existingRecord.isLoadedFromSource !== true && keyProperty !== 'id') {
+            // A natural key held by a row the sync does not own: never taken over (see load's
+            // ownership model). The row stays exactly as it is and the boot goes on.
+            refusedCount += 1;
+            this.logger.warn({
+              message: `(${table.name}) Refused declaration '${name}': a row the sync does not own holds ${keyProperty} '${(sourceRecord as any)[keyProperty]}' — the row is left untouched and the declaration does not load while it stands`,
+              obj: {
+                declaration: qualifiedName,
+                [keyProperty]: (sourceRecord as any)[keyProperty],
+                id: existingRecord.id,
+              },
+            });
+            continue;
+          }
+
           if (
             existingRecord.sourcePackage === source &&
             this.isNewerStamp(existingRecord.sourcePackageVersion, sourceVersion)
@@ -147,14 +175,16 @@ export class SourceRecordLoader {
           }
 
           if (existingRecord.id !== sourceRecord.id) {
-            // Adopt in place: the existing row keeps its id — other tables may reference it.
-            // The declared id is only ever used for fresh inserts.
+            // A natural-key match on a row the sync owns under an environment's own id (one an
+            // earlier build adopted): the row keeps its id — other tables may reference it. The
+            // declared id is only ever used for fresh inserts.
             sourceRecord = { ...sourceRecord, id: existingRecord.id };
           }
 
           if (existingRecord.isLoadedFromSource !== true) {
-            // A pre-existing (runtime-created) row is being taken over by a declaration —
-            // deliberate, but loud: a declaration asserts ownership of the row's identity.
+            // A runtime-created row holding the declaration's OWN id (natural-key tables never
+            // reach here — refused above) is being taken over by that declaration — deliberate,
+            // but loud: a declaration asserts ownership of the row's identity.
             adoptedCount += 1;
             this.logger.info({
               message: `(${table.name}) Adopting existing record into source ownership`,
@@ -196,6 +226,7 @@ export class SourceRecordLoader {
         updates: updateCount,
         unchanged: unchangedCount,
         adopted: adoptedCount,
+        refused: refusedCount,
         deletes: removed.deleteCount,
         removedUpdates: removed.removedUpdateCount,
         skippedNewer,

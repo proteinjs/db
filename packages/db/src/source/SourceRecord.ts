@@ -123,7 +123,9 @@ type OptionalProperties<T> = Pick<
 /**
  * Use this to load a record from source into the db.
  *
- * On Db.init, the record will be inserted if it doesn't exist, and updated if it does exist to mirror what is in source.
+ * On Db.init, the record will be inserted if it doesn't exist, and updated if it does exist to mirror what is in source —
+ * except that a row the sync does not own is never taken over through the table's natural key: the declaration is
+ * refused while such a row holds the key (see `SourceRecordOptions.naturalKey`).
  *
  * If the SourceRecordLoader is deleted from source, the record will be deleted from the db on server startup (per the
  * table's `onSourceRemoved` policy) — by the next boot of a build that still carries the declaring package at its

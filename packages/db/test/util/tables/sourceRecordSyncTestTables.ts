@@ -9,7 +9,7 @@ import {
 
 /**
  * Fixtures for the source-record sync suites ({@link sourceRecordSyncTests}): a machine-account-
- * shaped mixed table (natural-key adoption + flag-on-removed), a default-policy table (removed =
+ * shaped mixed table (natural-key sync + flag-on-removed), a default-policy table (removed =
  * deleted), a misdeclared natural-key table (non-unique column), and the two-generation table
  * pair driving the unique-index duplicate preflight.
  *
@@ -27,7 +27,7 @@ export interface SyncMachineAccount extends SourceRecord {
   runtimeNote?: string | null;
 }
 
-/** The machine-account shape: natural-key adoption by email, removed rows flagged not deleted. */
+/** The machine-account shape: synced by email, removed rows flagged not deleted. */
 export class SyncMachineAccountTable extends Table<SyncMachineAccount> {
   name = 'db_test_sync_machine_account';
   columns: Table<SyncMachineAccount>['columns'] = withSourceRecordColumns<SyncMachineAccount>({

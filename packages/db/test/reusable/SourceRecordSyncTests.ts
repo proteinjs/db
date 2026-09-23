@@ -52,10 +52,11 @@ class RecordingMachineAccountWatcher implements TableWatcher<SyncMachineAccount>
 
 /**
  * Emulator-backed outcome tests for the source-record sync's mixed-table semantics:
- * declare-only ownership (human rows structurally untouchable), natural-key adoption
- * (existing row keeps its id and runtime fields), `onSourceRemoved` policies (flag-not-delete
- * through `Db.update` so watchers fire; default delete unchanged), boot-time natural-key
- * validation, and the unique-index duplicate preflight.
+ * declare-only ownership (human rows structurally untouchable), natural-key sync (an owned row
+ * keeps its id and runtime fields; a row the sync does not own refuses the declaration and is
+ * never taken over), `onSourceRemoved` policies (flag-not-delete through `Db.update` so
+ * watchers fire; default delete unchanged), boot-time natural-key validation, and the
+ * unique-index duplicate preflight.
  */
 export const sourceRecordSyncTests = (
   driver: DbDriver,
@@ -201,39 +202,128 @@ export const sourceRecordSyncTests = (
       expect(afterIdleBoot.updated.valueOf()).toBe(stampBefore);
     });
 
-    test('natural-key adoption: an existing row is adopted in place — id and runtime fields preserved', async () => {
+    test('a natural key held by a row the sync does not own refuses the declaration: the row untouched, the boot continues, the refusal counted and named', async () => {
       const db = getDbAsSystem();
-      // The hand-made bridge row: env-random id, runtime-provisioned fields, never flagged.
-      const handMade = await db.insert(machineTable, {
+      // A row written at runtime that happens to hold the declared natural key — a person's own
+      // row (a signup under the address before the declaration shipped): their fields, their
+      // credential (the runtime note stands in for the password hash), never source-owned.
+      const persons = await db.insert(machineTable, {
         email: 'bridge@test.local',
-        displayName: 'Hand-made bridge',
+        displayName: 'A person',
+        runtimeNote: 'their-password-hash',
+      });
+      const bridge = machineDeclaration({ id: 'declared-id', email: 'bridge@test.local', displayName: 'Ops bridge' });
+      const sibling = machineDeclaration({ id: 'sibling-id', email: 'sibling@test.local', displayName: 'Sibling' });
+
+      const logged: string[] = [];
+      const consoleSpies = (['log', 'info', 'warn', 'error'] as const).map((level) =>
+        jest.spyOn(console, level).mockImplementation((...parts: unknown[]) => {
+          logged.push(parts.map((part) => (typeof part === 'string' ? part : JSON.stringify(part))).join(' '));
+        })
+      );
+      const summary = await boot([bridge, sibling]).finally(() => consoleSpies.forEach((spy) => spy.mockRestore()));
+
+      // The boot continued: the sibling declaration landed; the refused one is counted, not adopted.
+      expect(summary[machineTable.name]).toMatchObject({ inserts: 1, adopted: 0, refused: 1 });
+      expect(await db.get(machineTable, { id: 'sibling-id' })).toMatchObject({ isLoadedFromSource: true });
+      // The person's row is exactly as it was: no declared field, no ownership stamp, no write.
+      const after = await db.get(machineTable, { id: persons.id });
+      expect(after).toMatchObject({
+        email: 'bridge@test.local',
+        displayName: 'A person',
+        runtimeNote: 'their-password-hash',
+      });
+      expect(after.isLoadedFromSource).toBeFalsy();
+      expect(after.sourcePackage).toBeFalsy();
+      expect(after.status).toBeFalsy();
+      expect(after.updated.valueOf()).toBe(persons.updated.valueOf());
+      expect(RecordingMachineAccountWatcher.updates.filter((update) => update.id === persons.id)).toHaveLength(0);
+      // Nothing was inserted under the declared id, and nothing is registered as a source record.
+      expect(await db.get(machineTable, { id: 'declared-id' })).toBeUndefined();
+      expect(new SourceRecordRepo().getSourceRecord(machineTable.name, persons.id)).toBeUndefined();
+      expect(new SourceRecordRepo().getSourceRecord(machineTable.name, 'declared-id')).toBeUndefined();
+      // One plain line names the declaration and the reason.
+      const refusals = logged.filter((line) => line.includes('Refused declaration'));
+      expect(refusals).toHaveLength(1);
+      expect(refusals[0]).toContain('SeededLoader0');
+      expect(refusals[0]).toContain('bridge@test.local');
+      expect(refusals[0]).toContain('does not own');
+
+      // Idempotent: the next boot refuses again and still writes nothing to the row.
+      const again = await boot([bridge, sibling]);
+      expect(again[machineTable.name]).toMatchObject({ inserts: 0, refused: 1 });
+      expect((await db.get(machineTable, { id: persons.id })).updated.valueOf()).toBe(persons.updated.valueOf());
+
+      // Once the row is gone, the declaration lands as a fresh insert under its declared id.
+      await db.delete(machineTable, { id: persons.id });
+      const landed = await boot([bridge, sibling]);
+      expect(landed[machineTable.name]).toMatchObject({ inserts: 1, refused: 0 });
+      const fresh = await db.get(machineTable, { email: 'bridge@test.local' });
+      expect(fresh).toMatchObject({ id: 'declared-id', displayName: 'Ops bridge', isLoadedFromSource: true });
+      expect(fresh.runtimeNote).toBeFalsy();
+    });
+
+    test('a row the sync already owns keeps syncing by its natural key under an environment-random id — id and runtime fields kept, converged boots write nothing', async () => {
+      const db = getDbAsSystem();
+      // The shape of an account a deployed environment adopted in an earlier build: source-owned,
+      // stamped by its package, holding the id the environment gave it (not the declared one),
+      // with a provisioned credential and a declared field that has drifted.
+      const owned = await db.insert(machineTable, {
+        email: 'bridge@test.local',
+        displayName: 'Drifted',
         runtimeNote: 'the-password-hash',
+        status: 'active',
+        isLoadedFromSource: true,
+        sourcePackage: DEFAULT_TEST_SOURCE,
+      });
+      const bridge = machineDeclaration({
+        id: 'declared-owned-id',
+        email: 'bridge@test.local',
+        displayName: 'Ops bridge',
       });
 
-      await boot([machineDeclaration({ id: 'declared-id', email: 'bridge@test.local', displayName: 'Ops bridge' })]);
+      const summary = await boot([bridge]);
 
+      expect(summary[machineTable.name]).toMatchObject({ updates: 1, refused: 0, inserts: 0 });
       const rows = await machineRows({ email: 'bridge@test.local' });
       expect(rows).toHaveLength(1);
-      // Adopted: the existing id survives (scoped rows reference it); declared fields reverted;
-      // runtime fields (the credential) preserved; the row is now source-owned.
       expect(rows[0]).toMatchObject({
-        id: handMade.id,
+        id: owned.id,
         displayName: 'Ops bridge',
-        status: 'active',
         runtimeNote: 'the-password-hash',
         isLoadedFromSource: true,
       });
-      expect(await db.get(machineTable, { id: 'declared-id' })).toBeUndefined();
+      expect(await db.get(machineTable, { id: 'declared-owned-id' })).toBeUndefined();
+      // Registered under the row's own id, not the declared one.
+      expect(new SourceRecordRepo().getSourceRecord(machineTable.name, owned.id)).toBeDefined();
+      expect(new SourceRecordRepo().getSourceRecord(machineTable.name, 'declared-owned-id')).toBeUndefined();
 
-      // The in-process repo registers the record under the ADOPTED id, not the declared one.
-      expect(new SourceRecordRepo().getSourceRecord(machineTable.name, handMade.id)).toBeDefined();
-      expect(new SourceRecordRepo().getSourceRecord(machineTable.name, 'declared-id')).toBeUndefined();
-
-      // Adoption converges: the id difference is not perpetual drift.
+      // The id difference is not perpetual drift.
       const stampBefore = rows[0].updated.valueOf();
-      await boot([machineDeclaration({ id: 'declared-id', email: 'bridge@test.local', displayName: 'Ops bridge' })]);
-      const afterIdleBoot = await db.get(machineTable, { id: handMade.id });
-      expect(afterIdleBoot.updated.valueOf()).toBe(stampBefore);
+      await boot([bridge]);
+      expect((await db.get(machineTable, { id: owned.id })).updated.valueOf()).toBe(stampBefore);
+    });
+
+    test('an id-keyed declaration still claims a runtime row holding its own declared id — the id is minted by the declaration, never shared', async () => {
+      const db = getDbAsSystem();
+      // A row written before the table was source-loaded, under the id the declaration carries
+      // (the insert type omits `id`; the loader's own inserts pass it the same way).
+      await db.insert(defaultPolicyTable, {
+        id: 'legacy-id',
+        email: 'legacy@test.local',
+        displayName: 'Old name',
+      } as unknown as { email: string });
+
+      const summary = await boot([
+        { table: defaultPolicyTable, record: { id: 'legacy-id', email: 'legacy@test.local', displayName: 'Declared' } },
+      ]);
+
+      expect(summary[defaultPolicyTable.name]).toMatchObject({ adopted: 1, refused: 0 });
+      expect(await db.get(defaultPolicyTable, { id: 'legacy-id' })).toMatchObject({
+        displayName: 'Declared',
+        isLoadedFromSource: true,
+        sourcePackage: DEFAULT_TEST_SOURCE,
+      });
     });
 
     test('onSourceRemoved update: removed rows are flagged through Db.update (watchers fire), never deleted; re-declaring reverts', async () => {
@@ -520,10 +610,16 @@ export const sourceRecordSyncTests = (
         expect(deactivations).toHaveLength(0);
       });
 
-      test('cross-source boots leave a natural-key-adopted row in place — adopted id preserved', async () => {
+      test('cross-source boots leave a natural-key-synced row in place — its environment id preserved', async () => {
         const db = getDbAsSystem();
-        // Hand-made row with an environment-random id, adopted by pkg-b via natural key.
-        const handMade = await db.insert(machineTable, { email: 'bridge2@test.local', runtimeNote: 'cred' });
+        // A row pkg-b owns under an environment-random id (adopted by an earlier build), synced
+        // by natural key.
+        const handMade = await db.insert(machineTable, {
+          email: 'bridge2@test.local',
+          runtimeNote: 'cred',
+          isLoadedFromSource: true,
+          sourcePackage: '@test/pkg-b',
+        });
         await bootAsSource('@test/pkg-b', [
           { table: machineTable, record: { id: 'declared-bridge2', email: 'bridge2@test.local', status: 'active' } },
         ]);

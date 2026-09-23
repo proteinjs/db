@@ -452,11 +452,18 @@ export type SourceRecordOptions<T = any> = {
    */
   onSourceRemoved?: 'delete' | 'keep' | { update: Partial<T> };
   /**
-   * When set, the sync keys records on this column instead of `id` — matching, adoption, and
-   * the removed reconcile all use it. An existing row matched by natural key is ADOPTED in
-   * place: it keeps its id (the declared id is used only for fresh inserts — existing ids may
-   * be referenced from other tables), gets stamped `is_loaded_from_source = true`, and has its
-   * declared fields reverted to source. Drift comparison excludes `id`, so adoption converges.
+   * When set, the sync keys records on this column instead of `id` — matching and the removed
+   * reconcile both use it. A row the sync already owns (`is_loaded_from_source = true`) matched
+   * by natural key keeps its id (the declared id is used only for fresh inserts — an
+   * environment's own ids may be referenced from other tables) and has its declared fields
+   * reverted to source. Drift comparison excludes `id`, so the id difference converges.
+   *
+   * A row the sync does NOT own that holds the key is never taken over: a natural key is an
+   * identity the world shares (an email a person registered, say), unlike a declared id, which
+   * only the declaration mints. The declaration is REFUSED for that boot — the row left exactly
+   * as it is, the boot continuing, one warning naming the declaration and the key, counted
+   * `refused` in the load summary — and lands as a fresh insert on the first boot after that row
+   * is gone.
    *
    * Preconditions, validated at boot by the loader (loud failures):
    * - the column is declared unique (`ColumnOptions.unique` or a single-column unique index in

@@ -21,6 +21,6 @@ afterAll(() => {
 });
 
 describe(
-  'Source record sync (mixed tables, natural-key adoption, onSourceRemoved, unique preflight)',
+  'Source record sync (mixed tables, natural-key sync and refusal, onSourceRemoved, unique preflight)',
   sourceRecordSyncTests(spannerDriver, new TransactionContext(), getDropTestTable(spannerDriver))
 );
