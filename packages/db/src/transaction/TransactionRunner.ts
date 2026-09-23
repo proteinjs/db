@@ -36,10 +36,13 @@ export class TransactionRunner implements TransactionRunnerService {
   /**
    * The longest a write waits for a declared row, in milliseconds. A dependency's insert lands in
    * hundreds of milliseconds on Spanner; on the emulator, whose concurrent read-write transactions
-   * abort and retry with a backoff of seconds, in seconds. The bound is the ceiling for a row that
-   * never comes — the named failure, never a hang.
+   * abort and retry with a backoff of seconds, in seconds; on a degraded link (a tethered phone:
+   * RPC p50 0.4 s, p90 2.4 s, measured) a root's birth of a few dozen sequential statements takes
+   * 13 s — and the writes released behind it by a page that is gone have no second chance. The
+   * bound is the ceiling for a row that NEVER comes — the named failure, never a hang — so it sits
+   * well above a slow birth; a write that waits here holds one request and a poll, nothing else.
    */
-  static readonly ROW_WAIT_BOUND_MS = 10_000;
+  static readonly ROW_WAIT_BOUND_MS = 30_000;
   private static readonly FIRST_POLL_INTERVAL_MS = 25;
   private static readonly MAX_POLL_INTERVAL_MS = 250;
 

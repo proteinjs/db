@@ -181,6 +181,24 @@ describe('a write declares the rows it depends on; the server waits for them', (
     expect(await getDbAsSystem().get(table, { id: child })).toBeUndefined();
   }, 30000);
 
+  test('(f) a dependency that lands 12 s after the write arrives — a root birth on a degraded link — is still waited for: the bound sits above it', async () => {
+    // Measured on a tethered link (spanner RPC p50 0.4 s, p90 2.4 s): a root's birth took 13 s and
+    // every write released behind it met a 10 s bound — refused with the plain clause, and the
+    // page that typed them was gone. The bound is the ceiling for a row that NEVER comes; a row
+    // that is merely slow must land inside it.
+    const id = 'declared-row-slow-birth';
+    const insert = insertLater({ id, text: 'born late', visible: true }, 12_000);
+    const runner = new TransactionRunner() as unknown as Runner;
+
+    const before = Date.now();
+    await runner.run(updateOps(id, 'born late, edited'), { afterRows: [id] });
+    const elapsed = Date.now() - before;
+    await insert;
+
+    expect((await db.get(table, { id })).text).toBe('born late, edited');
+    expect(elapsed).toBeGreaterThanOrEqual(11_500);
+  }, 40000);
+
   test('a declared id none of the operations reference is refused up front — a malformed request, never a wait', async () => {
     const runner = new TransactionRunner() as unknown as Runner;
     await expect(runner.run(updateOps('declared-row-x', 'x'), { afterRows: ['some-other-row'] })).rejects.toThrow(
