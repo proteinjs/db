@@ -1,6 +1,7 @@
 import { Record } from '../Record';
 import { DbService, ObjectQuery } from '../services/DbService';
 import { getTransactionRunner } from './TransactionRunner';
+import { TransactionRunOptions } from '../services/TransactionRunnerService';
 import { addDefaultFieldValues, Table } from '../Table';
 import { isInstanceOf } from '@proteinjs/util';
 import { Condition, QueryBuilder } from '@proteinjs/db-query';
@@ -269,14 +270,22 @@ export class Transaction implements OperationQueue {
 
   /**
    * Run the operations in order (not a batch), as a single transaction.
+   *
+   * `options.afterRows` declares rows the operations depend on that may not exist yet (see
+   * {@link TransactionRunOptions}); the server waits for them before running. A run with nothing
+   * to declare hands the runner the operations alone — the request is the one it always was.
    */
-  async run(): Promise<void> {
+  async run(options?: TransactionRunOptions): Promise<void> {
     if (this.ops.length === 0) {
       return;
     }
 
     const runner = getTransactionRunner();
-    await runner.run(this.ops);
+    if (options?.afterRows && options.afterRows.length > 0) {
+      await runner.run(this.ops, { afterRows: options.afterRows });
+    } else {
+      await runner.run(this.ops);
+    }
     this.ops = [];
   }
 }
