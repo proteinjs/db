@@ -11,8 +11,31 @@ export interface File extends ScopedRecord {
    * Optional preview — another `File` (stored the same way, in GCS) used as a preview/thumbnail of
    * this file's content, e.g. a recording GIF's preview frame. A reference, not an inline blob, so
    * the bytes stay out of the DB row (consistent with the storage model); deleted with this file.
+   *
+   * A VARIANT — one of the derived Files of this file the {@link FileVariantMaker} seam makes
+   * (`preview`, `stage`): the same lifecycle for each — named here, made once (at ingest with the
+   * bytes in hand, or lazily on the first request through `FileStorage.getVariant`), dropped when
+   * this file's bytes change (`FileStorage.updateFileData`), deleted with this file (cascade), and
+   * readable by whoever can read this file (`variantOf`).
    */
-  preview?: Reference<File>;
+  preview?: Reference<File> | null;
+  /**
+   * The stage variant — a second derived `File` sized for the surface that shows the picture large
+   * but not full-screen (a 1600 px longest-edge rendition where the preview is a 512 px thumbnail):
+   * the same mechanism as `preview` in every respect (see there). Absent on files made before the
+   * seam or of a kind the maker does not apply to (a video, an animated picture); the first request
+   * derives it once. A viewer that wants every pixel keeps drawing the original.
+   */
+  stage?: Reference<File> | null;
+  /**
+   * For a variant (`preview`/`stage`) made by the seam: the File it was derived from. The
+   * variant's reachability is its original's — a reader who can read the original (their own
+   * scope, or a row the shared-content leg vouches for) can read the variant by its own id, even
+   * when no content row names the variant (a variant derived after the content was placed). Never
+   * set on a `copyForOthers` copy, whose own id is reachable by nobody but the owner. No cascade
+   * in either direction: the original's own reference (`preview`/`stage`) deletes the variant.
+   */
+  variantOf?: Reference<File> | null;
   /**
    * The copy of this file served to anyone who is not its owner — another `File` (the same
    * store, the owner's scope), made ONCE by the registered {@link FileCopyForOthers} the first
@@ -77,6 +100,10 @@ export class FileTable extends Table<File> {
     size: new IntegerColumn('size'),
     // Self-reference (the preview is itself a File). cascadeDelete: removing a file removes its preview.
     preview: new ReferenceColumn<File>('preview', FILE_TABLE_NAME, true),
+    // Self-reference (the stage variant is itself a File). cascadeDelete: removing a file removes its stage variant.
+    stage: new ReferenceColumn<File>('stage', FILE_TABLE_NAME, true),
+    // Self-reference (a variant names its original). No cascade: the original's own reference deletes the variant.
+    variantOf: new ReferenceColumn<File>('variant_of', FILE_TABLE_NAME, false),
     // Self-reference (the copy is itself a File). cascadeDelete: removing a file removes the copy others were served.
     copyForOthers: new ReferenceColumn<File>('copy_for_others', FILE_TABLE_NAME, true),
     width: new IntegerColumn('width'),
