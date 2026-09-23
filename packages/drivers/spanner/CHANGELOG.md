@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.31.1](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.31.0...@proteinjs/db-driver-spanner@1.31.1) (2026-09-23)
+
+
+### Bug Fixes
+
+* **spanner:** statements issued on one transaction reach the wire in order — the driver owns the sequence ([9cb0046](https://github.com/proteinjs/db/commit/9cb0046acd253774de6672b6032ee3ab5ab40f7b))
+
+
+
+
+
 # [1.31.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.30.2...@proteinjs/db-driver-spanner@1.31.0) (2026-09-20)
 
 
