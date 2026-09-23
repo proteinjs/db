@@ -157,7 +157,8 @@ export class FileStorage implements FileStorageService {
    * hand (the ingest's door — one decode of bytes just stored, never a re-read). Each is named on
    * the row; a kind the maker does not apply to is left unset (the read path may derive it later
    * if the maker's rule changes). With no maker registered nothing is made.
-   * @returns The file row as it now stands (the variants named) and the variant Files made here.
+   * @returns The caller's file row with each variant made here named on it (the row as the caller
+   *          holds it, not a re-read — an unset column stays unset), and the variant Files made.
    */
   async deriveVariants(
     file: File,
@@ -165,16 +166,17 @@ export class FileStorage implements FileStorageService {
   ): Promise<{ file: File; variants: Partial<Record<FileVariantKind, File>> }> {
     const maker = getFileVariantMaker();
     const variants: Partial<Record<FileVariantKind, File>> = {};
+    const named: Partial<Pick<File, FileVariantKind>> = {};
     if (maker) {
       for (const kind of FILE_VARIANT_KINDS) {
         if (!file[kind]?._id && maker.appliesTo(file, kind)) {
           const variantId = await this.makeVariant(file, kind, bytes);
           variants[kind] = await getScopedDbAsSystem().get(tables.File, { id: variantId });
+          named[kind] = new Reference<File>(tables.File.name, variantId);
         }
       }
     }
-    const current = await getScopedDbAsSystem().get(tables.File, { id: file.id });
-    return { file: current ?? file, variants };
+    return { file: { ...file, ...named }, variants };
   }
 
   /**
