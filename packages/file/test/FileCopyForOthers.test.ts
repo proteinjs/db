@@ -31,6 +31,7 @@ class ProxyDriver implements FileStorageDriver {
 
   async createFile(file: File, fileData: string): Promise<void> {
     this.store.set(file.id, Buffer.from(fileData, 'base64'));
+    await atBarrier(); // the racing case: every copy's bytes are stored before any row is asked its word
   }
 
   async getFileData(fileId: string): Promise<string> {
@@ -110,6 +111,27 @@ let makerCalls: Array<{ fileId: string; bytes: Buffer }> = [];
 /** What the stub maker applies to — the suite's own rule (the real maker's is "pictures and clips"). */
 let makerAppliesTo = (file: File): boolean => file.type.startsWith('image/');
 let makerFails = false;
+/**
+ * A barrier for the racing case: with `makerBarrier = n`, the stub maker holds every call until n
+ * calls are inside it, then answers them all on the same tick — so the reads that follow (the
+ * copy's row, its bytes, the row's word) run in lockstep, the tightest race the seam can meet.
+ */
+let makerBarrier = 0;
+let makerWaiting: Array<() => void> = [];
+/** Hold until `makerBarrier` callers are here, then release them all on one tick (no-op when 0). */
+const atBarrier = async (): Promise<void> => {
+  if (makerBarrier <= 0) {
+    return;
+  }
+  await new Promise<void>((resolve) => {
+    makerWaiting.push(resolve);
+    if (makerWaiting.length >= makerBarrier) {
+      const release = makerWaiting;
+      makerWaiting = [];
+      release.forEach((go) => go());
+    }
+  });
+};
 
 const registerMaker = () => {
   objectCache()['@proteinjs/db-file/FileCopyForOthers'] = [
@@ -117,6 +139,7 @@ const registerMaker = () => {
       appliesTo: (file: File) => makerAppliesTo(file),
       make: async (file: File, bytes: Buffer) => {
         makerCalls.push({ fileId: file.id, bytes: Buffer.from(bytes) });
+        await atBarrier();
         if (makerFails) {
           throw new Error('no copy can be made of this file');
         }
@@ -151,6 +174,8 @@ beforeEach(() => {
   makerCalls = [];
   makerAppliesTo = (file: File) => file.type.startsWith('image/');
   makerFails = false;
+  makerBarrier = 0;
+  makerWaiting = [];
   registerMaker();
   testEnv.actAs(owner);
 });
@@ -239,6 +264,39 @@ describe('the copy for others — the service door (proxy serving)', () => {
     expect(onceMore.equals(copyOf(originalBytes))).toBe(true);
     expect(makerCalls).toHaveLength(1);
     expect((await rowAsSystem(file.id))!.copyForOthers!._id).toEqual(copyId);
+  });
+
+  it("TWO NON-OWNERS RACING: both are served the copy, ONE copy row survives in the owner's scope, the row names it, the loser's object is gone", async () => {
+    const file = await createOwnerFile('raced.jpg', 'image/jpeg');
+    reachableFileIds.add(file.id);
+    const readers = 4;
+    makerBarrier = readers;
+    // Warm the driver's session pool so the readers' round trips really overlap (a cold pool serializes them).
+    await Promise.all(Array.from({ length: readers * 2 }, () => rowAsSystem(file.id)));
+
+    testEnv.actAs(recipient);
+    const served = await Promise.all(Array.from({ length: readers }, () => new FileStorage().getFileData(file.id)));
+
+    for (const bytes of served) {
+      expect(Buffer.from(bytes, 'base64').equals(copyOf(originalBytes))).toBe(true);
+    }
+    expect(makerCalls).toHaveLength(readers); // all raced into the maker; the contract is about what SURVIVES
+    const named = (await rowAsSystem(file.id))!.copyForOthers!._id!;
+    const copies = (await fileRowsInScope(owner.id)).filter((row) => row.id !== file.id && row.name === 'raced.jpg');
+    expect(copies.map((row) => row.id)).toEqual([named]);
+    // The loser's object is gone: every object in the store belongs to a row that still exists.
+    const liveIds = new Set(
+      (await getDbAsSystem().query(tables.File, new QueryBuilderFactory().getQueryBuilder(tables.File))).map(
+        (row) => row.id
+      )
+    );
+    expect(Array.from(driver.store.keys()).filter((id) => !liveIds.has(id))).toEqual([]);
+    expect(await fileRowsInScope(recipient.id)).toEqual([]);
+
+    makerBarrier = 0;
+    const again = await bytesAs(recipient, file.id);
+    expect(again.equals(copyOf(originalBytes))).toBe(true);
+    expect(makerCalls).toHaveLength(readers);
   });
 
   it("THE CACHE NEVER CROSSES TO THE OWNER: once a copy exists, the owner's read still serves the original", async () => {
