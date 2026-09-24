@@ -10,7 +10,9 @@ import {
   DbDriver,
   Column,
   Table,
+  withRecordColumns,
 } from '@proteinjs/db';
+import { SourceRepository } from '@proteinjs/reflection';
 import { DbTestEnvironment } from '../util/DbTestEnvironment';
 import {
   ColumnTypesTable,
@@ -539,5 +541,98 @@ export const tableManagerTests = (
       expect(JSON.stringify(indexes['db_test_user_active_name_index'])).toBe(JSON.stringify(['active', 'name']));
       expect(JSON.stringify(indexes['db_test_user_active_email_index'])).toBeFalsy();
     });
+
+    /**
+     * `loadTables` creates every absent registered table in one pass, each table's foreign keys
+     * declared inline on its CREATE. The registry's enumeration order says nothing about those
+     * references, so these fixtures are enumerated with each referencing table FIRST — the order
+     * that fails a fresh database unless the tables are ordered by their references first.
+     */
+    describe('loadTables creates absent tables in reference order', () => {
+      const fixtures = createOrderFixtureTables();
+
+      beforeEach(async () => {
+        await dropFixtureTables(dropTable, fixtures);
+      });
+
+      afterEach(async () => {
+        await dropFixtureTables(dropTable, fixtures);
+      });
+
+      test('a table enumerated before the table its foreign key references is created after it', async () => {
+        await withEnumeratedTables([fixtures.child, fixtures.parent], () => tableManager.loadTables());
+
+        expect(await tableManager.tableExists(fixtures.parent)).toBe(true);
+        expect(await tableManager.tableExists(fixtures.child)).toBe(true);
+        const foreignKeys = await tableManager.schemaMetadata.getForeignKeys(fixtures.child);
+        expect(foreignKeys['parent_id']?.referencedTableName).toBe(fixtures.parent.name);
+        expect(foreignKeys['parent_id']?.referencedColumnName).toBe('id');
+      });
+
+      test('a reference cycle among absent tables is refused by name, and nothing is created', async () => {
+        const created = withEnumeratedTables([fixtures.cycleA, fixtures.cycleB], () => tableManager.loadTables());
+
+        await expect(created).rejects.toThrow(
+          `foreign keys form a cycle: ${fixtures.cycleA.name} -> ${fixtures.cycleB.name} -> ${fixtures.cycleA.name}`
+        );
+        expect(await tableManager.tableExists(fixtures.cycleA)).toBe(false);
+        expect(await tableManager.tableExists(fixtures.cycleB)).toBe(false);
+      });
+    });
   };
+};
+
+/**
+ * Fixture tables for the reference-order tests. Anonymous classes on purpose: a named class
+ * extending `Table` in this package's test sources joins the reflection registry, and a
+ * registered reference cycle would be refused by every `loadTables` in the suites.
+ */
+const createOrderFixtureTables = () => {
+  const referencing = (tableName: string, referencedTable: string): Table<any> =>
+    new (class extends Table<any> {
+      name = tableName;
+      columns = withRecordColumns<any>({
+        label: new StringColumn('label'),
+        parentId: new StringColumn('parent_id', { references: { table: referencedTable } }),
+      });
+    })();
+
+  return {
+    parent: new (class extends Table<any> {
+      name = 'db_test_create_order_parent';
+      columns = withRecordColumns<any>({
+        label: new StringColumn('label'),
+      });
+    })() as Table<any>,
+    child: referencing('db_test_create_order_child', 'db_test_create_order_parent'),
+    cycleA: referencing('db_test_create_order_cycle_a', 'db_test_create_order_cycle_b'),
+    cycleB: referencing('db_test_create_order_cycle_b', 'db_test_create_order_cycle_a'),
+  };
+};
+
+/** Referencing tables before the tables they reference, so a foreign key never blocks a drop. */
+const dropFixtureTables = async (
+  dropTable: (table: Table<any>) => Promise<void>,
+  fixtures: ReturnType<typeof createOrderFixtureTables>
+) => {
+  for (const table of [fixtures.child, fixtures.parent, fixtures.cycleA, fixtures.cycleB]) {
+    await dropTable(table);
+  }
+};
+
+/**
+ * Run `load` with the reflection registry enumerating exactly `tables` as the registered tables,
+ * in that order — what a package declaring them in that order hands `TableManager.loadTables`.
+ */
+const withEnumeratedTables = async (tables: Table<any>[], load: () => Promise<void>) => {
+  const repository = SourceRepository.get();
+  const enumerate = repository.objects.bind(repository);
+  const objects = jest
+    .spyOn(repository, 'objects')
+    .mockImplementation(((type: string) => (type === '@proteinjs/db/Table' ? tables : enumerate(type))) as any);
+  try {
+    await load();
+  } finally {
+    objects.mockRestore();
+  }
 };
