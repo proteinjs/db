@@ -617,11 +617,17 @@ export class SourceRecordSyncRunner {
    * The declaring package's version, read from its own package.json at runtime. Resolution runs
    * from the process cwd — the booting server's package, the one dependency tree every declaring
    * package is reachable from (`@proteinjs/db` itself does not depend on the packages that
-   * declare records, so module-relative resolution could never find them). The package's entry
-   * is resolved (honoring exports maps, where `<pkg>/package.json` is usually not requireable),
-   * then the nearest package.json whose `name` matches is read walking up from it.
+   * declare records, so module-relative resolution could never find them).
    *
-   * Returns undefined where resolution is impossible — no Node `require` (browser bundles), or a
+   * Two roads, in order:
+   * 1. The booting package itself: `<cwd>/package.json`, when its `name` is `source`. A lookup by
+   *    name from cwd searches cwd's node_modules chain, which never contains the package cwd IS,
+   *    so without this read the server's own records would sync unversioned.
+   * 2. Any other package: its entry is resolved from cwd (honoring exports maps, where
+   *    `<pkg>/package.json` is usually not requireable), then the nearest package.json whose
+   *    `name` matches is read walking up from it.
+   *
+   * Returns undefined where neither road resolves — no Node `require` (browser bundles), or a
    * package not resolvable from cwd. The sync then has no place in the version order for that
    * package: it never touches its version-stamped rows, and what it writes is unversioned
    * (see {@link isNewerStamp}). Logged once per boot so a misconfigured cwd is visible.
@@ -636,18 +642,20 @@ export class SourceRecordSyncRunner {
     const cwd = typeof process !== 'undefined' && typeof process.cwd === 'function' ? process.cwd() : undefined;
     if (nodeRequire && cwd) {
       try {
-        const entryPath = nodeRequire.resolve(source, { paths: [cwd] });
         const path = nodeRequire('path');
         const fs = nodeRequire('fs');
+        const ownVersion = this.packageVersionAt(fs, path.join(cwd, 'package.json'), source);
+        if (ownVersion) {
+          return ownVersion;
+        }
+
+        const entryPath = nodeRequire.resolve(source, { paths: [cwd] });
         // Walk up from the entry file to the package's own package.json (the name check skips
         // nested stubs like a dist/package.json); stop at the filesystem root.
         for (let directory = path.dirname(entryPath); ; directory = path.dirname(directory)) {
-          const candidate = path.join(directory, 'package.json');
-          if (fs.existsSync(candidate)) {
-            const packageJson = JSON.parse(fs.readFileSync(candidate, 'utf8'));
-            if (packageJson?.name === source && typeof packageJson.version === 'string') {
-              return packageJson.version;
-            }
+          const version = this.packageVersionAt(fs, path.join(directory, 'package.json'), source);
+          if (version) {
+            return version;
           }
 
           if (path.dirname(directory) === directory) {
@@ -663,6 +671,16 @@ export class SourceRecordSyncRunner {
       message: `Could not resolve a version for source package '${source}' from '${cwd}' — its records sync without version ordering (this build never touches its version-stamped rows)`,
     });
     return undefined;
+  }
+
+  /** The `version` of the package.json at `packageJsonPath` when it exists and names `source`. */
+  private packageVersionAt(fs: typeof import('fs'), packageJsonPath: string, source: string): string | undefined {
+    if (!fs.existsSync(packageJsonPath)) {
+      return undefined;
+    }
+
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+    return packageJson?.name === source && typeof packageJson.version === 'string' ? packageJson.version : undefined;
   }
 
   /**

@@ -242,3 +242,70 @@ describe('getSourceRecordLoaders — declaration identity', () => {
     });
   });
 });
+
+/**
+ * The version a booting server stamps on the records its OWN package declares. The loader
+ * resolves each declaring package by name from the process cwd — cwd's node_modules chain — and
+ * the package cwd IS never sits in that chain, so the server's own records used to sync with no
+ * version (and between two builds sharing a database, the last to boot won). The fixture is a
+ * server package in its own folder with no `exports` field, booted from that folder.
+ */
+describe("SourceRecordSyncRunner.resolveSourceVersion — the booting package's own version", () => {
+  type VersionInternals = { resolveSourceVersion: (source: string) => string | undefined };
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const fs = require('fs');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const os = require('os');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const path = require('path');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { Logger } = require('@proteinjs/logger');
+  const resolveSourceVersion = (source: string) =>
+    (new SourceRecordSyncRunner() as unknown as VersionInternals).resolveSourceVersion(source);
+  const writePackage = (directory: string, packageJson: object) => {
+    fs.mkdirSync(directory, { recursive: true });
+    fs.writeFileSync(path.join(directory, 'package.json'), JSON.stringify(packageJson));
+    fs.writeFileSync(path.join(directory, 'index.js'), 'module.exports = {};\n');
+  };
+
+  let serverDirectory: string;
+  let bootDirectory: string;
+
+  beforeEach(() => {
+    serverDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'source-version-server-'));
+    writePackage(serverDirectory, { name: '@fixture-scope/booting-server', version: '4.5.6', main: 'index.js' });
+    writePackage(path.join(serverDirectory, 'node_modules', '@fixture-scope', 'declaring-dependency'), {
+      name: '@fixture-scope/declaring-dependency',
+      version: '7.8.9',
+      main: 'index.js',
+    });
+    bootDirectory = process.cwd();
+    process.chdir(serverDirectory);
+  });
+
+  afterEach(() => {
+    process.chdir(bootDirectory);
+    fs.rmSync(serverDirectory, { recursive: true, force: true });
+    jest.restoreAllMocks();
+  });
+
+  it('stamps the booting package with the version in its own package.json', () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn');
+
+    expect(resolveSourceVersion('@fixture-scope/booting-server')).toBe('4.5.6');
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("resolves other packages from cwd's dependencies, and warns when neither road resolves", () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn');
+
+    expect(resolveSourceVersion('@fixture-scope/declaring-dependency')).toBe('7.8.9');
+    expect(warn).not.toHaveBeenCalled();
+
+    expect(resolveSourceVersion('@fixture-scope/not-installed')).toBeUndefined();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect((warn.mock.calls[0][0] as { message: string }).message).toContain(
+      "Could not resolve a version for source package '@fixture-scope/not-installed'"
+    );
+  });
+});
