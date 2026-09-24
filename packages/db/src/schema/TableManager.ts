@@ -72,9 +72,10 @@ export class TableManager {
   /**
    * Reconcile every registered table with the live schema. Absent tables are created as ONE
    * batch (a single schema-update operation on drivers that support it — the prod-boot win),
-   * preserving their registration order so foreign keys to other absent tables resolve; existing
-   * tables are altered individually after, so an alter that adds a foreign key to a
-   * just-created table sees it live.
+   * ordered by their foreign-key references ({@link orderByReferences}) so each table's foreign
+   * keys resolve against tables created before it — the registry's enumeration order carries no
+   * such guarantee; existing tables are altered individually after, so an alter that adds a
+   * foreign key to a just-created table sees it live.
    */
   async loadTables(): Promise<void> {
     const tables = this.prepareTablesForLoad(getTables());
@@ -90,13 +91,14 @@ export class TableManager {
     }
 
     if (absentTables.length > 0) {
-      this.logger.info({ message: `Creating tables: ${absentTables.map((table) => table.name).join(', ')}` });
+      const tablesToCreate = this.orderByReferences(absentTables);
+      this.logger.info({ message: `Creating tables: ${tablesToCreate.map((table) => table.name).join(', ')}` });
       try {
-        await this.schemaOperations.createTables(absentTables);
+        await this.schemaOperations.createTables(tablesToCreate);
       } catch (error) {
-        await this.reconcileConcurrentSchemaChange(absentTables, error);
+        await this.reconcileConcurrentSchemaChange(tablesToCreate, error);
       }
-      this.logger.info({ message: `Finished creating ${absentTables.length} tables` });
+      this.logger.info({ message: `Finished creating ${tablesToCreate.length} tables` });
     }
 
     for (const table of existingTables) {
@@ -150,6 +152,69 @@ export class TableManager {
     }
 
     return prepared;
+  }
+
+  /**
+   * The order to create `tables` in: every table after the tables its foreign keys reference
+   * (`ColumnOptions.references`), so each foreign key a CREATE declares resolves against a table
+   * already created — one statement batch or one statement at a time alike. Tables are grouped by
+   * rank (0: references no other table in the set; otherwise one more than the highest rank it
+   * references) and keep their given order within a rank, so a deterministic input gives a
+   * deterministic output. A reference to the table itself, or to a table outside the set (already
+   * created, or not registered), does not constrain the order. A cycle of references cannot be
+   * created in any order: it is refused, naming the cycle and every table it blocks.
+   */
+  private orderByReferences(tables: Table<any>[]): Table<any>[] {
+    const tableNames = new Set(tables.map((table) => table.name));
+    const referencedTables = new Map<string, string[]>();
+    for (const table of tables) {
+      const referenced = new Set<string>();
+      for (const column of Object.values(table.columns)) {
+        const referencedTable = column.options?.references?.table;
+        if (referencedTable && referencedTable !== table.name && tableNames.has(referencedTable)) {
+          referenced.add(referencedTable);
+        }
+      }
+      referencedTables.set(table.name, Array.from(referenced));
+    }
+
+    const ordered: Table<any>[] = [];
+    const created = new Set<string>();
+    let remaining = tables;
+    while (remaining.length > 0) {
+      // One rank: every remaining table whose references were all created by EARLIER ranks.
+      const rank = remaining.filter((table) => referencedTables.get(table.name)!.every((name) => created.has(name)));
+      if (rank.length === 0) {
+        throw new Error(this.referenceCycleMessage(remaining, referencedTables));
+      }
+
+      ordered.push(...rank);
+      rank.forEach((table) => created.add(table.name));
+      remaining = remaining.filter((table) => !created.has(table.name));
+    }
+
+    return ordered;
+  }
+
+  /**
+   * Every table in `blocked` references another table in `blocked`, so walking those references
+   * from any of them must revisit a table: the walk from the first yields one cycle to name.
+   */
+  private referenceCycleMessage(blocked: Table<any>[], referencedTables: Map<string, string[]>): string {
+    const blockedNames = blocked.map((table) => table.name);
+    const walk: string[] = [];
+    let current = blockedNames[0];
+    while (!walk.includes(current)) {
+      walk.push(current);
+      current = referencedTables.get(current)!.find((name) => blockedNames.includes(name))!;
+    }
+
+    const cycle = [...walk.slice(walk.indexOf(current)), current];
+    return (
+      `Cannot create tables whose foreign keys form a cycle: ${cycle.join(' -> ')}. A foreign key can only ` +
+      `reference a table created before it, so no creation order exists — declare one of these references ` +
+      `once the tables exist (an alter adds it). Tables it blocks: ${blockedNames.join(', ')}`
+    );
   }
 
   private requireEncryptedDeclarations(): boolean {
