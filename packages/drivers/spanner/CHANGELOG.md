@@ -3,6 +3,23 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.32.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.31.2...@proteinjs/db-driver-spanner@1.32.0) (2026-09-24)
+
+
+### Bug Fixes
+
+* **db:** a write declares the rows it depends on and the runner waits for them — TransactionRunner.run(ops, { afterRows }) polls, bounded, until every declared row exists and is visible to the caller; a row that never appears fails the request with a plain clause; a write with nothing to declare is the request it always was ([5e448c6](https://github.com/proteinjs/db/commit/5e448c65d1b258d8f4c4d994e3a5f7184583fcfd))
+* **db:** the declared-rows wait's bound sits above a slow birth — 30 s ([07eba73](https://github.com/proteinjs/db/commit/07eba73ded689a51f84c4ade785302fc64be3ea4))
+
+
+### Features
+
+* **db:** the declared-rows wait is bounded by the db driver's per-operation deadline — DbDriver.getOperationDeadlineMs, which every driver reports; the runner's own 30 s bound goes ([05c221d](https://github.com/proteinjs/db/commit/05c221d42fd6c47e457cb731e9cd4d9b5c2510bf))
+
+
+
+
+
 ## [1.31.2](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.31.1...@proteinjs/db-driver-spanner@1.31.2) (2026-09-24)
 
 

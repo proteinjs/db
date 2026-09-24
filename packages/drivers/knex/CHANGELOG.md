@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.15.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.14.1...@proteinjs/db-driver-knex@1.15.0) (2026-09-24)
+
+
+### Features
+
+* **db-driver-knex:** every query and DML statement runs under a per-operation deadline — KnexConfig.operationDeadlineMs, 60 s by default; a statement past it is cancelled on the server and fails naming the deadline ([661ee69](https://github.com/proteinjs/db/commit/661ee692fab0a5250d4124eaa9c25842ee3e892f))
+
+
+
+
+
 ## [1.14.1](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.14.0...@proteinjs/db-driver-knex@1.14.1) (2026-09-24)
 
 **Note:** Version bump only for package @proteinjs/db-driver-knex
