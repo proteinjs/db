@@ -6,9 +6,9 @@ export class MigrationRecordFormCustomization extends RecordFormCustomization {
   public table = tables.Migration;
 
   getFormButtons(migration: Migration, defaultFormButtons: FormButtons<any>): FormButtons<any> {
+    // No Delete to remove: the ledger is durable, and the generic form draws none for a durable table.
     const formButtons = { ...defaultFormButtons };
     delete formButtons['create'];
-    delete formButtons['delete'];
     formButtons['run'] = {
       name: 'Run',
       accessibility: {

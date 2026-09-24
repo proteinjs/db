@@ -574,7 +574,9 @@ export function RecordForm<T extends Record>({ table, record }: RecordFormProps<
       delete: {
         name: 'Delete',
         accessibility: {
-          hidden: isNewRecord,
+          // A durable table's rows are never deleted by a caller (`Table.durable` — its delete
+          // doors refuse everyone), so its form carries no Delete.
+          hidden: isNewRecord || table.durable,
         },
         style: {
           color: 'primary',

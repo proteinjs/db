@@ -375,6 +375,9 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
    * form, and the act stays gated in the form and its service. A door-less declaration keeps the
    * doors' verdict and only renames the act; an act left undeclared keeps the derivation entirely.
    * The seat is the same on both form factors, so a declared act never needs its own placement.
+   *
+   * A DURABLE table (`Table.durable`) keeps its rows: its seat carries no delete act at all — the
+   * delete doors refuse every caller, and a declared delete act's door does not reopen them.
    */
   function buttons() {
     if (props.hideButtons) {
@@ -395,6 +398,10 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
     const declared = (kind: RecordTableAction['kind']) =>
       props.table.ui?.recordTable?.actions?.find((action) => action.kind === kind);
     const allowed = (kind: RecordTableAction['kind'], operation: 'insert' | 'delete') => {
+      if (kind === 'delete' && props.table.durable) {
+        return false;
+      }
+
       const door = declared(kind)?.door;
       return door !== undefined ? tableAuth.identityAllows(door) : canPerform(operation);
     };
