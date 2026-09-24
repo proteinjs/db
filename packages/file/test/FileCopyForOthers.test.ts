@@ -4,7 +4,7 @@ import { UserAuth, UserRepo, User } from '@proteinjs/user';
 import { File } from '../src/tables/FileTable';
 import { tables } from '../src/tables/tables';
 import { FileStorage } from '../src/FileStorage';
-import { FileCopyRefused } from '../src/FileCopyForOthers';
+import { ServiceRefusal } from '@proteinjs/service';
 import { FileStorageDriver } from '../src/FileStorageDriver';
 import { getFile } from '../src/routes/getFile';
 import { FileTestEnvironment } from './FileTestEnvironment';
@@ -510,7 +510,7 @@ describe('the copy for others — a server-side door that made its own access de
     expect((await rowAsSystem(file.id))!.copyForOthers?._id ?? null).toBeNull();
   });
 
-  it("when no copy can be made, the door's caller is refused with the seam's own FileCopyRefused — never served the original", async () => {
+  it("when no copy can be made, the door's caller is refused as UNAVAILABLE — a 404 ServiceRefusal carrying the seam's reason, a refusal and never a failure — and never served the original", async () => {
     const file = await createOwnerFile('raw-attachment.jpg', 'image/jpeg');
     makerFails = true;
 
@@ -519,8 +519,13 @@ describe('the copy for others — a server-side door that made its own access de
       (error: unknown) => error
     );
 
-    expect(FileCopyRefused.is(refusal)).toBe(true);
-    expect((refusal as FileCopyRefused).fileId).toEqual(file.id);
+    // The status the service router answers with and the executor logs at WARN: 404 leaks nothing
+    // about the file's existence to a caller who may not read it.
+    expect(ServiceRefusal.is(refusal)).toBe(true);
+    expect((refusal as ServiceRefusal).status).toBe(404);
+    expect((refusal as ServiceRefusal).message).toEqual(
+      `File ${file.id} is not available to anyone but its owner: no copy can be made of this file`
+    );
     expect((await rowAsSystem(file.id))!.copyForOthers?._id ?? null).toBeNull();
   });
 });
