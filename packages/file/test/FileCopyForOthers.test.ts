@@ -4,6 +4,7 @@ import { UserAuth, UserRepo, User } from '@proteinjs/user';
 import { File } from '../src/tables/FileTable';
 import { tables } from '../src/tables/tables';
 import { FileStorage } from '../src/FileStorage';
+import { FileCopyRefused } from '../src/FileCopyForOthers';
 import { FileStorageDriver } from '../src/FileStorageDriver';
 import { getFile } from '../src/routes/getFile';
 import { FileTestEnvironment } from './FileTestEnvironment';
@@ -467,5 +468,59 @@ describe('the copy for others — the route, both serving shapes', () => {
     const theirs = await invokeRoute(file.id);
 
     expect(theirs.redirectUrl).toEqual(`https://signed.test/blob/${file.id}?sig=test`);
+  });
+});
+
+describe('the copy for others — a server-side door that made its own access decision', () => {
+  const driver = new ProxyDriver();
+  /** What such a door does: reads the row as system (its own rule opened it), then asks which bytes this caller is served. */
+  const throughTheDoor = async (user: User, fileId: string): Promise<Buffer> => {
+    const row = (await rowAsSystem(fileId))!;
+    testEnv.actAs(user);
+    return Buffer.from(await new FileStorage().getAuthorizedFileData(row), 'base64');
+  };
+
+  beforeAll(() => {
+    testEnv.setDriver(driver);
+  });
+
+  it("a caller neither scope nor a resolver opens, whom the door vouches for, is served the maker's copy — the same copy the row names for every other non-owner", async () => {
+    const file = await createOwnerFile('attached.jpg', 'image/jpeg');
+
+    const served = await throughTheDoor(recipient, file.id);
+
+    expect(served.includes(LOCATION_MARKER)).toBe(false);
+    expect(served.equals(copyOf(originalBytes))).toBe(true);
+    const copyId = (await rowAsSystem(file.id))!.copyForOthers?._id;
+    expect(copyId).toBeTruthy();
+    expect(driver.store.get(copyId!)!.equals(served)).toBe(true);
+    // A share recipient later reaching the same file is served that same copy, never a second one.
+    reachableFileIds.add(file.id);
+    expect((await bytesAs(recipient, file.id)).equals(served)).toBe(true);
+    expect(makerCalls.map((call) => call.fileId)).toEqual([file.id]);
+  });
+
+  it('the owner through the same door is served the original, byte for byte, and no copy is made', async () => {
+    const file = await createOwnerFile('own-attachment.jpg', 'image/jpeg');
+
+    const served = await throughTheDoor(owner, file.id);
+
+    expect(served.equals(originalBytes)).toBe(true);
+    expect(makerCalls).toEqual([]);
+    expect((await rowAsSystem(file.id))!.copyForOthers?._id ?? null).toBeNull();
+  });
+
+  it("when no copy can be made, the door's caller is refused with the seam's own FileCopyRefused — never served the original", async () => {
+    const file = await createOwnerFile('raw-attachment.jpg', 'image/jpeg');
+    makerFails = true;
+
+    const refusal = await throughTheDoor(recipient, file.id).then(
+      () => undefined,
+      (error: unknown) => error
+    );
+
+    expect(FileCopyRefused.is(refusal)).toBe(true);
+    expect((refusal as FileCopyRefused).fileId).toEqual(file.id);
+    expect((await rowAsSystem(file.id))!.copyForOthers?._id ?? null).toBeNull();
   });
 });
