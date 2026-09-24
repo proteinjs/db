@@ -57,7 +57,7 @@ describe('MigrationRunner.runPendingMigrations (spanner)', () => {
     return migration;
   };
 
-  /** Mirrors SourceRecordLoader's insert (system path) with an explicit ledger `created`. */
+  /** Mirrors SourceRecordSyncRunner's insert (system path) with an explicit ledger `created`. */
   const insertLedgerRow = async (migration: Migration, createdOffsetMinutes: number) => {
     await getDbAsSystem().insert(migrationTable, {
       ...migration,

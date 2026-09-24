@@ -13,9 +13,7 @@ import {
   withSourceRecordColumns,
 } from '@proteinjs/db';
 import type { DefaultTransactionContextFactory } from '@proteinjs/db';
-// Relative on purpose: the class shares its name with the SourceRecordLoader declaration
-// interface exported from the package index, so it is not index-exported.
-import { SourceRecordLoader } from '../../src/source/SourceRecordLoader';
+import { SourceRecordSyncRunner } from '../../src/source/SourceRecordSyncRunner';
 import { TableWatcherRunner } from '../../src/TableWatcherRunner';
 import { DbTestEnvironment } from '../util/DbTestEnvironment';
 import {
@@ -90,7 +88,7 @@ export const sourceRecordSyncTests = (
         packageName: declaration.source,
         object: { table: declaration.table, record: declaration.record },
       }));
-      const loader = new SourceRecordLoader();
+      const loader = new SourceRecordSyncRunner();
       (loader as unknown as LoaderInternals).resolveSourceVersion = (source) =>
         Object.prototype.hasOwnProperty.call(versions, source) ? versions[source] : undefined;
       return await loader.load();
@@ -860,7 +858,7 @@ export const sourceRecordSyncTests = (
       });
 
       test("the version resolver reads the declaring package's real package.json", async () => {
-        const internals = new SourceRecordLoader() as unknown as LoaderInternals;
+        const internals = new SourceRecordSyncRunner() as unknown as LoaderInternals;
         // A real dependency of this build resolves to its actual version (entry resolution +
         // walk-up works for exports-mapped packages, where `<pkg>/package.json` is not requireable).
         expect(internals.resolveSourceVersion('@proteinjs/db-query')).toMatch(/^\d+\.\d+\.\d+/);

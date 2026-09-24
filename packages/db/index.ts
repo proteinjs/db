@@ -15,10 +15,9 @@ export * from './src/RecordIterator';
 export * from './src/CursorWindowPager';
 export * from './src/source/SourceRecord';
 export * from './src/source/SourceRecordRepo';
-// The sync runner behind Db.init's source-record leg, aliased: its class name is taken in this
-// index by the SourceRecordLoader declaration interface. Public so consumer test harnesses can
-// run one boot of the sync directly (the exports map blocks deep dist imports).
-export { SourceRecordLoader as SourceRecordSyncRunner } from './src/source/SourceRecordLoader';
+// The sync runner behind Db.init's source-record leg. Public so consumer test harnesses can run
+// one boot of the sync directly (the exports map blocks deep dist imports).
+export { SourceRecordSyncRunner } from './src/source/SourceRecordSyncRunner';
 export * from './src/MigrationRunner';
 export * from './src/QueryBuilderFactory';
 export * from './src/TableWatcher';

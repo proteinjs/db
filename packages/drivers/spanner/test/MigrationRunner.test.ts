@@ -131,7 +131,7 @@ describe('MigrationRunner (spanner)', () => {
     ]) {
       sourceRecordRepo.loadSourceRecord(migrationTable.name, migration);
       // Seed through the door the product actually births ledger rows through: the boot-time
-      // source sync rides getDbAsSystem (SourceRecordLoader), and the migration table declares
+      // source sync rides getDbAsSystem (SourceRecordSyncRunner), and the migration table declares
       // NO caller-path insert door — for anyone, break-glass included (the runner only ever
       // UPDATES run state as the caller). The RunPendingMigrations suite seeds the same way.
       await getDbAsSystem().insert(migrationTable, migration);

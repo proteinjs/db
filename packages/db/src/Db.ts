@@ -12,7 +12,7 @@ import {
 import { ReverseCascadeEdgeIndex } from './ReverseCascadeEdgeIndex';
 import { Record, RecordSerializer, SerializedRecord } from './Record';
 import { Logger } from '@proteinjs/logger';
-import { SourceRecordLoader } from './source/SourceRecordLoader';
+import { SourceRecordSyncRunner } from './source/SourceRecordSyncRunner';
 import { ParameterizationConfig, ParamType, QueryBuilder, Statement, StatementFactory } from '@proteinjs/db-query';
 import { QueryBuilderFactory } from './QueryBuilderFactory';
 import { StatementConfigFactory } from './StatementConfigFactory';
@@ -173,7 +173,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     const { MigrationRunner } = await import('./MigrationRunner');
     await new MigrationRunner().runPreSchemaSyncMigrations(this.dbDriver.getTableManager());
     await this.dbDriver.getTableManager().loadTables();
-    await new SourceRecordLoader().load();
+    await new SourceRecordSyncRunner().load();
   }
 
   async tableExists<T extends R>(table: Table<T>): Promise<boolean> {

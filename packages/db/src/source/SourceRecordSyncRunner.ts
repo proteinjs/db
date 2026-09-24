@@ -41,7 +41,7 @@ export type SourceRecordTableLoadSummary = {
 
 export type SourceRecordLoadSummary = { [tableName: string]: SourceRecordTableLoadSummary };
 
-export class SourceRecordLoader {
+export class SourceRecordSyncRunner {
   private logger = new Logger({ name: this.constructor.name });
 
   /** Memo of resolved package versions — one resolution (and at most one warning) per source. */
@@ -516,7 +516,7 @@ export class SourceRecordLoader {
    * For object-valued fields (e.g. a `JsonColumn` blob), source is treated as
    * fully authoritative: any structural drift — extra keys in existing, missing
    * keys in existing, or value differences anywhere in the subtree — produces
-   * a mismatch. Comparison goes through {@link SourceRecordLoader.canonicalStringify}
+   * a mismatch. Comparison goes through {@link SourceRecordSyncRunner.canonicalStringify}
    * so that key ordering (which backing stores may canonicalize alphabetically)
    * does not cause false positives.
    *
