@@ -6,7 +6,7 @@ import { BooleanColumn, StringColumn } from '../Columns';
 /**
  * A source record declaration paired with its owning source: the package that compiled the
  * declaration into this build (from the declaration's reflection qualified name). The source is
- * the ownership grain of the sync — {@link SourceRecordLoader} stamps it on every row it writes
+ * the ownership grain of the sync — {@link SourceRecordSyncRunner} stamps it on every row it writes
  * and prunes only within it, so servers running different builds against one shared database
  * never delete each other's rows.
  */
@@ -60,7 +60,7 @@ export interface SourceRecord extends DbRecord {
   isLoadedFromSource?: boolean;
   /**
    * The package whose declaration owns this row (the declaring loader's package, from its
-   * reflection qualified name). Stamped by {@link SourceRecordLoader} on every row it writes;
+   * reflection qualified name). Stamped by {@link SourceRecordSyncRunner} on every row it writes;
    * the removed-reconcile prunes only rows whose `sourcePackage` matches a package the running
    * build actually declares from — so a build never deletes rows owned by a package it does not
    * carry (e.g. another server's types on a shared database). Rows written before this column

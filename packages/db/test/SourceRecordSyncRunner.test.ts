@@ -1,14 +1,14 @@
-import { SourceRecordLoader } from '../src/source/SourceRecordLoader';
+import { SourceRecordSyncRunner } from '../src/source/SourceRecordSyncRunner';
 
 /**
- * Covers the two helpers that drive SourceRecordLoader's change-detection:
+ * Covers the two helpers that drive SourceRecordSyncRunner's change-detection:
  * - `canonicalStringify`: deterministic, key-order-independent JSON
  * - `findMismatchPath`: per-field drift detection that uses canonical stringify
  *   so object-valued columns (e.g. `JsonColumn`) are compared strictly while
  *   remaining immune to storage-side key reordering (Spanner alphabetizes JSON
  *   object keys on write).
  *
- * Both are private methods on `SourceRecordLoader`. Tests access them through
+ * Both are private methods on `SourceRecordSyncRunner`. Tests access them through
  * the instance with a cast — cheaper than wiring full `hasChanges` fixtures
  * (Table, RecordSerializer, Db) and keeps the public API surface of the class
  * unchanged.
@@ -19,9 +19,9 @@ type LoaderInternals = {
   findMismatchPath: (source: any, existing: any, path: string) => string | null;
 };
 
-const internals = () => new SourceRecordLoader() as unknown as LoaderInternals;
+const internals = () => new SourceRecordSyncRunner() as unknown as LoaderInternals;
 
-describe('SourceRecordLoader.canonicalStringify', () => {
+describe('SourceRecordSyncRunner.canonicalStringify', () => {
   it('produces the same string for objects with different key orders', () => {
     const loader = internals();
     const a = { foo: 1, bar: 2, baz: 3 };
@@ -49,7 +49,7 @@ describe('SourceRecordLoader.canonicalStringify', () => {
   });
 });
 
-describe('SourceRecordLoader.findMismatchPath', () => {
+describe('SourceRecordSyncRunner.findMismatchPath', () => {
   describe('object comparison', () => {
     it('returns null for identical objects', () => {
       const loader = internals();
@@ -158,13 +158,13 @@ describe('SourceRecordLoader.findMismatchPath', () => {
  * rewrites a row (bumping `updated`). The ownership stamps ride the declared record, so the
  * comparison must know which of them mean "the definition changed" and which are bookkeeping.
  */
-describe('SourceRecordLoader.hasChanges — stamp hygiene on the migration ledger', () => {
+describe('SourceRecordSyncRunner.hasChanges — stamp hygiene on the migration ledger', () => {
   type HasChangesInternals = { hasChanges: (table: any, source: any, existing: any) => Promise<boolean> };
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { MigrationTable } = require('../src/tables/MigrationTable');
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const moment = require('moment');
-  const loader = () => new SourceRecordLoader() as unknown as HasChangesInternals;
+  const loader = () => new SourceRecordSyncRunner() as unknown as HasChangesInternals;
   const table = new MigrationTable();
 
   /** What a build declares for a migration (the run function rides along, as it does at boot). */
