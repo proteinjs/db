@@ -52,6 +52,8 @@ export class SpannerDriver implements DbDriver {
    * DeadlineError carrying the last abort (see runRetriedTransaction).
    */
   private static readonly DEFAULT_TRANSACTION_RETRY_TIMEOUT_MS = 3_600_000;
+  /** The per-operation deadline when `SpannerConfig.operationDeadlineMs` is unset (see getOperationDeadlineMs). */
+  private static readonly DEFAULT_OPERATION_DEADLINE_MS = 60_000;
   /**
    * The attempt number of every transaction the runner currently drives, keyed by that attempt's
    * transaction handle — how the failure path (operationFailure) knows a statement ran inside a
@@ -321,7 +323,7 @@ export class SpannerDriver implements DbDriver {
             // The gRPC deadline is what actually cancels the RPC on a dead channel: the stream
             // errors, the library ends the snapshot, and the borrowed session RETURNS to the
             // pool. The withDeadline race alone would fail the caller but leak the session.
-            gaxOptions: { timeout: this.operationDeadlineMs() },
+            gaxOptions: { timeout: this.getOperationDeadlineMs() },
           })
         )
       );
@@ -540,6 +542,17 @@ export class SpannerDriver implements DbDriver {
   }
 
   /**
+   * The per-operation deadline every query, DML statement, commit and rollback runs under —
+   * `SpannerConfig.operationDeadlineMs`, 60 s when unset — and the one place the driver reads it:
+   * the deadline this reports is the deadline the driver enforces (see withDeadline). Not the
+   * transaction retry budget (transactionRetryTimeoutMs), which bounds re-runs of an aborted
+   * transaction as a whole.
+   */
+  getOperationDeadlineMs(): number {
+    return this.config.operationDeadlineMs ?? SpannerDriver.DEFAULT_OPERATION_DEADLINE_MS;
+  }
+
+  /**
    * One read-write transaction under the client library's runner, committed on success and
    * rolled back on failure — the shape both `runTransaction` and the single-statement `runDml`
    * ride. Every await inside the run function is deadline-bounded (statements, commit, rollback):
@@ -604,7 +617,7 @@ export class SpannerDriver implements DbDriver {
     await this.withDeadline(
       'spanner commit',
       '(commit)',
-      transaction.commit({ gaxOptions: { timeout: this.operationDeadlineMs() } })
+      transaction.commit({ gaxOptions: { timeout: this.getOperationDeadlineMs() } })
     );
   }
 
@@ -626,7 +639,7 @@ export class SpannerDriver implements DbDriver {
       await this.withDeadline(
         'spanner rollback',
         '(rollback)',
-        transaction.rollback({ timeout: this.operationDeadlineMs() })
+        transaction.rollback({ timeout: this.getOperationDeadlineMs() })
       );
     } catch (rollbackError: any) {
       this.logger.debug({ message: `Rollback after transaction error failed`, obj: { rollbackError } });
@@ -651,7 +664,7 @@ export class SpannerDriver implements DbDriver {
     // becomes visible (throttled inside the monitor). The monitor exists by now — all ops
     // require getSpannerDb() first.
     SpannerDriver.LIVENESS_MONITOR.logPoolPressure();
-    const deadlineMs = this.operationDeadlineMs();
+    const deadlineMs = this.getOperationDeadlineMs();
     const generation = SpannerDriver.CLIENT_GENERATION;
     let settled = false;
     const logStall = (afterMs: number) =>
@@ -852,7 +865,7 @@ export class SpannerDriver implements DbDriver {
    *   transaction churn. Loopback needs no blip resilience.
    */
   private dmlGaxOptions(): { timeout: number; retry?: null } {
-    const gaxOptions: { timeout: number; retry?: null } = { timeout: this.operationDeadlineMs() };
+    const gaxOptions: { timeout: number; retry?: null } = { timeout: this.getOperationDeadlineMs() };
     if (process.env.SPANNER_EMULATOR_HOST) {
       gaxOptions.retry = null;
     }
@@ -884,10 +897,6 @@ export class SpannerDriver implements DbDriver {
       return { min: 0, incStep: 1 };
     }
     return undefined;
-  }
-
-  private operationDeadlineMs(): number {
-    return this.config.operationDeadlineMs ?? 60_000;
   }
 
   private transactionRetryTimeoutMs(): number {

@@ -23,7 +23,9 @@ export type SpannerConfig = {
    * in-flight op hung, borrowed sessions never returned, pending ops OOM'd the heap). The same
    * value is passed as the gRPC deadline (`gaxOptions.timeout`) so the library cancels the RPC
    * and returns the op's session to the pool. Schema updates (DDL) are exempt — they are
-   * legitimately long-running.
+   * legitimately long-running. The driver reports this value as its per-operation deadline
+   * (`DbDriver.getOperationDeadlineMs`): a write that waits for the rows it depends on
+   * (`TransactionRunner`'s declared rows) waits at most this long.
    */
   operationDeadlineMs?: number;
   /**

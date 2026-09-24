@@ -81,6 +81,24 @@ describe('Spanner op deadlines', () => {
     expect(run.mock.calls[0][0]).toMatchObject({ gaxOptions: { timeout: 150 } });
   }, 5000);
 
+  test('the deadline the driver reports (DbDriver.getOperationDeadlineMs) is the deadline it enforces: the configured one, 60 s when unset — not the transaction retry budget', async () => {
+    const run = jest.fn((_request: any) => hang());
+    const driver = makeDriver({ operationDeadlineMs: 150, deadlineFailuresBeforeRecycle: 99 }, { run });
+
+    expect(driver.getOperationDeadlineMs()).toBe(150);
+    await expect(driver.runQuery(generateStatement)).rejects.toThrow(
+      new RegExp(`${driver.getOperationDeadlineMs()}ms deadline`)
+    );
+    expect(
+      new SpannerDriver({
+        projectId: 'fake',
+        instanceName: 'fake',
+        databaseName: 'fake',
+        transactionRetryTimeoutMs: 5_000,
+      }).getOperationDeadlineMs()
+    ).toBe(60_000);
+  }, 5000);
+
   test('a dml transaction hung on a dead channel (dml AND rollback hang) still RETURNS its session', async () => {
     // Fake Database.runTransactionAsync with the library's real session contract: the session
     // is released only when the run function settles. Every await inside the driver's run

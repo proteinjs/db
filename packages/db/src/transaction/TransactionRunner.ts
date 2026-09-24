@@ -1,5 +1,5 @@
 import { Logger } from '@proteinjs/logger';
-import { getDb } from '../Db';
+import { Db, getDb } from '../Db';
 import { Table, tableByName } from '../Table';
 import { getDefaultTransactionContextFactory } from './TransactionContextFactory';
 import {
@@ -22,9 +22,10 @@ export const getTransactionRunner = () =>
  * root) is still landing. Without the declaration such a write ran to completion inside the
  * insert's window and matched nothing, silently, or was refused at the door for a grant that was
  * a moment from existing — and the page that could have retried was gone. The server outlives
- * the page: it waits, bounded, for every declared row to exist AND be visible to the caller (a
- * read as the caller sees a row exactly when the caller's grant on its scope has committed),
- * then runs the operations. A row that never appears fails the request with a plain clause.
+ * the page: it waits, bounded by the db driver's per-operation deadline, for every declared row to
+ * exist AND be visible to the caller (a read as the caller sees a row exactly when the caller's
+ * grant on its scope has committed), then runs the operations. A row that never appears fails the
+ * request with a plain clause.
  */
 export class TransactionRunner implements TransactionRunnerService {
   public serviceMetadata = {
@@ -33,22 +34,10 @@ export class TransactionRunner implements TransactionRunnerService {
     },
   };
 
-  /**
-   * The longest a write waits for a declared row, in milliseconds. A dependency's insert lands in
-   * hundreds of milliseconds on Spanner; on the emulator, whose concurrent read-write transactions
-   * abort and retry with a backoff of seconds, in seconds; on a degraded link (a tethered phone:
-   * RPC p50 0.4 s, p90 2.4 s, measured) a root's birth of a few dozen sequential statements takes
-   * 13 s — and the writes released behind it by a page that is gone have no second chance. The
-   * bound is the ceiling for a row that NEVER comes — the named failure, never a hang — so it sits
-   * well above a slow birth; a write that waits here holds one request and a poll, nothing else.
-   */
-  static readonly ROW_WAIT_BOUND_MS = 30_000;
   private static readonly FIRST_POLL_INTERVAL_MS = 25;
   private static readonly MAX_POLL_INTERVAL_MS = 250;
 
   private logger = new Logger({ name: this.constructor.name });
-
-  constructor(private rowWaitBoundMs: number = TransactionRunner.ROW_WAIT_BOUND_MS) {}
 
   async run(ops: Operation<any>[], options?: TransactionRunOptions): Promise<void> {
     const db = getDb();
@@ -65,10 +54,19 @@ export class TransactionRunner implements TransactionRunnerService {
   }
 
   /**
-   * Wait, bounded by {@link rowWaitBoundMs}, until every declared row exists and is visible to
-   * the caller. Each poll is a single-use strong read outside any transaction, so a commit is
-   * seen the moment it lands; the interval starts short and backs off so a dependency landing in
-   * hundreds of milliseconds is caught within tens.
+   * Wait until every declared row exists and is visible to the caller, bounded by the db driver's
+   * per-operation deadline (`DbDriver.getOperationDeadlineMs`), read when the write waits. The
+   * bound is the ceiling for a row that NEVER comes — the named failure, never a hang. A
+   * dependency's insert lands in hundreds of milliseconds on a healthy link and in seconds on a
+   * degraded one (a root's birth of a few dozen sequential statements has taken 13 s), and the
+   * writes released behind it by a page that is gone have no second chance. The driver's deadline
+   * is how long the deployment lets one statement of that insert run before failing it: the wait
+   * takes its measure from there — one owner for the number, configured with the database — not
+   * from a number of its own. A write that waits here holds one request and a poll, nothing else.
+   *
+   * Each poll is a single-use strong read outside any transaction, so a commit is seen the moment
+   * it lands; the interval starts short and backs off so a dependency landing in hundreds of
+   * milliseconds is caught within tens.
    */
   private async awaitRows(ops: Operation<any>[], afterRows: string[]): Promise<void> {
     if (getDefaultTransactionContextFactory()?.getTransactionContext().currentTransaction) {
@@ -86,8 +84,9 @@ export class TransactionRunner implements TransactionRunnerService {
     }
 
     const db = getDb();
+    const boundMs = Db.getDefaultDbDriver().getOperationDeadlineMs();
     const started = Date.now();
-    const deadline = started + this.rowWaitBoundMs;
+    const deadline = started + boundMs;
     /** Per declared id, the (table, id) rows still absent. */
     let waiting: { id: string; tables: Table<any>[] }[] = afterRows
       .filter((id, index) => afterRows.indexOf(id) === index)
@@ -124,10 +123,10 @@ export class TransactionRunner implements TransactionRunnerService {
         const absent = waiting.map((row) => row.tables.map((table) => `${table.name}:${row.id}`).join(', ')).join(', ');
         this.logger.warn({
           message: `Declared rows absent at the bound — the write was not run`,
-          obj: { absent, waitedMs: now - started, polls },
+          obj: { absent, boundMs, waitedMs: now - started, polls },
         });
         throw new Error(
-          `TransactionRunner: waited ${this.rowWaitBoundMs} ms for rows this write depends on to exist and be visible to the caller; still absent: ${absent} — the write was not run`
+          `TransactionRunner: waited ${boundMs} ms for rows this write depends on to exist and be visible to the caller; still absent: ${absent} — the write was not run (the bound is the db driver's per-operation deadline)`
         );
       }
       await new Promise((resolve) => setTimeout(resolve, Math.min(interval, deadline - now)));

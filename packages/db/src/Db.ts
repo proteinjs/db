@@ -95,6 +95,15 @@ export interface DbDriver {
   ): Promise<SerializedRecord[]>;
   runDml(generateStatement: (config: DbDriverDmlStatementConfig) => Statement, transaction?: any): Promise<number>;
   runTransaction<T>(fn: (transaction: any) => Promise<T>): Promise<T>;
+  /**
+   * The driver's per-operation deadline, in milliseconds: the longest one statement it runs may
+   * take before the driver fails it — the bound the driver enforces, as configured. Not a whole
+   * transaction's budget (a transaction the database aborts and the driver re-runs may take
+   * longer in all). Code that waits on another request's write — a row it depends on whose insert
+   * may still be in flight — sizes its wait by this, so the wait follows what the deployment
+   * configured its database to tolerate rather than a number of its own.
+   */
+  getOperationDeadlineMs(): number;
 }
 
 export class Db<R extends Record = Record> implements DbService<R> {

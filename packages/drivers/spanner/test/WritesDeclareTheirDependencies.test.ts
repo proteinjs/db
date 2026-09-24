@@ -77,6 +77,22 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** An update of `id`'s text, as the client `Transaction` queues it. */
 const updateOps = (id: string, text: string) => [{ name: 'update', args: [table, { id, text }] }];
 
+/**
+ * Run `work` with `driver` as the process's default db driver — the one the server's runner and
+ * `getDb()` resolve — restoring the previous one after. How a case gives the server a driver
+ * configured differently from the suite's.
+ */
+const onDefaultDriver = async <T>(driver: SpannerDriver, work: () => Promise<T>): Promise<T> => {
+  const registry = globalThis as unknown as { __proteinjs_db_defaultDbDriver?: unknown };
+  const previous = registry.__proteinjs_db_defaultDbDriver;
+  registry.__proteinjs_db_defaultDbDriver = driver;
+  try {
+    return await work();
+  } finally {
+    registry.__proteinjs_db_defaultDbDriver = previous;
+  }
+};
+
 describe('a write declares the rows it depends on; the server waits for them', () => {
   const dropTable = getDropTestTable(spannerDriver);
   const db = new Db(spannerDriver, getTable, new TransactionContext());
@@ -154,12 +170,15 @@ describe('a write declares the rows it depends on; the server waits for them', (
     expect(elapsed).toBeGreaterThanOrEqual(350);
   }, 30000);
 
-  test('(c) a row that never exists: a plain failure after the bound — never a hang, never a silent OK; the operations did not run', async () => {
+  test('(c) a row that never exists: a plain failure at the db driver`s per-operation deadline — never a hang, never a silent OK; the operations did not run', async () => {
     const absent = 'declared-row-never';
     const child = 'declared-row-child-of-never';
-    // The bound is the constructor's (the service instance keeps the default); typed loosely for
-    // the pre-change build, whose constructor took nothing.
-    const runner = new (TransactionRunner as unknown as new (boundMs: number) => unknown)(600) as Runner;
+    // The bound is the deadline the server's db driver is configured with, read when the write
+    // waits — here a driver configured with a short one. A bound of the runner's own would ignore
+    // it: the write would wait that bound out instead, and the clause would name it.
+    const deadlineMs = 2_000;
+    const shortDeadlineDriver = new SpannerDriver({ ...spannerConfig, operationDeadlineMs: deadlineMs }, getTable);
+    const runner = new TransactionRunner() as unknown as Runner;
     // One transaction: a new row, and a text update of the row that never lands. Pre-change the
     // insert lands and the update matches nothing — OK; with the wait, nothing runs.
     const ops = [
@@ -168,24 +187,25 @@ describe('a write declares the rows it depends on; the server waits for them', (
     ];
 
     const before = Date.now();
-    await expect(runner.run(ops, { afterRows: [absent] })).rejects.toThrow(
+    await expect(onDefaultDriver(shortDeadlineDriver, () => runner.run(ops, { afterRows: [absent] }))).rejects.toThrow(
       new RegExp(
-        `waited 600 ms for rows this write depends on to exist and be visible to the caller; still absent: ${table.name}:${absent} — the write was not run`
+        `waited ${deadlineMs} ms for rows this write depends on to exist and be visible to the caller; still absent: ${table.name}:${absent} — the write was not run \\(the bound is the db driver's per-operation deadline\\)`
       )
     );
     const elapsed = Date.now() - before;
 
-    expect(elapsed).toBeGreaterThanOrEqual(550);
-    expect(elapsed).toBeLessThan(5000);
+    expect(elapsed).toBeGreaterThanOrEqual(deadlineMs - 50);
+    expect(elapsed).toBeLessThan(deadlineMs + 5_000);
     // The write was not run: no orphan row.
     expect(await getDbAsSystem().get(table, { id: child })).toBeUndefined();
-  }, 30000);
+  }, 45_000);
 
   test('(f) a dependency that lands 12 s after the write arrives — a root birth on a degraded link — is still waited for: the bound sits above it', async () => {
     // Measured on a tethered link (spanner RPC p50 0.4 s, p90 2.4 s): a root's birth took 13 s and
     // every write released behind it met a 10 s bound — refused with the plain clause, and the
     // page that typed them was gone. The bound is the ceiling for a row that NEVER comes; a row
-    // that is merely slow must land inside it.
+    // that is merely slow must land inside it. The server here runs on the suite's default driver,
+    // whose per-operation deadline — the bound — is the driver's default, 60 s.
     const id = 'declared-row-slow-birth';
     const insert = insertLater({ id, text: 'born late', visible: true }, 12_000);
     const runner = new TransactionRunner() as unknown as Runner;
