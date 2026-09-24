@@ -1,0 +1,14 @@
+{
+  "branch": "fix/one-name-for-source-record-loader",
+  "packages": ["db", "drivers/spanner", "drivers/knex"],
+  "suites": [
+    "packages/db/test/SourceRecordLoaderQualifiedName.test.ts",
+    "packages/db/test/SourceRecordSyncRunner.test.ts",
+    "packages/drivers/spanner/test/SourceRecordSync.test.ts",
+    "packages/drivers/spanner/test/MigrationRunner.test.ts",
+    "packages/drivers/spanner/test/RunPendingMigrations.test.ts",
+    "packages/drivers/knex/test/TableManager.test.ts",
+    "packages/drivers/knex/test/Crud.test.ts"
+  ],
+  "removes": []
+}
