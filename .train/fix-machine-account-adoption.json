@@ -1,9 +1,0 @@
-{
-  "branch": "fix/machine-account-adoption",
-  "packages": ["db", "drivers/spanner"],
-  "suites": [
-    "packages/drivers/spanner/test/SourceRecordSync.test.ts",
-    "packages/db/test/SourceRecordLoader.test.ts"
-  ],
-  "removes": []
-}
