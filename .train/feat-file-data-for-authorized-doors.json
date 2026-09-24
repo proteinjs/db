@@ -1,0 +1,11 @@
+{
+  "branch": "feat/file-data-for-authorized-doors",
+  "packages": ["file"],
+  "suites": [
+    "packages/file/test/FileCopyForOthers.test.ts",
+    "packages/file/test/GetFileRoute.test.ts",
+    "packages/file/test/FileByteAccess.test.ts",
+    "packages/file/test/FileSharedReachability.test.ts"
+  ],
+  "removes": []
+}
