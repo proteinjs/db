@@ -8,6 +8,7 @@ import { getFileReachabilityResolvers } from './FileReachabilityResolver';
 import { FileCopyRefused, getFileCopyForOthers } from './FileCopyForOthers';
 import { Loadable, SourceRepository } from '@proteinjs/reflection';
 import { Logger } from '@proteinjs/logger';
+import { ServiceRefusal } from '@proteinjs/service';
 import { DbFileStorageDriver } from './DbFileStorageDriver';
 
 /**
@@ -145,11 +146,22 @@ export class FileStorage implements FileStorageService {
    * door's.
    * @param file - The file's row, as the door read it (its `scope` names the owner).
    * @returns The file data as a single string.
-   * @throws FileCopyRefused when the caller is not the owner and no copy can be made — the file is
-   *         served to no one but its owner.
+   * @throws ServiceRefusal (404) when the caller is not the owner and no copy can be made — the file
+   *         is served to no one but its owner, so to this caller it is unavailable: a refusal (the
+   *         service router answers 404, the executor logs WARN), never a failure, leaking nothing
+   *         about the file's existence. The message is {@link FileCopyRefused}'s, the seam's reason.
    */
   async getAuthorizedFileData(file: File): Promise<string> {
-    return await FileStorage.getDriver().getFileData(await this.servedFileId(file));
+    let servedFileId: string;
+    try {
+      servedFileId = await this.servedFileId(file);
+    } catch (error) {
+      if (FileCopyRefused.is(error)) {
+        throw new ServiceRefusal(404, error.message);
+      }
+      throw error;
+    }
+    return await FileStorage.getDriver().getFileData(servedFileId);
   }
 
   /**
