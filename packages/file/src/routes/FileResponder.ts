@@ -1,7 +1,7 @@
 import { File } from '../tables/FileTable';
 import { FileStorage } from '../FileStorage';
 import { FileStorageError } from '../FileStorageError';
-import { FileCopyRefused } from '../FileCopyForOthers';
+import { ServiceRefusal } from '@proteinjs/service';
 import { resolveByteRange } from './byteRange';
 
 /** The express members the file routes touch — typed narrowly so the routes and their tests agree. */
@@ -65,17 +65,18 @@ export class FileResponder {
     }
   }
 
-  /** The failure shapes a file read has: bytes missing behind a row (404), a copy refused (403), anything else (500, logged). */
+  /** The failure shapes a file read has: bytes missing behind a row (404), a refusal (its status, 404), anything else (500, logged). */
   static fail(fileId: string, error: unknown, response: FileResponse): void {
     if (FileStorageError.isNotFound(error)) {
       // The row is there and its bytes are not: the same answer as a row that is not there.
       response.status(404).send('File not found');
       return;
     }
-    if (FileCopyRefused.is(error)) {
-      // A deliberate refusal, not a failure: no copy of this file can be made for anyone but its
-      // owner (the maker said why on its own line). Quiet, and never a 500.
-      response.status(403).send('File not available');
+    if (ServiceRefusal.is(error)) {
+      // A deliberate refusal, not a failure — a file no copy can be made of is not there for anyone
+      // but its owner (`FileStorage` answers every door the same 404; the maker said why on its own
+      // line). The same words as a row the caller cannot read; quiet, and never a 500.
+      response.status(error.status).send('File not found');
       return;
     }
     console.error(`Error fetching file (${fileId}):`, error);

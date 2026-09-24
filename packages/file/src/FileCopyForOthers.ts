@@ -33,11 +33,12 @@ export const getFileCopyForOthers = (): FileCopyForOthers | undefined =>
 
 /**
  * What a non-owner's read becomes when the registered maker could not make a copy: the file is
- * served to no one but its owner. Thrown by `FileStorage` in place of whatever the maker threw
- * (the maker's own one-line reason kept as `reason`), so every door — the route, the browser
- * service, a server-side reader — can tell a deliberate refusal from a failure; the server-side
- * door (`FileStorage.getAuthorizedFileData`) answers it as a 404 `ServiceRefusal` with this message.
- * Read by shape ({@link FileCopyRefused.is}), so it holds across duplicate copies of this package.
+ * served to no one but its owner. The seam's own cause, thrown by `FileStorage` in place of
+ * whatever the maker threw (the maker's own one-line reason kept as `reason`) and answered by
+ * `FileStorage` itself, once for every door — the browser service, `GET /file/:id`, a server-side
+ * reader — as a 404 `ServiceRefusal` with this message, so a door never meets it: a deliberate
+ * refusal every door tells from a failure the same way. Read by shape ({@link FileCopyRefused.is}),
+ * so it holds across duplicate copies of this package.
  */
 export class FileCopyRefused extends Error {
   private static readonly NAME = 'FileCopyRefused';
