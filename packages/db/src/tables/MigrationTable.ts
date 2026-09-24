@@ -71,13 +71,21 @@ export class MigrationTable extends Table<Migration> {
    * the service api, and the runner writes run state via the db api as the calling user.
    * INSERT deliberately has no door — for anyone, break-glass included: ledger rows are born
    * from source declarations only (boot-time loading rides getDbAsSystem, which bypasses
-   * doors), so a caller-path insert could only mint a row no source owns. The generic record
-   * surfaces derive their affordances from these doors (db-ui renders no create button here).
+   * doors), so a caller-path insert could only mint a row no source owns. DELETE has no door
+   * either: the ledger is {@link MigrationTable.durable}. The generic record surfaces derive
+   * their affordances from these doors (db-ui renders no create button and no delete act here).
    */
   public auth: Table<Migration>['auth'] = {
-    db: { query: { permission: 'dev' }, update: { permission: 'dev' }, delete: { permission: 'dev' } },
-    service: { query: { permission: 'dev' }, update: { permission: 'dev' }, delete: { permission: 'dev' } },
+    db: { query: { permission: 'dev' }, update: { permission: 'dev' } },
+    service: { query: { permission: 'dev' }, update: { permission: 'dev' } },
   };
+  /**
+   * The ledger keeps every row: run history is the record of what ran against this database, so
+   * no caller deletes it (founder ruling 2026-09-24 — "they're supposed to be durable records"; a
+   * row that must go goes by hand in the database's own console). The source-record sync keeps
+   * removed migrations' rows too ({@link MigrationTable.sourceRecordOptions} `onSourceRemoved`).
+   */
+  public durable = true;
   /**
    * The row scan: WHICH migration (name — the loader's class name), what it does, how the run
    * went, WHEN it ran ("Ran at" = start_time, the one timestamp that answers "when did it

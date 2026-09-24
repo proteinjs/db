@@ -1,4 +1,5 @@
 import { UserAuth } from '@proteinjs/user-auth';
+import { ServiceRefusal } from '@proteinjs/service';
 import { Table } from '../Table';
 
 /**
@@ -100,7 +101,15 @@ export class TableAuth {
     }
   }
 
+  /**
+   * A durable table's delete door is refused before any identity is read (`Table.durable`): a 403
+   * refusal naming the table, for every caller on both apis — no declared door reopens it.
+   */
   canDelete(table: Table<any>, api: 'db' | 'service' = 'db'): void {
+    if (table.durable) {
+      throw new ServiceRefusal(403, `Table ${table.name} is durable: its rows are never deleted`);
+    }
+
     if (!this.canAccess(table, api, 'delete')) {
       throw new TableAuthError(`User is not authorized to delete records from table: ${table.name}`);
     }
@@ -111,6 +120,11 @@ export class TableAuth {
     api: 'db' | 'service',
     operation: 'query' | 'insert' | 'update' | 'delete'
   ): boolean {
+    // A durable table has no delete door for anyone (see `canDelete`); the capability read agrees.
+    if (operation === 'delete' && table.durable) {
+      return false;
+    }
+
     const tableAuth = table.auth ? table.auth[api] : undefined;
     if (!tableAuth || Object.keys(tableAuth).length == 0) {
       return UserAuth.hasRole('admin');
