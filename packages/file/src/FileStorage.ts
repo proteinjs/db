@@ -124,7 +124,8 @@ export class FileStorage implements FileStorageService {
    * @param fileId - The `id` of the file.
    * @returns The file data as a single string.
    * @throws When the file row does not exist or is not readable by the caller — the same named
-   *         miss either way, so existence is not leaked to unauthorized callers.
+   *         miss either way, so existence is not leaked to unauthorized callers; a ServiceRefusal
+   *         (404) when the caller is not the owner and no copy can be made ({@link servedFileId}).
    */
   async getFileData(fileId: string): Promise<string> {
     const file = await this.getFile(fileId);
@@ -146,22 +147,11 @@ export class FileStorage implements FileStorageService {
    * door's.
    * @param file - The file's row, as the door read it (its `scope` names the owner).
    * @returns The file data as a single string.
-   * @throws ServiceRefusal (404) when the caller is not the owner and no copy can be made — the file
-   *         is served to no one but its owner, so to this caller it is unavailable: a refusal (the
-   *         service router answers 404, the executor logs WARN), never a failure, leaking nothing
-   *         about the file's existence. The message is {@link FileCopyRefused}'s, the seam's reason.
+   * @throws ServiceRefusal (404) when the caller is not the owner and no copy can be made — the same
+   *         refusal every door gives ({@link servedFileId}).
    */
   async getAuthorizedFileData(file: File): Promise<string> {
-    let servedFileId: string;
-    try {
-      servedFileId = await this.servedFileId(file);
-    } catch (error) {
-      if (FileCopyRefused.is(error)) {
-        throw new ServiceRefusal(404, error.message);
-      }
-      throw error;
-    }
-    return await FileStorage.getDriver().getFileData(servedFileId);
+    return await FileStorage.getDriver().getFileData(await this.servedFileId(file));
   }
 
   /**
@@ -174,7 +164,8 @@ export class FileStorage implements FileStorageService {
    * @param options.ttlMs - How long the URL stays valid; the driver applies its default when omitted.
    * @returns The signed URL, or `undefined` when the driver has no external URL space
    *          (`DbFileStorageDriver`) — the caller then serves bytes through the proxy route.
-   * @throws When the file row does not exist or is not readable by the caller.
+   * @throws When the file row does not exist or is not readable by the caller; a ServiceRefusal
+   *         (404) when the caller is not the owner and no copy can be made ({@link servedFileId}).
    */
   async getSignedUrl(fileId: string, options?: { ttlMs?: number }): Promise<string | undefined> {
     const file = await this.getFile(fileId);
@@ -247,6 +238,13 @@ export class FileStorage implements FileStorageService {
    * The id whose bytes this caller is served: the file's own for its owner, or for a file with
    * no maker (or one the maker does not apply to); otherwise the {@link FileCopyForOthers} copy —
    * the one already named on the row, or made now, once, and named for every later read.
+   *
+   * ONE REFUSAL, EVERY DOOR: when no copy can be made (the seam's {@link FileCopyRefused}), the file
+   * is served to no one but its owner, so to this caller it is not there — a `ServiceRefusal(404)`
+   * carrying the seam's reason, thrown here so the browser service, `GET /file/:id` in both its
+   * shapes and the server-side door answer the same by construction: the service router answers
+   * 404, the executor logs one WARN (a refusal, never a failure), the route answers
+   * `404 File not found` — the same as a row it cannot read — and nothing leaks about existence.
    */
   private async servedFileId(file: File): Promise<string> {
     if (this.ownedByCaller(file)) {
@@ -259,7 +257,14 @@ export class FileStorage implements FileStorageService {
     if (!maker || !maker.appliesTo(file)) {
       return file.id;
     }
-    return await this.makeCopyForOthers(file);
+    try {
+      return await this.makeCopyForOthers(file);
+    } catch (error) {
+      if (FileCopyRefused.is(error)) {
+        throw new ServiceRefusal(404, error.message);
+      }
+      throw error;
+    }
   }
 
   /**

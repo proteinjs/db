@@ -1,10 +1,15 @@
 import { getDbAsSystem, QueryBuilderFactory } from '@proteinjs/db';
-import { SourceRepository } from '@proteinjs/reflection';
+import { DefaultLogWriter, Log, Logger } from '@proteinjs/logger';
+import { Interface, Method, SourceRepository, TypeAliasDeclaration } from '@proteinjs/reflection';
+import { Serializer } from '@proteinjs/serializer';
 import { UserAuth, UserRepo, User } from '@proteinjs/user';
 import { File } from '../src/tables/FileTable';
 import { tables } from '../src/tables/tables';
 import { FileStorage } from '../src/FileStorage';
 import { ServiceRefusal } from '@proteinjs/service';
+// The executor every browser-facing service call runs through (ServiceRouter → ServiceExecutor), not
+// part of the package's entry: what it logs and answers for this door is the outcome under test.
+import { ServiceExecutor } from '@proteinjs/service/dist/src/ServiceExecutor';
 import { FileStorageDriver } from '../src/FileStorageDriver';
 import { getFile } from '../src/routes/getFile';
 import { FileTestEnvironment } from './FileTestEnvironment';
@@ -96,6 +101,34 @@ const invokeRoute = async (fileId: string): Promise<ResponseRecorder> => {
   );
   return response;
 };
+
+/**
+ * One call of the browser's door — `FileStorageService.getFileData` — through the service executor,
+ * as the service router runs it: what it throws (the router answers a refusal with its status and
+ * anything else with 400) and every log entry it wrote.
+ */
+const invokeServiceDoor = async (fileId: string): Promise<{ thrown: unknown; entries: Log[] }> => {
+  const returnType = { name: 'Promise<string>' } as unknown as TypeAliasDeclaration;
+  const method = new Method('getFileData', returnType, true, false, false, false, 'public', []);
+  const executor = new ServiceExecutor(
+    new FileStorage(),
+    new Interface('@proteinjs/db-file', 'FileStorageService', [], [method]),
+    method
+  );
+  const entries: Log[] = [];
+  (executor as unknown as { logger: Logger }).logger = new Logger({
+    name: 'FileStorageService.getFileData',
+    logWriter: { write: (log: Log) => entries.push(log) } as unknown as DefaultLogWriter,
+  });
+  const thrown = await executor.execute(Serializer.serialize([fileId])).then(
+    () => undefined,
+    (error: unknown) => error
+  );
+  return { thrown, entries };
+};
+
+/** The status the service router answers a thrown error with: a refusal's own, else 400. */
+const routerStatus = (thrown: unknown): number => (ServiceRefusal.is(thrown) ? thrown.status : 400);
 
 const testEnv = new FileTestEnvironment();
 type UserAuthInternals = { userRepo?: unknown };
@@ -343,7 +376,16 @@ describe('the copy for others — the service door (proxy serving)', () => {
     makerFails = true;
 
     testEnv.actAs(recipient);
-    await expect(new FileStorage().getFileData(file.id)).rejects.toThrow('no copy can be made');
+    const refusal = await new FileStorage().getFileData(file.id).then(
+      () => undefined,
+      (error: unknown) => error
+    );
+    // Unavailable to this caller — a 404 refusal carrying the seam's reason, the same at every door.
+    expect(ServiceRefusal.is(refusal)).toBe(true);
+    expect((refusal as ServiceRefusal).status).toBe(404);
+    expect((refusal as ServiceRefusal).message).toEqual(
+      `File ${file.id} is not available to anyone but its owner: no copy can be made of this file`
+    );
     expect((await rowAsSystem(file.id))!.copyForOthers?._id ?? null).toBeNull();
     expect(Array.from(driver.store.keys())).toContain(file.id);
     expect(
@@ -435,28 +477,38 @@ describe('the copy for others — the route, both serving shapes', () => {
     expect(mine.redirectUrl).toEqual(`https://signed.test/blob/${file.id}?sig=test`);
   });
 
-  it("a file no copy can be made of: a recipient's GET /file/:id is a quiet 403 — not a 500, no error printed; the owner's still serves", async () => {
-    const driver = new SignedUrlDriver();
-    testEnv.setDriver(driver);
-    const file = await createOwnerFile('unrewritable-route.jpg', 'image/jpeg');
-    reachableFileIds.add(file.id);
-    makerFails = true;
-    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
-    try {
-      testEnv.actAs(recipient);
-      const theirs = await invokeRoute(file.id);
-      testEnv.actAs(owner);
-      const mine = await invokeRoute(file.id);
+  it.each([
+    ['signed-URL', () => new SignedUrlDriver()],
+    ['proxy', () => new ProxyDriver()],
+  ])(
+    "a file no copy can be made of (%s shape): a recipient's GET /file/:id is a quiet 404 File not found — not a 500, no error printed; the owner's still serves",
+    async (_shape, makeDriver) => {
+      const driver = makeDriver();
+      testEnv.setDriver(driver);
+      const file = await createOwnerFile('unrewritable-route.jpg', 'image/jpeg');
+      reachableFileIds.add(file.id);
+      makerFails = true;
+      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      try {
+        testEnv.actAs(recipient);
+        const theirs = await invokeRoute(file.id);
+        testEnv.actAs(owner);
+        const mine = await invokeRoute(file.id);
 
-      expect(theirs.statusCode).toEqual(403);
-      expect(theirs.redirectUrl).toBeUndefined();
-      expect(consoleError).not.toHaveBeenCalled();
-      expect(mine.statusCode).toEqual(302);
-      expect(mine.redirectUrl).toEqual(`https://signed.test/blob/${file.id}?sig=test`);
-    } finally {
-      consoleError.mockRestore();
+        expect([theirs.statusCode, theirs.body]).toEqual([404, 'File not found']);
+        expect(theirs.redirectUrl).toBeUndefined();
+        expect(consoleError).not.toHaveBeenCalled();
+        if (driver instanceof SignedUrlDriver) {
+          expect(mine.statusCode).toEqual(302);
+          expect(mine.redirectUrl).toEqual(`https://signed.test/blob/${file.id}?sig=test`);
+        } else {
+          expect((mine.body as Buffer).equals(originalBytes)).toBe(true);
+        }
+      } finally {
+        consoleError.mockRestore();
+      }
     }
-  });
+  );
 
   it("a signed URL for a file the maker does not apply to still names the original's object", async () => {
     const driver = new SignedUrlDriver();
@@ -527,5 +579,46 @@ describe('the copy for others — a server-side door that made its own access de
       `File ${file.id} is not available to anyone but its owner: no copy can be made of this file`
     );
     expect((await rowAsSystem(file.id))!.copyForOthers?._id ?? null).toBeNull();
+  });
+});
+
+describe('ONE REFUSAL AT EVERY DOOR — a file no copy can be made of is not found for anyone but its owner (404), whichever door asks', () => {
+  it('the browser service (through the executor), GET /file/:id in both shapes and the server-side door answer one status, 404 — the browser door logs one WARN with its status and no ERROR', async () => {
+    const proxy = new ProxyDriver();
+    const signed = new SignedUrlDriver();
+    testEnv.setDriver(proxy);
+    const file = await createOwnerFile('one-answer.jpg', 'image/jpeg');
+    signed.store.set(file.id, proxy.store.get(file.id)!);
+    reachableFileIds.add(file.id);
+    makerFails = true;
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      testEnv.actAs(recipient);
+      const service = await invokeServiceDoor(file.id);
+      const proxyRoute = await invokeRoute(file.id);
+      const serverSide = await new FileStorage().getAuthorizedFileData((await rowAsSystem(file.id))!).then(
+        () => undefined,
+        (error: unknown) => error
+      );
+      testEnv.setDriver(signed);
+      const signedRoute = await invokeRoute(file.id);
+
+      expect([
+        routerStatus(service.thrown),
+        signedRoute.statusCode,
+        proxyRoute.statusCode,
+        routerStatus(serverSide),
+      ]).toEqual([404, 404, 404, 404]);
+      // The browser door's log: one WARN naming the status and the operation — a refusal, never a failure.
+      expect(service.entries.filter((entry) => entry.logLevel === 'error')).toEqual([]);
+      const warnings = service.entries.filter((entry) => entry.logLevel === 'warn');
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0].obj).toMatchObject({ status: 404, functionName: 'FileStorageService.getFileData' });
+      expect(consoleError).not.toHaveBeenCalled();
+      // And never the original, at any door.
+      expect([signedRoute.redirectUrl, proxyRoute.body]).toEqual([undefined, 'File not found']);
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 });
