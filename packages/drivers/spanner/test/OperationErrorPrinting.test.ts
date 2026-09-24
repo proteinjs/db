@@ -141,6 +141,66 @@ describe('A failed statement`s error never prints a record`s values (emulator)',
     expect(line!.toLowerCase()).not.toContain(localPart);
   });
 
+  test('the dev-only values switch never reaches the printed error: set without DEVELOPMENT, and set with it, no printer shows a value', () => {
+    // SpannerLogValues adds a FIELD to a statement's log line (paramValues) and changes nothing else:
+    // the printed error withholds its cause whatever the switch says, so a process with the switch
+    // set and DEVELOPMENT unset reveals nothing, and one with both set reveals values only on the
+    // driver's own line, never through the error.
+    const saved = { DEVELOPMENT: process.env.DEVELOPMENT, DB_LOG_PARAM_VALUES: process.env.DB_LOG_PARAM_VALUES };
+    const restore = () => {
+      for (const [name, value] of Object.entries(saved)) {
+        if (value === undefined) {
+          delete process.env[name];
+        } else {
+          process.env[name] = value;
+        }
+      }
+    };
+    try {
+      for (const env of [{ DB_LOG_PARAM_VALUES: '1' }, { DEVELOPMENT: 'true', DB_LOG_PARAM_VALUES: '1' }]) {
+        delete process.env.DEVELOPMENT;
+        delete process.env.DB_LOG_PARAM_VALUES;
+        Object.assign(process.env, env);
+        for (const printed of [
+          inspect(failure, { depth: 10, showHidden: true }),
+          inspect({ error: failure }, { depth: 10 }),
+          consoleErrorOf(failure),
+          JSON.stringify({ error: failure }),
+        ]) {
+          expect(printed.toLowerCase()).not.toContain(localPart);
+        }
+        expect(inspect(failure, { depth: 10 })).toMatch(/cause: '<withheld/);
+      }
+    } finally {
+      restore();
+    }
+  });
+
+  test('a vendor error in the gRPC form (details and metadata beside the message, as the real backend sends a refusal): nothing but the cause carries a value, and none of it prints', () => {
+    // The emulator's DML refusal reaches the driver without `details`; the real backend's carries
+    // the same words there (gRPC status details), copied onto the driver's error for callers. The
+    // printed form leaves `details` and `metadata` out as it leaves `cause` out.
+    const words = `UNIQUE violation on index db_test_printed_error_email_unique,  duplicate key: {String("${address}")} in this transaction.`;
+    const vendor = Object.assign(new Error(`6 ALREADY_EXISTS: ${words}`), {
+      code: 6,
+      details: words,
+      metadata: { internalRepr: new Map([['grpc-status-details-bin', [Buffer.from(words)]]]) },
+      note: 'Exception occurred in retry method that was not classified as transient',
+    });
+    const wrapped = new SpannerOperationError('dml', { operation: 'INSERT', table: table.name }, vendor);
+    expect(wrapped.details).toBe(words);
+    expect(wrapped.metadata).toBe(vendor.metadata);
+    for (const printed of [
+      inspect(wrapped, { depth: null, showHidden: true, getters: true }),
+      inspect({ error: wrapped }, { depth: null }),
+      consoleErrorOf(wrapped),
+      JSON.stringify({ error: wrapped }),
+      String(wrapped),
+    ]) {
+      expect(printed.toLowerCase()).not.toContain(localPart);
+    }
+  });
+
   test('the printed error still says what failed and where: the status, the index, the table, the caller, the cause withheld', () => {
     const printed = inspect(failure, { depth: 5 });
     expect(printed).toContain('SpannerOperationError');
