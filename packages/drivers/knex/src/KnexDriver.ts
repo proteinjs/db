@@ -32,6 +32,8 @@ type FailureCauseSummary = { name?: string; code?: string; errno?: number; sqlSt
  */
 export class KnexDriver implements DbDriver {
   private static KNEX: knex;
+  /** The per-operation deadline when `KnexConfig.operationDeadlineMs` is unset (see getOperationDeadlineMs). */
+  private static readonly DEFAULT_OPERATION_DEADLINE_MS = 60_000;
   private logger = new Logger({ name: this.constructor.name });
   private config: KnexConfig;
   private knexConfig: any;
@@ -172,7 +174,8 @@ export class KnexDriver implements DbDriver {
 
     try {
       const runner = transaction || this.getKnex();
-      return (await runner.raw(sql, params as any))[0]; // returns 2 arrays, first is records, second is metadata per record
+      // returns 2 arrays, first is records, second is metadata per record
+      return (await runner.raw(sql, params as any).timeout(this.getOperationDeadlineMs(), { cancel: true }))[0];
     } catch (error: unknown) {
       this.logFailure(sql, params, error);
       throw error;
@@ -197,6 +200,15 @@ export class KnexDriver implements DbDriver {
       const result = await fn(trx);
       return result;
     });
+  }
+
+  /**
+   * The deadline every statement runs under — `KnexConfig.operationDeadlineMs`, 60 s when unset —
+   * and the one place the driver reads it: the deadline this reports is the deadline runQuery
+   * enforces (the query layer's timeout, cancelling the statement on the server when it fires).
+   */
+  getOperationDeadlineMs(): number {
+    return this.config.operationDeadlineMs ?? KnexDriver.DEFAULT_OPERATION_DEADLINE_MS;
   }
 
   /**
