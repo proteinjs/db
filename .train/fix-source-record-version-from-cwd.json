@@ -1,0 +1,8 @@
+{
+  "branch": "fix/source-record-version-from-cwd",
+  "packages": ["db"],
+  "suites": [
+    "packages/db/test/SourceRecordLoader.test.ts"
+  ],
+  "removes": []
+}
