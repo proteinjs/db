@@ -1,3 +1,6 @@
+import { inspect, InspectOptionsStylized } from 'util';
+import { SpannerLogValues } from './SpannerLogValues';
+
 /** gRPC status names by code — what a vendor error's `code` means, spelled for humans and logs. */
 export const GRPC_STATUS_NAMES: { [code: number]: string } = {
   0: 'OK',
@@ -43,7 +46,8 @@ const MAX_MESSAGE_CHARS = 300;
  * the status and the statement's shape; the stack is the CALLER's (captured where the driver was
  * entered, before the vendor client's own frames take over), so an error report through this
  * driver locates the application code that issued the statement instead of a client-library
- * frame every failure shares.
+ * frame every failure shares. However it is printed, the error never walks its cause: the
+ * vendor's words can quote a row's values (see the `util.inspect.custom` hook below).
  */
 export class SpannerOperationError extends Error {
   readonly code?: number;
@@ -52,8 +56,16 @@ export class SpannerOperationError extends Error {
   readonly details?: string;
   /** The vendor error's `metadata` — for callers; not enumerable, like `details`. */
   readonly metadata?: unknown;
-  /** The vendor error itself — for callers; not enumerable: its raw message may quote a row key. */
+  /**
+   * The vendor error itself — for callers in process; not enumerable, and never printed (the
+   * inspect hook names it as withheld): its raw message may quote a row key.
+   */
   readonly cause: unknown;
+
+  /** What a printed error shows in the cause's place. */
+  private static readonly WITHHELD_CAUSE =
+    `<withheld: the backend error can quote row values; its code, status and masked text are above ` +
+    `(${SpannerLogValues.DEVELOPMENT_VAR} with ${SpannerLogValues.SWITCH_VAR}=1 puts the bound values of a statement on the driver failure line)>`;
 
   constructor(
     readonly operation: SpannerOperationKind,
@@ -86,6 +98,31 @@ export class SpannerOperationError extends Error {
   /** The underlying failure as a log line carries it. */
   causeSummary(): OperationCauseSummary {
     return SpannerOperationError.summarize(this.cause);
+  }
+
+  /**
+   * How this error PRINTS — the one hook every printer goes through: `util.inspect`, so
+   * `console.error(error)`, the dev log writer's `{ error }` (the driver's own failure line among
+   * them) and any writer that inspects an error. By default those walk an error's `cause`, and the
+   * vendor error's words can quote a row's values — a unique index's refusal names the colliding
+   * key, on an account table an address. So the printed error is the stack (the name, the message
+   * with values masked, the caller's frames) and this error's own facts, with the cause named as
+   * withheld and never walked. A structured writer serializes only the enumerable facts, which
+   * carry no value either.
+   *
+   * What the error CARRIES is left exactly as it is: the client library's transaction runner
+   * decides its retries off the thrown error (its code, message, details and metadata), and a
+   * caller in process still reads `cause`. Only the printed form is this hook's.
+   */
+  [inspect.custom](depth: number, options: InspectOptionsStylized): string {
+    const facts = {
+      operation: this.operation,
+      statement: this.statement,
+      ...(this.code !== undefined ? { code: this.code } : {}),
+      ...(this.status !== undefined ? { status: this.status } : {}),
+      ...(this.cause !== undefined ? { cause: SpannerOperationError.WITHHELD_CAUSE } : {}),
+    };
+    return `${this.stack} ${inspect(facts, { ...options, depth })}`;
   }
 
   /**
