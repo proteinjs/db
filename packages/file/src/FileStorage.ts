@@ -113,8 +113,8 @@ export class FileStorage implements FileStorageService {
    * exactly as reachable as the row that names them. The gate lives here because this is the
    * browser-facing service boundary (`FileStorageService` is `allUsers`) and the driver byte ops
    * below are deliberately unscoped. Server-side doors that make their OWN documented access
-   * decision (the avatar route, issue/ticket attachment doors) read bytes through
-   * `FileStorage.getDriver()` instead.
+   * decision (an attachment door keyed by a record's linkage, say) serve through
+   * {@link getAuthorizedFileData} — the same owner-or-copy bytes, without this gate.
    *
    * WHICH bytes: the owner's read serves the original; anyone else's — a read that reached the
    * file through the shared-content leg — serves the {@link FileCopyForOthers} copy
@@ -131,6 +131,24 @@ export class FileStorage implements FileStorageService {
       throw new Error(`File not found: ${fileId}`);
     }
 
+    return await FileStorage.getDriver().getFileData(await this.servedFileId(file));
+  }
+
+  /**
+   * The bytes THIS caller is served for a file a server-side door has ALREADY decided the caller
+   * may read, by its own documented rule (an attachment door keyed by a record's linkage, say —
+   * a read neither the caller's scope nor a {@link FileReachabilityResolver} would open). The
+   * door vouches for access; this decides WHICH bytes, exactly as {@link getFileData} does: the
+   * original for the file's owner, the {@link FileCopyForOthers} copy for anyone else — the same
+   * copy, made once and named on the row, that every other door serves them. Server-only (not
+   * part of the browser-facing `FileStorageService`), so the rule that opens the file stays the
+   * door's.
+   * @param file - The file's row, as the door read it (its `scope` names the owner).
+   * @returns The file data as a single string.
+   * @throws FileCopyRefused when the caller is not the owner and no copy can be made — the file is
+   *         served to no one but its owner.
+   */
+  async getAuthorizedFileData(file: File): Promise<string> {
     return await FileStorage.getDriver().getFileData(await this.servedFileId(file));
   }
 
