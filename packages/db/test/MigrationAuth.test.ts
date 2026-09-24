@@ -100,13 +100,15 @@ describe('migrations ride the dev permission', () => {
     }
   });
 
-  it('delete keeps its dev door (ledger hygiene stays possible)', () => {
-    setUser(['dev-crew']);
+  it('delete has no door — for anyone, break-glass included: the ledger is durable (founder ruling 2026-09-24)', () => {
     const auth = new TableAuth();
     const table = new MigrationTable();
-    for (const api of ['db', 'service'] as const) {
-      expect(() => auth.canDelete(table, api)).not.toThrow();
-      expect(auth.canPerform(table, 'delete', api)).toBe(true);
+    for (const roles of [['dev-crew'], ['admin']]) {
+      setUser(roles);
+      for (const api of ['db', 'service'] as const) {
+        expect(() => auth.canDelete(table, api)).toThrow('Table migration is durable: its rows are never deleted');
+        expect(auth.canPerform(table, 'delete', api)).toBe(false);
+      }
     }
   });
 });

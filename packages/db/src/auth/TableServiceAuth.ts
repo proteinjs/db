@@ -1,5 +1,5 @@
 import { Logger } from '@proteinjs/logger';
-import { ServiceError } from '@proteinjs/service';
+import { ServiceError, ServiceRefusal } from '@proteinjs/service';
 import { Table, isTable } from '../Table';
 import { TableAuth, TableAuthError } from './TableAuth';
 
@@ -37,6 +37,11 @@ export class TableServiceAuth {
         throw new Error(`User is not authorized to access unsupported Db service api: ${methodName}`);
       }
     } catch (error: any) {
+      // A deliberate refusal (a durable table's delete door) reaches the caller as it is: the
+      // router answers with its status and message.
+      if (ServiceRefusal.is(error)) {
+        throw error;
+      }
       // A protected-column rejection carries a client-safe message — let it surface as the 400
       // body instead of collapsing into the generic authorization failure. Name check, not
       // instanceof: `ServiceError extends Error` loses its prototype chain under the service

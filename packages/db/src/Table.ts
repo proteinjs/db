@@ -141,6 +141,20 @@ export abstract class Table<T extends Record> implements Loadable, CustomSeriali
   /** Options for configuring SourceRecords (see {@link SourceRecordOptions}) */
   public sourceRecordOptions: SourceRecordOptions<T> = {};
   /**
+   * A DURABLE table keeps its rows: no caller deletes them. The delete door is closed on both apis
+   * for everyone — break-glass included, whatever `auth` declares — and refuses with a 403
+   * `ServiceRefusal` naming the table (`TableAuth.canDelete`). The generic record surfaces derive
+   * the same verdict: the record table's seat carries no delete act (a declared `delete` action
+   * included), the record form no Delete.
+   *
+   * Declare it on ledgers — tables whose rows are the record of what happened (the migration
+   * ledger's runs, audit and usage events), where a deleted row is history lost. The platform's
+   * own system-context code (`getDbAsSystem`) is outside the doors here as everywhere: a durable
+   * table's rows leave only by a lifecycle the platform itself declares, or by hand in the
+   * database's own console.
+   */
+  public durable = false;
+  /**
    * Presentation the table declares for the GENERIC record surfaces (@proteinjs/db-ui) — the
    * framework renders what tables declare; per-table display choices never hard-code into the
    * generic components. Distinct from `auth.ui`, which gates WHO may see those surfaces.
@@ -178,7 +192,8 @@ export abstract class Table<T extends Record> implements Loadable, CustomSeriali
        * insert doors, delete-on-selection from the delete doors — exactly as every table did
        * before this declaration existed. A declared entry CONFIGURES the act of its kind (door
        * and/or label); kinds left undeclared keep the derivation. The seat, not the table, owns
-       * placement: every declared act renders in the same seat on desktop and phone.
+       * placement: every declared act renders in the same seat on desktop and phone. A
+       * {@link Table.durable} table's seat carries no delete act, declared or derived.
        */
       actions?: RecordTableAction[];
     };
