@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.31.2](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.31.1...@proteinjs/db-driver-spanner@1.31.2) (2026-09-24)
+
+
+### Bug Fixes
+
+* **db:** a natural key never takes over a row the sync does not own — the declaration is refused ([9919c98](https://github.com/proteinjs/db/commit/9919c9844962f1e80f22d9a223cb3f6a9ba4a6ef))
+
+
+
+
+
 ## [1.31.1](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.31.0...@proteinjs/db-driver-spanner@1.31.1) (2026-09-23)
 
 
