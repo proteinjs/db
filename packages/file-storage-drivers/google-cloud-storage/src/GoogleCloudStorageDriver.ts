@@ -158,7 +158,9 @@ export class GoogleCloudStorageDriver implements FileStorageDriver {
   /** The client reports the HTTP status as its error's `code`; an upload's error carries it as `status` or on its `response`. */
   private httpStatus(clientError: unknown): number | undefined {
     const candidate = clientError as
-      { code?: unknown; status?: unknown; response?: { status?: unknown; statusCode?: unknown } } | null | undefined;
+      | { code?: unknown; status?: unknown; response?: { status?: unknown; statusCode?: unknown } }
+      | null
+      | undefined;
     for (const value of [
       candidate?.code,
       candidate?.status,
