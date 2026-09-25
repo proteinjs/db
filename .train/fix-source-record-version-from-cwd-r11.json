@@ -1,0 +1,8 @@
+{
+  "branch": "fix/source-record-version-from-cwd-r11",
+  "packages": ["db"],
+  "suites": [
+    "packages/db/test/SourceRecordSyncRunner.test.ts"
+  ],
+  "removes": []
+}
