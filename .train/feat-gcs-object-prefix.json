@@ -1,9 +1,0 @@
-{
-  "branch": "feat/gcs-object-prefix",
-  "packages": ["file-storage-drivers/google-cloud-storage"],
-  "suites": [
-    "packages/file-storage-drivers/google-cloud-storage/test/GoogleCloudStorageDriverObjectPrefix.test.ts",
-    "packages/file-storage-drivers/google-cloud-storage/test/GoogleCloudStorageDriverDefaultConfig.test.ts"
-  ],
-  "removes": []
-}

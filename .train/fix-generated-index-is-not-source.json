@@ -1,9 +1,0 @@
-{
-  "branch": "fix/generated-index-is-not-source",
-  "packages": ["db"],
-  "suites": [
-    "packages/db/test/SourceRecordLoaderQualifiedName.test.ts",
-    "packages/db/test/CursorWindowPager.test.ts"
-  ],
-  "removes": []
-}

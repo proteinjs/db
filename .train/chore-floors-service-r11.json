@@ -1,6 +1,0 @@
-{
-  "branch": "chore/floors-service-r11",
-  "packages": ["file", "db", "settings", "ui"],
-  "suites": [],
-  "removes": []
-}
