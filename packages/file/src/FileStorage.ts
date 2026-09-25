@@ -47,6 +47,7 @@ export class FileStorage implements FileStorageService {
       allUsers: true,
     },
   };
+  private logger = new Logger({ name: this.constructor.name });
 
   /**
    * The `FileStorageDriver` for this process — provided by the `DefaultFileStorageDriverFactory`
@@ -321,11 +322,13 @@ export class FileStorage implements FileStorageService {
    * the one already named on the row, or made now, once, and named for every later read.
    *
    * ONE REFUSAL, EVERY DOOR: when no copy can be made (the seam's {@link FileCopyRefused}), the file
-   * is served to no one but its owner, so to this caller it is not there — a `ServiceRefusal(404)`
-   * carrying the seam's reason, thrown here so the browser service, `GET /file/:id` in both its
-   * shapes and the server-side door answer the same by construction: the service router answers
-   * 404, the executor logs one WARN (a refusal, never a failure), the route answers
-   * `404 File not found` — the same as a row it cannot read — and nothing leaks about existence.
+   * is served to no one but its owner, so to this caller it is not there — a
+   * `ServiceRefusal(404, 'File not found')`, thrown here so the browser service, `GET /file/:id` in
+   * both its shapes and the server-side door answer the same by construction: the service router
+   * answers 404 `{ error: 'File not found' }`, the executor logs one WARN (a refusal, never a
+   * failure), the route answers `404 File not found` — the same words as a row it cannot read. The
+   * refusal carries no reason, file id or owner: the maker's reason is the server's, logged here in
+   * one WARN, so nothing a caller reads tells a refused copy from a file that is not there.
    */
   private async servedFileId(file: File): Promise<string> {
     if (this.ownedByCaller(file)) {
@@ -342,7 +345,11 @@ export class FileStorage implements FileStorageService {
       return await this.makeCopyForOthers(file);
     } catch (error) {
       if (FileCopyRefused.is(error)) {
-        throw new ServiceRefusal(404, error.message);
+        this.logger.warn({
+          message: 'No copy of a file can be made for anyone but its owner; refused as not found',
+          obj: { fileId: error.fileId, reason: error.reason },
+        });
+        throw new ServiceRefusal(404, 'File not found');
       }
       throw error;
     }

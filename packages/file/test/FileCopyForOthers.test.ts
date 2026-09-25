@@ -7,9 +7,11 @@ import { File } from '../src/tables/FileTable';
 import { tables } from '../src/tables/tables';
 import { FileStorage } from '../src/FileStorage';
 import { ServiceRefusal } from '@proteinjs/service';
-// The executor every browser-facing service call runs through (ServiceRouter → ServiceExecutor), not
-// part of the package's entry: what it logs and answers for this door is the outcome under test.
+// The router and executor every browser-facing service call runs through (ServiceRouter →
+// ServiceExecutor), not part of the package's entry: what they log and answer for this door — the
+// status and the body the browser reads — is the outcome under test.
 import { ServiceExecutor } from '@proteinjs/service/dist/src/ServiceExecutor';
+import { ServiceRouter } from '@proteinjs/service/dist/src/ServiceRouter';
 import { FileStorageDriver } from '../src/FileStorageDriver';
 import { getFile } from '../src/routes/getFile';
 import { FileTestEnvironment } from './FileTestEnvironment';
@@ -102,29 +104,40 @@ const invokeRoute = async (fileId: string): Promise<ResponseRecorder> => {
   return response;
 };
 
+/** A logger that writes into `entries` — what a door logged, read back as the outcome. */
+const loggerInto = (name: string, entries: Log[]): Logger =>
+  new Logger({ name, logWriter: { write: (log: Log) => entries.push(log) } as unknown as DefaultLogWriter });
+
+const SERVICE_PATH = '/service/@proteinjs/db-file/FileStorageService/getFileData';
+
 /**
- * One call of the browser's door — `FileStorageService.getFileData` — through the service executor,
- * as the service router runs it: what it throws (the router answers a refusal with its status and
- * anything else with 400) and every log entry it wrote.
+ * One call of the browser's door — `FileStorageService.getFileData` — through the REAL service
+ * router (its executor seeded by path, the way the router builds it from the source graph): the
+ * status and the body the browser reads, every entry the executor logged (`entries`) and every
+ * entry the file storage itself logged (`storageEntries`).
  */
-const invokeServiceDoor = async (fileId: string): Promise<{ thrown: unknown; entries: Log[] }> => {
+const invokeServiceDoor = async (
+  fileId: string
+): Promise<{ status: number; body: unknown; entries: Log[]; storageEntries: Log[] }> => {
   const returnType = { name: 'Promise<string>' } as unknown as TypeAliasDeclaration;
   const method = new Method('getFileData', returnType, true, false, false, false, 'public', []);
+  const storage = new FileStorage();
+  const storageEntries: Log[] = [];
+  (storage as unknown as { logger: Logger }).logger = loggerInto('FileStorage', storageEntries);
   const executor = new ServiceExecutor(
-    new FileStorage(),
+    storage,
     new Interface('@proteinjs/db-file', 'FileStorageService', [], [method]),
     method
   );
   const entries: Log[] = [];
-  (executor as unknown as { logger: Logger }).logger = new Logger({
-    name: 'FileStorageService.getFileData',
-    logWriter: { write: (log: Log) => entries.push(log) } as unknown as DefaultLogWriter,
-  });
-  const thrown = await executor.execute(Serializer.serialize([fileId])).then(
-    () => undefined,
-    (error: unknown) => error
-  );
-  return { thrown, entries };
+  (executor as unknown as { logger: Logger }).logger = loggerInto('FileStorageService.getFileData', entries);
+  const router = new ServiceRouter();
+  (router as unknown as { serviceExecutorMap: Record<string, ServiceExecutor> }).serviceExecutorMap = {
+    [SERVICE_PATH]: executor,
+  };
+  const response = new ResponseRecorder();
+  await router.onRequest({ path: SERVICE_PATH, body: Serializer.serialize([fileId]) }, response);
+  return { status: response.statusCode ?? 200, body: response.body, entries, storageEntries };
 };
 
 /** The status the service router answers a thrown error with: a refusal's own, else 400. */
@@ -145,6 +158,8 @@ let makerCalls: Array<{ fileId: string; bytes: Buffer }> = [];
 /** What the stub maker applies to — the suite's own rule (the real maker's is "pictures and clips"). */
 let makerAppliesTo = (file: File): boolean => file.type.startsWith('image/');
 let makerFails = false;
+/** What the stub maker throws when it fails — its own internal words, the server's to keep. */
+const MAKER_REASON = 'no copy can be made of this file';
 /**
  * A barrier for the racing case: with `makerBarrier = n`, the stub maker holds every call until n
  * calls are inside it, then answers them all on the same tick — so the reads that follow (the
@@ -175,7 +190,7 @@ const registerMaker = () => {
         makerCalls.push({ fileId: file.id, bytes: Buffer.from(bytes) });
         await atBarrier();
         if (makerFails) {
-          throw new Error('no copy can be made of this file');
+          throw new Error(MAKER_REASON);
         }
         return copyOf(bytes);
       },
@@ -380,12 +395,10 @@ describe('the copy for others — the service door (proxy serving)', () => {
       () => undefined,
       (error: unknown) => error
     );
-    // Unavailable to this caller — a 404 refusal carrying the seam's reason, the same at every door.
+    // Not there for this caller — a 404 refusal in the words a missing file gets, the same at every door.
     expect(ServiceRefusal.is(refusal)).toBe(true);
     expect((refusal as ServiceRefusal).status).toBe(404);
-    expect((refusal as ServiceRefusal).message).toEqual(
-      `File ${file.id} is not available to anyone but its owner: no copy can be made of this file`
-    );
+    expect((refusal as ServiceRefusal).message).toEqual('File not found');
     expect((await rowAsSystem(file.id))!.copyForOthers?._id ?? null).toBeNull();
     expect(Array.from(driver.store.keys())).toContain(file.id);
     expect(
@@ -562,7 +575,7 @@ describe('the copy for others — a server-side door that made its own access de
     expect((await rowAsSystem(file.id))!.copyForOthers?._id ?? null).toBeNull();
   });
 
-  it("when no copy can be made, the door's caller is refused as UNAVAILABLE — a 404 ServiceRefusal carrying the seam's reason, a refusal and never a failure — and never served the original", async () => {
+  it("when no copy can be made, the door's caller is refused as NOT FOUND — a 404 ServiceRefusal in a missing file's words, a refusal and never a failure — and never served the original", async () => {
     const file = await createOwnerFile('raw-attachment.jpg', 'image/jpeg');
     makerFails = true;
 
@@ -575,40 +588,47 @@ describe('the copy for others — a server-side door that made its own access de
     // about the file's existence to a caller who may not read it.
     expect(ServiceRefusal.is(refusal)).toBe(true);
     expect((refusal as ServiceRefusal).status).toBe(404);
-    expect((refusal as ServiceRefusal).message).toEqual(
-      `File ${file.id} is not available to anyone but its owner: no copy can be made of this file`
-    );
+    expect((refusal as ServiceRefusal).message).toEqual('File not found');
     expect((await rowAsSystem(file.id))!.copyForOthers?._id ?? null).toBeNull();
   });
 });
 
 describe('ONE REFUSAL AT EVERY DOOR — a file no copy can be made of is not found for anyone but its owner (404), whichever door asks', () => {
-  it('the browser service (through the executor), GET /file/:id in both shapes and the server-side door answer one status, 404 — the browser door logs one WARN with its status and no ERROR', async () => {
+  /** A file the recipient reaches whose copy the maker refuses — both serving shapes hold its bytes. */
+  const refusedFile = async (name: string) => {
     const proxy = new ProxyDriver();
     const signed = new SignedUrlDriver();
     testEnv.setDriver(proxy);
-    const file = await createOwnerFile('one-answer.jpg', 'image/jpeg');
+    const file = await createOwnerFile(name, 'image/jpeg');
     signed.store.set(file.id, proxy.store.get(file.id)!);
     reachableFileIds.add(file.id);
     makerFails = true;
+    return { file, signed };
+  };
+
+  /** Every door a recipient can ask, in one order: the browser service, the route (proxy, then signed-URL), the server-side door. */
+  const askEveryDoor = async (file: File, signed: SignedUrlDriver) => {
+    testEnv.actAs(recipient);
+    const service = await invokeServiceDoor(file.id);
+    const proxyRoute = await invokeRoute(file.id);
+    const serverSide = await new FileStorage().getAuthorizedFileData((await rowAsSystem(file.id))!).then(
+      () => undefined,
+      (error: unknown) => error
+    );
+    testEnv.setDriver(signed);
+    const signedRoute = await invokeRoute(file.id);
+    return { service, proxyRoute, serverSide, signedRoute };
+  };
+
+  it('the browser service (through the router), GET /file/:id in both shapes and the server-side door answer one status, 404 — the browser door logs one WARN with its status and no ERROR', async () => {
+    const { file, signed } = await refusedFile('one-answer.jpg');
     const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
     try {
-      testEnv.actAs(recipient);
-      const service = await invokeServiceDoor(file.id);
-      const proxyRoute = await invokeRoute(file.id);
-      const serverSide = await new FileStorage().getAuthorizedFileData((await rowAsSystem(file.id))!).then(
-        () => undefined,
-        (error: unknown) => error
-      );
-      testEnv.setDriver(signed);
-      const signedRoute = await invokeRoute(file.id);
+      const { service, proxyRoute, serverSide, signedRoute } = await askEveryDoor(file, signed);
 
-      expect([
-        routerStatus(service.thrown),
-        signedRoute.statusCode,
-        proxyRoute.statusCode,
-        routerStatus(serverSide),
-      ]).toEqual([404, 404, 404, 404]);
+      expect([service.status, signedRoute.statusCode, proxyRoute.statusCode, routerStatus(serverSide)]).toEqual([
+        404, 404, 404, 404,
+      ]);
       // The browser door's log: one WARN naming the status and the operation — a refusal, never a failure.
       expect(service.entries.filter((entry) => entry.logLevel === 'error')).toEqual([]);
       const warnings = service.entries.filter((entry) => entry.logLevel === 'warn');
@@ -620,5 +640,25 @@ describe('ONE REFUSAL AT EVERY DOOR — a file no copy can be made of is not fou
     } finally {
       consoleError.mockRestore();
     }
+  });
+
+  it("ONE BODY TOO: every door answers the words a missing file gets — \"File not found\" — never the maker's reason, the file's id or its owner; the reason stays on the server, in the storage's one WARN", async () => {
+    const { file, signed } = await refusedFile('one-body.jpg');
+
+    const { service, proxyRoute, serverSide, signedRoute } = await askEveryDoor(file, signed);
+
+    // What each door's caller reads: the router's body, the route's in both shapes, the refusal's message.
+    const read = [service.body, signedRoute.body, proxyRoute.body, (serverSide as Error | undefined)?.message];
+    expect(read).toEqual([{ error: 'File not found' }, 'File not found', 'File not found', 'File not found']);
+    for (const words of read.map((answer) => JSON.stringify(answer))) {
+      expect(words).not.toContain(MAKER_REASON);
+      expect(words).not.toContain(file.id);
+      expect(words).not.toContain('owner');
+    }
+    // The server keeps the reason: the storage logs one WARN with the file and the maker's words; no ERROR anywhere.
+    const storageWarnings = service.storageEntries.filter((entry) => entry.logLevel === 'warn');
+    expect(storageWarnings).toHaveLength(1);
+    expect(storageWarnings[0].obj).toEqual({ fileId: file.id, reason: MAKER_REASON });
+    expect([...service.entries, ...service.storageEntries].filter((entry) => entry.logLevel === 'error')).toEqual([]);
   });
 });
