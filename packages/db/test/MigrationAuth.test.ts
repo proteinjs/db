@@ -100,7 +100,7 @@ describe('migrations ride the dev permission', () => {
     }
   });
 
-  it('delete has no door — for anyone, break-glass included: the ledger is durable (founder ruling 2026-09-24)', () => {
+  it('delete has no door — for anyone, break-glass included: the ledger is durable', () => {
     const auth = new TableAuth();
     const table = new MigrationTable();
     for (const roles of [['dev-crew'], ['admin']]) {

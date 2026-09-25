@@ -14,8 +14,8 @@ import '../generated/test/index';
  * not declare it deletes exactly as before. The platform's own system-context code stays outside
  * the doors (the declared boundary: a lifecycle the platform itself runs, e.g. an account's erasure).
  *
- * The founder's ruling (2026-09-24): the migration ledger's rows could be selected and deleted in
- * prod from the record table — "they're supposed to be durable records".
+ * The house's rule: the migration ledger's rows could be selected and deleted from the record
+ * table in a deployment — they are durable records.
  */
 
 const spannerDriver = new SpannerDriver({

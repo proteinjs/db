@@ -81,8 +81,8 @@ export class MigrationTable extends Table<Migration> {
   };
   /**
    * The ledger keeps every row: run history is the record of what ran against this database, so
-   * no caller deletes it (founder ruling 2026-09-24 — "they're supposed to be durable records"; a
-   * row that must go goes by hand in the database's own console). The source-record sync keeps
+   * no caller deletes it (the house's rule: migration rows are durable records; a row that must go
+   * goes by hand in the database's own console). The source-record sync keeps
    * removed migrations' rows too ({@link MigrationTable.sourceRecordOptions} `onSourceRemoved`).
    */
   public durable = true;
