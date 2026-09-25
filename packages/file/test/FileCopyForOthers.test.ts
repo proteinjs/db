@@ -603,7 +603,7 @@ describe('ONE REFUSAL AT EVERY DOOR — a file no copy can be made of is not fou
     signed.store.set(file.id, proxy.store.get(file.id)!);
     reachableFileIds.add(file.id);
     makerFails = true;
-    return { file, signed };
+    return { file, proxy, signed };
   };
 
   /** Every door a recipient can ask, in one order: the browser service, the route (proxy, then signed-URL), the server-side door. */
@@ -660,5 +660,43 @@ describe('ONE REFUSAL AT EVERY DOOR — a file no copy can be made of is not fou
     expect(storageWarnings).toHaveLength(1);
     expect(storageWarnings[0].obj).toEqual({ fileId: file.id, reason: MAKER_REASON });
     expect([...service.entries, ...service.storageEntries].filter((entry) => entry.logLevel === 'error')).toEqual([]);
+  });
+
+  it("A MISS ANSWERS WHAT A REFUSAL ANSWERS: a file that is not there, and one the caller cannot reach, get the refused copy's status and body at every door — the browser service, the route in both shapes, the signed-URL mint — never the id", async () => {
+    const { file: refused, proxy, signed } = await refusedFile('refused-beside-a-miss.jpg');
+    testEnv.actAs(owner);
+    const unreachable = await createOwnerFile('not-theirs.jpg', 'image/jpeg');
+    signed.store.set(unreachable.id, proxy.store.get(unreachable.id)!);
+    /** What a recipient reads for `fileId` at each door, and the WARN / ERROR levels the browser door logged. */
+    const notRoutine = (level: string) => level === 'warn' || level === 'error';
+    const answersFor = async (fileId: string) => {
+      testEnv.actAs(recipient);
+      testEnv.setDriver(proxy);
+      const service = await invokeServiceDoor(fileId);
+      const proxyRoute = await invokeRoute(fileId);
+      testEnv.setDriver(signed);
+      const signedRoute = await invokeRoute(fileId);
+      const mint = await new FileStorage().getSignedUrl(fileId).then(
+        () => undefined,
+        (error: unknown) => error
+      );
+      return [
+        [service.status, service.body, service.entries.map((entry) => entry.logLevel).filter(notRoutine)],
+        [proxyRoute.statusCode, proxyRoute.body, proxyRoute.redirectUrl],
+        [signedRoute.statusCode, signedRoute.body, signedRoute.redirectUrl],
+        [ServiceRefusal.is(mint) ? mint.status : 'not a refusal', (mint as Error | undefined)?.message],
+      ];
+    };
+
+    const refusal = await answersFor(refused.id);
+
+    expect(refusal).toEqual([
+      [404, { error: 'File not found' }, ['warn']],
+      [404, 'File not found', undefined],
+      [404, 'File not found', undefined],
+      [404, 'File not found'],
+    ]);
+    expect(await answersFor(unreachable.id)).toEqual(refusal);
+    expect(await answersFor('no-such-file')).toEqual(refusal);
   });
 });
