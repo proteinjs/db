@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.9.1](https://github.com/proteinjs/db/compare/@proteinjs/db-file@1.9.0...@proteinjs/db-file@1.9.1) (2026-09-25)
+
+
+### Bug Fixes
+
+* **db-file:** a derived File carries its original's provenance — every variant the seam makes (at ingest and on the read path) and the copy for others take the columns the table names as provenance from the row they were made from; a row with none derives rows with none ([f3b2dd4](https://github.com/proteinjs/db/commit/f3b2dd4b491191972757a003f625d36462cf72df))
+
+
+
+
+
 # [1.9.0](https://github.com/proteinjs/db/compare/@proteinjs/db-file@1.8.4...@proteinjs/db-file@1.9.0) (2026-09-25)
 
 
