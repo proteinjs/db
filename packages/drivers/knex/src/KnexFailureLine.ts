@@ -56,6 +56,14 @@ export class KnexFailureLine {
     ETIMEDOUT: KnexFailureLine.UNREACHABLE,
     PROTOCOL_CONNECTION_LOST: KnexFailureLine.UNREACHABLE,
   };
+  /**
+   * The failures the query layer raises itself, which carry no vendor code — by the error's name.
+   * Its timeout is one error for the statement's operation deadline and for the wait for a free
+   * connection; either way it carries the statement's bindings, so it is marked like any other.
+   */
+  private static readonly SENTENCES_BY_NAME: { [name: string]: string } = {
+    KnexTimeoutError: 'the statement or its wait for a connection timed out',
+  };
 
   /**
    * Marks `error` — whatever the client library or the query layer rejected with — as never
@@ -85,7 +93,7 @@ export class KnexFailureLine {
       ...(typeof code === 'string' ? { code } : {}),
       ...(typeof errno === 'number' ? { errno } : {}),
       ...(typeof sqlState === 'string' ? { sqlState } : {}),
-      message: KnexFailureLine.sentenceOf(code),
+      message: KnexFailureLine.sentenceOf(code, name),
       ...(typeof sqlMessage === 'string' ? { sqlMessage } : {}),
     };
   }
@@ -100,8 +108,12 @@ export class KnexFailureLine {
     };
   }
 
-  private static sentenceOf(code: unknown): string {
-    return (typeof code === 'string' ? KnexFailureLine.SENTENCES[code] : undefined) ?? KnexFailureLine.UNNAMED;
+  private static sentenceOf(code: unknown, name: unknown): string {
+    return (
+      (typeof code === 'string' ? KnexFailureLine.SENTENCES[code] : undefined) ??
+      (typeof name === 'string' ? KnexFailureLine.SENTENCES_BY_NAME[name] : undefined) ??
+      KnexFailureLine.UNNAMED
+    );
   }
 
   /** One fact of a thrown value, or nothing when it cannot be read (nothing thrown, a scalar, a throwing accessor). */

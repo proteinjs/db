@@ -31,6 +31,8 @@ type DriverStatics = { KNEX?: unknown };
 
 /** What the stub's COMMIT answers with; nothing, unless a test says otherwise. */
 let commitRejection: (() => Error) | undefined;
+/** Whether the stub leaves every statement unanswered (a stuck server) instead of rejecting it. */
+let silentStatements = false;
 
 /** A connection that rejects every statement the way the client library does on a duplicate key. */
 const rejectingConnection = () => {
@@ -52,6 +54,13 @@ const rejectingConnection = () => {
       }
       if (/^\s*SELECT 1/i.test(options.sql)) {
         done(null, [[{ 1: 1 }], []]);
+        return;
+      }
+      if (/^\s*KILL QUERY/i.test(options.sql)) {
+        done(null, []);
+        return;
+      }
+      if (silentStatements) {
         return;
       }
       const sqlMessage = `Duplicate entry '${bindings[0]}' for key 'PRIMARY'`;
@@ -102,6 +111,7 @@ describe('the vendor`s text never reaches a log line; the thrown error still car
   beforeEach(() => {
     captured = [];
     commitRejection = undefined;
+    silentStatements = false;
   });
 
   const INSERT = 'INSERT INTO `credential` (`id`, `email`, `token`, `attempts`, `cleared`) VALUES (?, ?, ?, ?, ?)';
@@ -183,6 +193,33 @@ describe('the vendor`s text never reaches a log line; the thrown error still car
       }
     }
   );
+
+  test('a statement past the driver`s deadline: the caught error carries the bound values; every line says the statement timed out, and carries none', async () => {
+    const timedOut = 'the statement or its wait for a connection timed out';
+    silentStatements = true;
+    const deadlined = new KnexDriver({
+      host: 'localhost',
+      user: 'root',
+      password: '',
+      dbName: 'test',
+      operationDeadlineMs: 300,
+    });
+    (deadlined as unknown as { logger: Logger }).logger = capturing('KnexDriver');
+
+    const caught = await settle(deadlined.runDml(insertStatement));
+
+    // The premise: the query layer's timeout error, as thrown, names the deadline and carries the bindings.
+    expect(caught.name).toBe('KnexTimeoutError');
+    expect(caught.message).toMatch(/Defined query timeout of 300ms exceeded/);
+    expect(caught.bindings).toContain(SECRET_TOKEN);
+
+    assertNeverOnALine(caught);
+    const [failure] = captured.filter((log) => log.message === 'Failed when executing sql');
+    expect(failure.obj.cause).toEqual({ name: 'KnexTimeoutError', message: timedOut });
+    const [callersLine] = captured.filter((log) => log.message === 'A caller`s own line about what it caught');
+    expect(callersLine.error.name).toBe('KnexTimeoutError');
+    expect(callersLine.error.message).toBe(`Failed when executing sql: ${timedOut}`);
+  }, 10_000);
 
   test('the same inside a transaction', async () => {
     const caught = await settle(driver.runTransaction((transaction) => driver.runDml(insertStatement, transaction)));
