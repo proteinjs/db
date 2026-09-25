@@ -205,14 +205,15 @@ export class FileStorage implements FileStorageService {
    * signed-URL route and every server-side reader of this door agree.
    * @param fileId - The `id` of the file.
    * @returns The file data as a single string.
-   * @throws When the file row does not exist or is not readable by the caller — the same named
-   *         miss either way, so existence is not leaked to unauthorized callers; a ServiceRefusal
-   *         (404) when the caller is not the owner and no copy can be made ({@link servedFileId}).
+   * @throws ServiceRefusal (404, `File not found`) when the file row does not exist or is not
+   *         readable by the caller, and when the caller is not the owner and no copy can be made
+   *         ({@link servedFileId}) — ONE answer for all three ({@link notFound}), so no door tells
+   *         a missing file from one this caller may not have.
    */
   async getFileData(fileId: string): Promise<string> {
     const file = await this.getFile(fileId);
     if (!file) {
-      throw new Error(`File not found: ${fileId}`);
+      throw FileStorage.notFound();
     }
 
     return await FileStorage.getDriver().getFileData(await this.servedFileId(file));
@@ -246,13 +247,14 @@ export class FileStorage implements FileStorageService {
    * @param options.ttlMs - How long the URL stays valid; the driver applies its default when omitted.
    * @returns The signed URL, or `undefined` when the driver has no external URL space
    *          (`DbFileStorageDriver`) — the caller then serves bytes through the proxy route.
-   * @throws When the file row does not exist or is not readable by the caller; a ServiceRefusal
-   *         (404) when the caller is not the owner and no copy can be made ({@link servedFileId}).
+   * @throws ServiceRefusal (404, `File not found`) when the file row does not exist or is not
+   *         readable by the caller, and when the caller is not the owner and no copy can be made —
+   *         the one answer {@link getFileData} gives ({@link notFound}).
    */
   async getSignedUrl(fileId: string, options?: { ttlMs?: number }): Promise<string | undefined> {
     const file = await this.getFile(fileId);
     if (!file) {
-      throw new Error(`File not found: ${fileId}`);
+      throw FileStorage.notFound();
     }
 
     const driver = FileStorage.getDriver();
@@ -326,9 +328,10 @@ export class FileStorage implements FileStorageService {
    * `ServiceRefusal(404, 'File not found')`, thrown here so the browser service, `GET /file/:id` in
    * both its shapes and the server-side door answer the same by construction: the service router
    * answers 404 `{ error: 'File not found' }`, the executor logs one WARN (a refusal, never a
-   * failure), the route answers `404 File not found` — the same words as a row it cannot read. The
-   * refusal carries no reason, file id or owner: the maker's reason is the server's, logged here in
-   * one WARN, so nothing a caller reads tells a refused copy from a file that is not there.
+   * failure), the route answers `404 File not found` — the same answer, at every door, as a row the
+   * caller cannot read ({@link notFound}). The refusal carries no reason, file id or owner: the
+   * maker's reason is the server's, logged here in one WARN, so nothing a caller reads tells a
+   * refused copy from a file that is not there.
    */
   private async servedFileId(file: File): Promise<string> {
     if (this.ownedByCaller(file)) {
@@ -349,7 +352,7 @@ export class FileStorage implements FileStorageService {
           message: 'No copy of a file can be made for anyone but its owner; refused as not found',
           obj: { fileId: error.fileId, reason: error.reason },
         });
-        throw new ServiceRefusal(404, 'File not found');
+        throw FileStorage.notFound();
       }
       throw error;
     }
@@ -517,5 +520,16 @@ export class FileStorage implements FileStorageService {
     for (const seat of stale) {
       await system.delete(tables.File, { id: file[seat]!._id! });
     }
+  }
+
+  /**
+   * THE answer a byte door gives a caller who does not get the file's bytes — a row that is not
+   * there, one this caller cannot read, or a copy that cannot be made for them: a 404 refusal in
+   * the same words every time, never the id, so the answer reveals nothing about existence (the
+   * service router sends `{ error: 'File not found' }`, the executor logs it at WARN, the routes
+   * send `404 File not found`).
+   */
+  private static notFound(): ServiceRefusal {
+    return new ServiceRefusal(404, 'File not found');
   }
 }

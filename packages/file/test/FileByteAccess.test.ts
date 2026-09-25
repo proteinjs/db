@@ -1,5 +1,6 @@
 import { SourceRepository } from '@proteinjs/reflection';
 import { User } from '@proteinjs/user';
+import { ServiceRefusal } from '@proteinjs/service';
 import { File } from '../src/tables/FileTable';
 import { FileStorage } from '../src/FileStorage';
 import { DbFileStorageDriver } from '../src/DbFileStorageDriver';
@@ -95,7 +96,12 @@ describe('byte reads gate on the file-row read (the getFile decision)', () => {
     const file = await createOwnerFile('private-bytes.bin');
 
     testEnv.actAs(stranger);
-    await expect(new FileStorage().getFileData(file.id)).rejects.toThrow(`File not found: ${file.id}`);
+    const denial = await new FileStorage().getFileData(file.id).then(
+      () => undefined,
+      (error: unknown) => error
+    );
+    // The one answer a byte door gives: a 404 refusal, never the id (a file not there reads the same).
+    expect(ServiceRefusal.is(denial) && [denial.status, denial.message]).toEqual([404, 'File not found']);
   });
 
   it('a shared-content recipient (resolver-vouched) reads the bytes byte-identical', async () => {
