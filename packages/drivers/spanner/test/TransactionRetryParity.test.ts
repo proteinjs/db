@@ -37,7 +37,11 @@ import { SpannerDriver } from '@proteinjs/db-driver-spanner';
  */
 
 type Door =
-  'dml on a transaction' | 'query on a transaction' | 'single-statement dml' | 'commit' | 'schema update in a body';
+  | 'dml on a transaction'
+  | 'query on a transaction'
+  | 'single-statement dml'
+  | 'commit'
+  | 'schema update in a body';
 type Bound = { [param: string]: unknown };
 type Scenario = {
   id: string;
