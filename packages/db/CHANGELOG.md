@@ -3,6 +3,26 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.49.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.48.0...@proteinjs/db@1.49.0) (2026-09-25)
+
+
+### Bug Fixes
+
+* **db:** create absent tables in foreign-key reference order ([eaac7d0](https://github.com/proteinjs/db/commit/eaac7d0d680f0cd169293ebb47253a51f2239bee))
+* **db:** stamp the booting package's own records with its version (re-cut over the sync runner rename: the test names SourceRecordSyncRunner) ([006eb04](https://github.com/proteinjs/db/commit/006eb042cb2e5fe7d0515ce2784a97a6bb6df03f))
+* **db:** the generated index is build output, not source — prettier and eslint leave generated/ alone ([80f4505](https://github.com/proteinjs/db/commit/80f450533aadfddadc43517c8c1f291af530c678))
+* **db:** the schema-reconcile warnings carry the error itself, never its text — a marked backend error prints as its status and the driver's sentence ([480ee7d](https://github.com/proteinjs/db/commit/480ee7d83ab7f06ce49152db14793587ed5d90a3))
+* one declaration per qualified name — the sync runner class is SourceRecordSyncRunner ([adf7791](https://github.com/proteinjs/db/commit/adf7791702637192367c61d70db97a68cb2961da))
+
+
+### Features
+
+* **db:** a durable table keeps its rows — Table.durable closes the delete door on both apis for every caller, break-glass included, with a 403 ServiceRefusal naming the table; the migration ledger declares it ([db9027d](https://github.com/proteinjs/db/commit/db9027d65c95ec56849d6f1815e95121d5ec7212))
+
+
+
+
+
 # [1.48.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.47.3...@proteinjs/db@1.48.0) (2026-09-24)
 
 

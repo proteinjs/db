@@ -3,6 +3,23 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.5.0](https://github.com/proteinjs/db/compare/@proteinjs/db-file-storage-driver-gcs@1.4.33...@proteinjs/db-file-storage-driver-gcs@1.5.0) (2026-09-25)
+
+
+### Bug Fixes
+
+* **db-file-storage-driver-gcs:** no storage-client error leaves the driver — its errors carried the access token ([ddb487a](https://github.com/proteinjs/db/commit/ddb487a42568a2a6b9221efc2a5a90d034edf9c9))
+* **file-storage-driver-gcs:** a byte overwrite keeps the object's content type and metadata — updateFileData restates the object's own content type, cache, disposition and language headers and its custom metadata (size restated for the new bytes), pinned to the generation it read ([d16bc4a](https://github.com/proteinjs/db/commit/d16bc4a104291005d8ea66979e3ddfef47b58f3f))
+
+
+### Features
+
+* **db-file-storage-driver-gcs:** an objectPrefix option — several deployments share one bucket, every operation names its object through one owner ([e739875](https://github.com/proteinjs/db/commit/e73987568322dacfc4fdcfd1a84d18b44240329a))
+
+
+
+
+
 ## [1.4.33](https://github.com/proteinjs/db/compare/@proteinjs/db-file-storage-driver-gcs@1.4.32...@proteinjs/db-file-storage-driver-gcs@1.4.33) (2026-09-24)
 
 **Note:** Version bump only for package @proteinjs/db-file-storage-driver-gcs

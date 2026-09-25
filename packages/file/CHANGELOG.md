@@ -3,6 +3,36 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.9.0](https://github.com/proteinjs/db/compare/@proteinjs/db-file@1.8.4...@proteinjs/db-file@1.9.0) (2026-09-25)
+
+
+### Bug Fixes
+
+* **db-file:** a file no copy can be made of answers a quiet 403 on GET /file/:id — it was a 500 with the refusal's stack printed on every view (a recipient looking at a shared camera RAW would raise an error report per look). FileCopyRefused is the seam's own refusal: FileStorage throws it in the maker's place with the maker's one-line reason, read by shape like FileStorageError; the route maps it, nothing printed; the browser service still throws it to its caller. Red first: the route case answered 500 ([936af9e](https://github.com/proteinjs/db/commit/936af9e58dbe1d0f672eeac41433e4f514b2b729))
+* **db-file:** a file that is not there answers what a refused copy answers — 404 "File not found" at every door, never the id ([d5e484c](https://github.com/proteinjs/db/commit/d5e484c0b8456fd67d704cbaa96799feef47d87f))
+* **db-file:** a refused copy answers only "File not found" at every door — the maker's reason stays in the server's log ([d4902f6](https://github.com/proteinjs/db/commit/d4902f6ce1d5b3e6daa609abab2bbf0eb9a4027a))
+* **db-file:** a storage driver's errors are the driver's own — a code, a plain message, the status ([a111158](https://github.com/proteinjs/db/commit/a11115825085860c1578196675497429cd2fb930))
+* **db-file:** deriveVariants hands back the caller's row with the variants named on it, not a re-read — an unset column stays unset (a consumer that returns the inserted row saw null where it had undefined); one read fewer at ingest ([763809c](https://github.com/proteinjs/db/commit/763809cc59b6d804f475bf8882a00d4d48ab113f))
+* **db-file:** one refusal at every file door — a file no copy can be made of is a 404 for anyone but its owner, whichever door asks ([382fa26](https://github.com/proteinjs/db/commit/382fa2648e0627b13f728c16d1b018a501557791))
+* **db-file:** the owner of a served file is read from the row's scope, not from a second read — getFile stays the one access decision every consumer stubs; a row with no owner recorded serves as itself ([133286b](https://github.com/proteinjs/db/commit/133286bb5178a5552704b76aa076ead3663f9f3e))
+* **db-file:** the read path derives a variant once per file and kind at a time in a process — N readers asking for the same absent stage while it derives (a shared document opened by many on one tick) each read the original, ran the maker, stored an object and had the row's word discard all but one; now they wait for the one derivation's answer (four readers: one read, one maker call, one object, no loser). Across processes the row's word in one transaction still decides. A maker that cannot make the variant of these bytes no longer fails the read with a 500 per look: FileVariantNotMade is the seam's own refusal (the maker's one-line reason on it, read by shape like FileCopyRefused); the read path serves the file itself and says so in the log, the ingest door still reports it to the caller holding the bytes. Red first: four readers cost four maker calls; the maker's throw escaped getVariant ([b9cca11](https://github.com/proteinjs/db/commit/b9cca11148c1ec8985caf9157de1eab3f37e0faa))
+* **db-file:** the row's word for a copy for others is decided in one transaction — two non-owners racing both passed the re-read and a second (third, fourth) copy stayed alive in the owner's scope, never named on the row and so never cascade-deleted; the read of the row and the write of its word now ride one transaction (the loser's transaction is retried and finds the winner named), the loser's row is deleted after the commit. The suite gains the race: four readers released on one tick at the driver's createFile — red 3/3 at the previous tip, green 3/3 here ([8eb5e45](https://github.com/proteinjs/db/commit/8eb5e456dfb9ac72fc40c1a11c89c6b0a6ae431b))
+* **db-file:** the server-side file-data door refuses a caller who may not read the file as unavailable — a 404 ServiceRefusal, not a failure ([dcd631a](https://github.com/proteinjs/db/commit/dcd631a7a6e6d56f3b528a1b930b670d40d9db59))
+
+
+### Features
+
+* **db-file:** a file read by anyone but its owner is served through the copy the registered FileCopyForOthers makes — made once, stored as the owner's own File and named on the row (copy_for_others, cascade-deleted), dropped when the bytes change; the owner is always served the original; with no maker registered everyone is (the seam for a picture served without its location) ([44edaaa](https://github.com/proteinjs/db/commit/44edaaa3e356eb0c79b56b20e31557bb2654d584))
+* **db-file:** a server-side door that made its own access decision is served the owner-or-copy bytes too — FileStorage.getAuthorizedFileData(row) ([927b19e](https://github.com/proteinjs/db/commit/927b19ed3173d80d75f51356d239275198ee1a81))
+* **db-file:** a stage variant beside the preview — File.stage, a second derived File with the preview's lifecycle, made through one FileVariantMaker seam ([915cadd](https://github.com/proteinjs/db/commit/915cadd185da162e6b503ca82b23adfc0c55218e))
+* **db-file:** File.originModel — which model made the bytes, beside the producer kind ([0005867](https://github.com/proteinjs/db/commit/0005867fc7c98e9e1800c3d86ef81ca64e026547))
+* **db-file:** GET /file/:id/variant/:kind — a variant is asked by URL, an existing file derives it on the first request ([c50c32c](https://github.com/proteinjs/db/commit/c50c32cac2037d20623547c39b53c3be489befa9))
+* File.origin — producer attribution column (how the bytes came to exist: an upload, a browser capture, a generation, a rendered document), a generic file fact consumers read without a join ([11786b7](https://github.com/proteinjs/db/commit/11786b747bc25a2744cb1c272d3cbb7b819a349c))
+
+
+
+
+
 ## [1.8.4](https://github.com/proteinjs/db/compare/@proteinjs/db-file@1.8.3...@proteinjs/db-file@1.8.4) (2026-09-24)
 
 **Note:** Version bump only for package @proteinjs/db-file

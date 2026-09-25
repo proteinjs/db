@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.32.1](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.32.0...@proteinjs/db-driver-spanner@1.32.1) (2026-09-25)
+
+
+### Bug Fixes
+
+* **db-driver-spanner:** a failed statement's error never prints its cause — the vendor's words can quote a row's values ([8701b56](https://github.com/proteinjs/db/commit/8701b56d5f9004b01acc62f751547cfb83f7f564))
+* **db-driver-spanner:** the backend's message rides no log line — a failure reads as its status and the driver's sentence; what is thrown is unchanged ([e1f0446](https://github.com/proteinjs/db/commit/e1f0446db9f5cc013b1b7f9b4e0cb19f0c5cf25c))
+* **db-driver-spanner:** the failure line keeps the field its readers parse — cause.message now holds the driver's sentence; the vendor error under the typed one is held to no line by a test; the driver's own deadline error is never marked ([c09e289](https://github.com/proteinjs/db/commit/c09e289d2e76c9acbde5591a846f10c178c00004))
+* **db:** the schema-reconcile warnings carry the error itself, never its text — a marked backend error prints as its status and the driver's sentence ([480ee7d](https://github.com/proteinjs/db/commit/480ee7d83ab7f06ce49152db14793587ed5d90a3))
+* one declaration per qualified name — the sync runner class is SourceRecordSyncRunner ([adf7791](https://github.com/proteinjs/db/commit/adf7791702637192367c61d70db97a68cb2961da))
+
+
+
+
+
 # [1.32.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.31.2...@proteinjs/db-driver-spanner@1.32.0) (2026-09-24)
 
 

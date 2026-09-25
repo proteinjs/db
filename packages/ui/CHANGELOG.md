@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.21.0](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.20.4...@proteinjs/db-ui@1.21.0) (2026-09-25)
+
+
+### Features
+
+* **db-ui:** the record surfaces honor a durable table — the record table's seat carries no delete act (a declared one included) and no row selection for it; the record form carries no Delete ([38be8bd](https://github.com/proteinjs/db/commit/38be8bd4db9292e6f5aaec46754f01205ab77752))
+
+
+
+
+
 ## [1.20.4](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.20.3...@proteinjs/db-ui@1.20.4) (2026-09-24)
 
 **Note:** Version bump only for package @proteinjs/db-ui

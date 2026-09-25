@@ -3,6 +3,19 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.15.1](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.15.0...@proteinjs/db-driver-knex@1.15.1) (2026-09-25)
+
+
+### Bug Fixes
+
+* **db-driver-knex:** a statement past its operation deadline reads on a line as timed out — the query layer's timeout error carries the statement's bindings and is marked like any failure, and its sentence is named by the error's name (it carries no vendor code); red first: the line read 'the database refused the statement' ([ae44a8d](https://github.com/proteinjs/db/commit/ae44a8d8058715afd1b07d8ed9dbca576724a035))
+* **db-driver-knex:** the failure line's cause carries the driver's sentence as message — one field name across drivers ([91a0e33](https://github.com/proteinjs/db/commit/91a0e33e5e8c38644a046536588874f72c7e0ac0))
+* **db-driver-knex:** the vendor's text rides no log line — a failure reads as its codes and the driver's sentence; what is thrown is unchanged ([1e08534](https://github.com/proteinjs/db/commit/1e085344d7d6c7c67751969828150edb7e458146))
+
+
+
+
+
 # [1.15.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.14.1...@proteinjs/db-driver-knex@1.15.0) (2026-09-24)
 
 
