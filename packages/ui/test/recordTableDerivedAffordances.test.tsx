@@ -305,12 +305,12 @@ describe('RecordTable — auth-derived affordances', () => {
       setUser(['staff']);
       await mount(new DeclaredBothActionsTable());
 
-      // The create act (door-less, insert doors open) still draws — so the seat exists — but
-      // selecting a row surfaces no delete act under either name.
+      // The create act (door-less, insert doors open) still draws — so the seat exists — but no
+      // delete act draws under either name, and with no act that works on a selection the table
+      // draws no selection column (@proteinjs/ui: row selection serves an act).
       expect(document.querySelector('button[aria-label="New membership"]')).not.toBeNull();
-      await act(async () => {
-        (selectRowCheckbox() as HTMLInputElement).click();
-      });
+      expect(selectRowCheckbox()).toBeNull();
+      expect(document.querySelector('input[aria-label="Select all"]')).toBeNull();
       expect(document.querySelector('button[aria-label="Revoke selected memberships"]')).toBeNull();
       expect(document.querySelector('button[aria-label="Delete selected rows"]')).toBeNull();
     });
