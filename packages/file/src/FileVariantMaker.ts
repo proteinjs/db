@@ -10,7 +10,11 @@ export type FileVariantKind = 'preview' | 'stage';
 
 export const FILE_VARIANT_KINDS: readonly FileVariantKind[] = ['preview', 'stage'];
 
-/** What the maker hands back for a variant: the bytes, their type, and the facts a consumer renders from without loading them. */
+/**
+ * What the maker hands back for a variant: the bytes, their type, and the facts a consumer renders
+ * from without loading them. Where the bytes came from is not the maker's to answer: the library
+ * writes the original's provenance on the variant's row (`FileTable.provenanceColumns`).
+ */
 export interface FileVariant {
   bytes: Buffer;
   type: string;
@@ -21,8 +25,9 @@ export interface FileVariant {
 /**
  * How a derived File of a File is made — ONE owner for "a variant of this file's bytes".
  *
- * The library owns the seat on the row, the lifecycle and the access rule for every variant
- * (`FileStorage.deriveVariants` at ingest, `FileStorage.getVariant` on the read path); the one
+ * The library owns the seat on the row, the lifecycle, the access rule and the provenance (the
+ * original's) for every variant (`FileStorage.deriveVariants` at ingest, `FileStorage.getVariant`
+ * on the read path); the one
  * package that knows the file's format registers how the variant's bytes are made — a picture's
  * 512 px thumbnail (`preview`) and its 1600 px rendition for the stage (`stage`) are two answers
  * of the same maker, never two mechanisms. Dependency direction is the

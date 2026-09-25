@@ -15,8 +15,9 @@ export interface File extends ScopedRecord {
    * A VARIANT — one of the derived Files of this file the {@link FileVariantMaker} seam makes
    * (`preview`, `stage`): the same lifecycle for each — named here, made once (at ingest with the
    * bytes in hand, or lazily on the first request through `FileStorage.getVariant`), dropped when
-   * this file's bytes change (`FileStorage.updateFileData`), deleted with this file (cascade), and
-   * readable by whoever can read this file (`variantOf`).
+   * this file's bytes change (`FileStorage.updateFileData`), deleted with this file (cascade),
+   * readable by whoever can read this file (`variantOf`), and carrying this file's provenance
+   * ({@link FileTable.provenanceColumns}) — a rendition's provenance is its original's.
    */
   preview?: Reference<File> | null;
   /**
@@ -43,7 +44,8 @@ export interface File extends ScopedRecord {
    * it. `null`/absent means no copy has been made yet: the next non-owner read makes one when the
    * maker applies to this file, and serves the original when it does not. Dropped when the
    * original's bytes change (`FileStorage.updateFileData`) and deleted with this file (cascade).
-   * The owner is never served it — their own scoped read serves the original.
+   * The owner is never served it — their own scoped read serves the original. Carries this
+   * file's provenance ({@link FileTable.provenanceColumns}), as every derived File does.
    */
   copyForOthers?: Reference<File> | null;
   /**
@@ -100,6 +102,29 @@ export interface File extends ScopedRecord {
 }
 
 export class FileTable extends Table<File> {
+  /**
+   * The columns that are a file's PROVENANCE — where its bytes came from and under what terms: the
+   * producer (`origin`, `originModel`), the web source (`sourceUrl`, `sourcePageUrl`,
+   * `retrievedAt`) and the rights record (`license`, `licenseUrl`, `attribution`). ONE list, the
+   * table's own: every derived File the library makes of a file — a variant (`preview`, `stage`)
+   * and the copy for others — carries these from the row it was made from (`FileStorage` writes
+   * them at insert), so a consumer reads a rendition's provenance off the row it draws, without a
+   * join, and a row with none derives rows with none. A column that describes THE ROW'S OWN bytes
+   * (`size`, `contentHash`, the media dimensions) is not provenance and is never copied — the
+   * maker answers those. A new provenance column is added HERE with its column; nothing else
+   * names the list.
+   */
+  static readonly provenanceColumns: ReadonlyArray<keyof File> = [
+    'origin',
+    'originModel',
+    'sourceUrl',
+    'sourcePageUrl',
+    'retrievedAt',
+    'license',
+    'licenseUrl',
+    'attribution',
+  ];
+
   public name = FILE_TABLE_NAME;
   public auth: Table<File>['auth'] = {
     db: {
