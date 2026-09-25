@@ -36,9 +36,10 @@ export const getFileCopyForOthers = (): FileCopyForOthers | undefined =>
  * served to no one but its owner. The seam's own cause, thrown by `FileStorage` in place of
  * whatever the maker threw (the maker's own one-line reason kept as `reason`) and answered by
  * `FileStorage` itself, once for every door — the browser service, `GET /file/:id`, a server-side
- * reader — as a 404 `ServiceRefusal` with this message, so a door never meets it: a deliberate
- * refusal every door tells from a failure the same way. Read by shape ({@link FileCopyRefused.is}),
- * so it holds across duplicate copies of this package.
+ * reader — as a 404 `ServiceRefusal` saying only `File not found`, so a door never meets it: a
+ * deliberate refusal every door tells from a failure the same way. Its message and `reason` stay
+ * on the server (`FileStorage` logs them at WARN); a caller reads the words a missing file gets.
+ * Read by shape ({@link FileCopyRefused.is}), so it holds across duplicate copies of this package.
  */
 export class FileCopyRefused extends Error {
   private static readonly NAME = 'FileCopyRefused';

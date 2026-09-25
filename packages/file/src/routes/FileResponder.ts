@@ -74,8 +74,8 @@ export class FileResponder {
     }
     if (ServiceRefusal.is(error)) {
       // A deliberate refusal, not a failure — a file no copy can be made of is not there for anyone
-      // but its owner (`FileStorage` answers every door the same 404; the maker said why on its own
-      // line). The same words as a row the caller cannot read; quiet, and never a 500.
+      // but its owner (`FileStorage` answers every door the same 404 and keeps the maker's reason in
+      // its own WARN). The same words as a row the caller cannot read; quiet, and never a 500.
       response.status(error.status).send('File not found');
       return;
     }
