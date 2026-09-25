@@ -1,0 +1,29 @@
+{
+  "branch": "fix/driver-errors-render-safely-on-log-lines-r11",
+  "packages": ["db", "drivers/spanner", "drivers/knex"],
+  "suites": [
+    "packages/db/test/SchemaReconcileLines.test.ts",
+    "packages/drivers/spanner/test/BackendMessageNeverOnALine.test.ts",
+    "packages/drivers/spanner/test/FailureLineShape.test.ts",
+    "packages/drivers/spanner/test/ConcurrentSchemaReconcile.test.ts",
+    "packages/drivers/spanner/test/TransactionRetryParity.test.ts",
+    "packages/drivers/spanner/test/ThrownErrorIdentity.test.ts",
+    "packages/drivers/spanner/test/OperationFailureCause.test.ts",
+    "packages/drivers/spanner/test/OperationErrorPrinting.test.ts",
+    "packages/drivers/spanner/test/BatchedDdl.test.ts",
+    "packages/drivers/spanner/test/StatementParamLogging.test.ts",
+    "packages/drivers/spanner/test/LogValuesSwitch.test.ts",
+    "packages/drivers/spanner/test/StatementLogNeverThrows.test.ts",
+    "packages/drivers/spanner/test/RetriedAbortLogging.test.ts",
+    "packages/drivers/spanner/test/EnvTokenAuth.test.ts",
+    "packages/drivers/spanner/test/SpannerLivenessMonitor.test.ts",
+    "packages/drivers/spanner/test/SpannerOperationDeadline.test.ts",
+    "packages/drivers/knex/test/VendorTextNeverOnALine.test.ts",
+    "packages/drivers/knex/test/StatementParamLogging.test.ts",
+    "packages/drivers/knex/test/LogValuesSwitch.test.ts",
+    "packages/drivers/knex/test/StatementLogNeverThrows.test.ts",
+    "packages/drivers/knex/test/OperationDeadline.test.ts"
+  ],
+  "removes": [],
+  "notes": "A re-cut of fix/driver-errors-render-safely-on-log-lines (809ff32b), which conflicts with main in drivers/spanner/src/SpannerDriver.ts (commit() under main's getOperationDeadlineMs rename). Cut over fix/spanner-error-cause-without-values (08fd0c6f) applied on main: both own how a failed statement's error prints, so this re-cut sits on that branch's shape (the typed error's inspect hook withholds its cause; a marked error reaches a log line as the stand-in) and boards AFTER it; its three commits are carried here as patch-identical copies, which a rebase onto a train already holding them drops. Raises the @proteinjs/logger floor to ^1.2.0 in db, drivers/spanner and drivers/knex (LogLineErrors; the locks pin 1.0.21, where the code and its tests do not compile) — a floor the db leg's own chore carries is aboard already and rebases to empty. Beyond the original: a knex statement past main's new operation deadline reads on a line as timed out (KnexFailureLine names the query layer's KnexTimeoutError, which carries the bindings and is marked); declares two more suites than the original: the typed error's printing suite and the knex deadline suite."
+}
