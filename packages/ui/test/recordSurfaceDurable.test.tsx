@@ -6,8 +6,8 @@
  * (derived or declared) and no row selection that would serve one; the record form no Delete. The
  * acts are absent, not greyed. A table with the same doors that does not declare it keeps both.
  *
- * The founder's report (2026-09-24): "you can select migrations and delete them in prod from the
- * record table; they're supposed to be durable records".
+ * The house's rule: migrations could be selected and deleted from the record table in a
+ * deployment — they are durable records.
  */
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
@@ -176,18 +176,14 @@ describe('a durable table on the record surfaces', () => {
       }
     });
 
-    it('a declared delete act does not reopen it: selecting a row surfaces no delete act under either name', async () => {
+    it('a declared delete act does not reopen it: no delete act under either name, and no row selection', async () => {
       setUser(['ledger-keeper']);
       await mountTable(new DurableDeclaredDeleteTable());
 
-      // The create act still draws (the insert doors are open) — the seat is there.
+      // The create act still draws (the insert doors are open) — the seat is there — but with no act
+      // that works on a selection the table draws no selection column (@proteinjs/ui).
       expect(document.querySelector('button[aria-label^="Create"]')).not.toBeNull();
-      const checkbox = selectRowCheckbox();
-      if (checkbox) {
-        await act(async () => {
-          checkbox.click();
-        });
-      }
+      expect(selectRowCheckbox()).toBeNull();
       expect(document.querySelector('button[aria-label="Remove selected entries"]')).toBeNull();
       expect(deleteAct()).toBeNull();
     });
