@@ -12,9 +12,8 @@ import { MigrationTable } from '../src/tables/MigrationTable';
  * that names the table. Everything else about the table's doors is unchanged, and a table that
  * does not declare it keeps its delete doors exactly as declared.
  *
- * The founder's ruling (2026-09-24): the migration ledger's rows could be selected and deleted in
- * prod from the record table — "they're supposed to be durable records"; the migration table
- * declares it.
+ * The house's rule: the migration ledger's rows could be selected and deleted from the record
+ * table in a deployment — they are durable records; the migration table declares it.
  *
  * `UserAuth` reads from a static repo; tests stub it directly per identity — no server needed.
  */
