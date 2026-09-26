@@ -60,6 +60,25 @@ describe('File media metadata columns', () => {
     expect(row.durationMs).toEqual(24_500);
   });
 
+  it('round-trips whether a picture has see-through pixels (`transparent`) — a fact read off the bytes at ingest, absent where nothing read it', async () => {
+    const mark = await new FileStorage().createFile(
+      { name: 'mark.png', type: 'image/png', size: 4, width: 1024, height: 1024, transparent: true } as File,
+      Buffer.from('mark').toString('base64')
+    );
+    expect((await getDbAsSystem().get(tables.File, { id: mark.id })).transparent).toBe(true);
+    const photo = await new FileStorage().createFile(
+      { name: 'photo.jpg', type: 'image/jpeg', size: 4, width: 4032, height: 3024, transparent: false } as File,
+      Buffer.from('jpeg').toString('base64')
+    );
+    expect((await getDbAsSystem().get(tables.File, { id: photo.id })).transparent).toBe(false);
+    // A file nothing probed (a clip, a stored file from before the column) carries no answer — read as opaque.
+    const clip = await new FileStorage().createFile(
+      { name: 'clip.mp4', type: 'video/mp4', size: 4, width: 1280, height: 720, durationMs: 1000 } as File,
+      Buffer.from('clip').toString('base64')
+    );
+    expect((await getDbAsSystem().get(tables.File, { id: clip.id })).transparent ?? undefined).toBeUndefined();
+  });
+
   it('round-trips the producer attribution — how the bytes came to exist (`origin`)', async () => {
     const file = await new FileStorage().createFile(
       { name: 'frame.png', type: 'image/png', size: 4, width: 1440, height: 900, origin: 'mockup' } as File,

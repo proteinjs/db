@@ -1,4 +1,4 @@
-import { Table, StringColumn, IntegerColumn, ReferenceColumn, Reference, DateColumn } from '@proteinjs/db';
+import { Table, StringColumn, IntegerColumn, BooleanColumn, ReferenceColumn, Reference, DateColumn } from '@proteinjs/db';
 import { ScopedRecord, withScopedRecordColumns, createScopedIndex } from '@proteinjs/user';
 
 const FILE_TABLE_NAME = 'file';
@@ -57,6 +57,15 @@ export interface File extends ScopedRecord {
   width?: number;
   height?: number;
   durationMs?: number;
+  /**
+   * Whether the picture has see-through pixels — read off the BYTES at ingest (the alpha channel's
+   * pixels, never the file's declared colour type alone and never the producer that made it): a
+   * mark made on a transparent background is true; a photograph, a JPEG, an opaque PNG false.
+   * A viewer reads it to seat the picture on the surface its thumbnail sat on instead of a black
+   * stage (a see-through mark on black is not the mark the person saw). Absent for video, for
+   * non-media files and for pictures stored before the column existed — read as opaque.
+   */
+  transparent?: boolean;
   /**
    * Web provenance — set when the bytes were fetched from the internet on the user's behalf
    * (a saved web image): the direct URL the bytes came from, the page they were found on, and
@@ -149,6 +158,7 @@ export class FileTable extends Table<File> {
     width: new IntegerColumn('width'),
     height: new IntegerColumn('height'),
     durationMs: new IntegerColumn('duration_ms'),
+    transparent: new BooleanColumn('transparent'),
     // Web provenance (see the interface docs). URLs can be long — MAX, like any URL storage.
     sourceUrl: new StringColumn('source_url', {}, 'MAX'),
     sourcePageUrl: new StringColumn('source_page_url', {}, 'MAX'),
