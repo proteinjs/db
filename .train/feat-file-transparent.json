@@ -1,0 +1,6 @@
+{
+  "branch": "feat/file-transparent",
+  "packages": ["file"],
+  "suites": ["packages/file/test/FileMediaMetadata.test.ts", "packages/file/test/FileByteAccess.test.ts"],
+  "removes": []
+}

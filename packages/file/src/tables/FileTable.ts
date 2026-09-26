@@ -1,4 +1,12 @@
-import { Table, StringColumn, IntegerColumn, BooleanColumn, ReferenceColumn, Reference, DateColumn } from '@proteinjs/db';
+import {
+  Table,
+  StringColumn,
+  IntegerColumn,
+  BooleanColumn,
+  ReferenceColumn,
+  Reference,
+  DateColumn,
+} from '@proteinjs/db';
 import { ScopedRecord, withScopedRecordColumns, createScopedIndex } from '@proteinjs/user';
 
 const FILE_TABLE_NAME = 'file';
