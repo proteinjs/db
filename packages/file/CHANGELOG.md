@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.10.0](https://github.com/proteinjs/db/compare/@proteinjs/db-file@1.9.1...@proteinjs/db-file@1.10.0) (2026-09-27)
+
+
+### Features
+
+* **db-file:** a picture's File row says whether it has see-through pixels (transparent) — a media fact read off the bytes at ingest, beside width and height; absent where nothing read it ([2ac30e9](https://github.com/proteinjs/db/commit/2ac30e96f5470a0283f72746febb9c0cbc5f08aa))
+
+
+
+
+
 ## [1.9.1](https://github.com/proteinjs/db/compare/@proteinjs/db-file@1.9.0...@proteinjs/db-file@1.9.1) (2026-09-25)
 
 
