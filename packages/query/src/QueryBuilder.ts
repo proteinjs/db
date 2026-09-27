@@ -75,7 +75,12 @@ export interface Pagination {
 export interface SortCriteria<T> {
   field: keyof T;
   desc?: boolean;
-  byValues?: string[];
+  /**
+   * Order by these values of `field`, in this order, every other row after them (a `CASE … END`
+   * ordering). The values are the column's own — a boolean column's `[true]`, an integer column's
+   * `[3, 1]` — and each binds with the column's driver type.
+   */
+  byValues?: T[keyof T][];
 }
 
 export class QueryBuilder<T = any> {
@@ -619,11 +624,14 @@ export class QueryBuilder<T = any> {
             ? `\`${config.resolveFieldName(this.tableName, field)}\``
             : `\`${field}\``;
           if (byValues && byValues.length > 0) {
-            // Constructing a CASE statement for sorting by specific values
+            // A CASE ordering over the sorted column. Each value binds with the COLUMN's driver
+            // type (a SORT node keeps its field on `criteria`, so the lookup goes by `field` —
+            // typing by the value's own shape leaves a BOOL or INT64 column's parameter without a
+            // type code and the driver refuses the statement).
             const cases = byValues
               .map(
-                (value: string, index: number) =>
-                  `WHEN ${resolvedSortFieldName} = ${paramManager.parameterize(value, this.getDriverColumnType(config, node.field, value))} THEN ${index}`
+                (value: T[keyof T], index: number) =>
+                  `WHEN ${resolvedSortFieldName} = ${paramManager.parameterize(value, this.getDriverColumnType(config, field, value))} THEN ${index}`
               )
               .join(' ');
             const orderByCase = `CASE ${cases} ELSE ${byValues.length} END`;

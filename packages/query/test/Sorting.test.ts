@@ -68,4 +68,47 @@ describe('QueryBuilder - Sorting Support', () => {
       param3: 'string',
     });
   });
+
+  test('Sorting by values types each CASE parameter from the sorted column, never from the value', () => {
+    interface Item {
+      id: string;
+      isActive: boolean;
+      rank: number;
+    }
+    // A driver's statement config: the property resolves to its column, the column to the driver's type.
+    const columnNames: { [property: string]: string } = { id: 'id', isActive: 'is_active', rank: 'rank' };
+    const columnTypes: { [column: string]: string } = { id: 'string', is_active: 'bool', rank: 'int64' };
+    const config = {
+      useParams: true,
+      useNamedParams: true,
+      resolveFieldName: (_table: string, property: string) => columnNames[property],
+      getDriverColumnType: (_table: string, column: string) => {
+        if (!columnTypes[column]) {
+          throw new Error(`Column ${column} does not exist`);
+        }
+        return columnTypes[column];
+      },
+    };
+
+    // A boolean column: the rows where it holds first, the rest after, each group by a second ordering.
+    const byBoolean = new QueryBuilder<Item>('Item')
+      .sort([
+        { field: 'isActive', byValues: [true] },
+        { field: 'rank', desc: true },
+      ])
+      .toSql(config);
+    expect(byBoolean.sql).toBe(
+      'SELECT * FROM `Item` ORDER BY CASE WHEN `is_active` = @param0 THEN 0 ELSE 1 END ASC, `rank` DESC;'
+    );
+    expect(byBoolean.namedParams?.params).toEqual({ param0: true });
+    expect(byBoolean.namedParams?.types).toEqual({ param0: 'bool' });
+
+    // An integer column: the same shape, the column's own type on every parameter.
+    const byInteger = new QueryBuilder<Item>('Item').sort([{ field: 'rank', byValues: [3, 1] }]).toSql(config);
+    expect(byInteger.sql).toBe(
+      'SELECT * FROM `Item` ORDER BY CASE WHEN `rank` = @param0 THEN 0 WHEN `rank` = @param1 THEN 1 ELSE 2 END ASC;'
+    );
+    expect(byInteger.namedParams?.params).toEqual({ param0: 3, param1: 1 });
+    expect(byInteger.namedParams?.types).toEqual({ param0: 'int64', param1: 'int64' });
+  });
 });

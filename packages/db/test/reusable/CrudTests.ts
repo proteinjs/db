@@ -2,6 +2,7 @@ import { QueryBuilder } from '@proteinjs/db-query';
 import { DbDriver, Db, Record, Table, DefaultTransactionContextFactory } from '@proteinjs/db';
 import { DbTestEnvironment } from '../util/DbTestEnvironment';
 import { crudTestTables, Employee, ReservedWordTest } from '../util/tables/crudTestTables';
+import { columnTypesTestTables, TestRecord } from '../util/tables/columnTypesTestTables';
 
 export const crudTests = (
   driver: DbDriver,
@@ -261,6 +262,55 @@ export const crudTests = (
         value: [insertedEmployee1.id, insertedEmployee2.id, insertedEmployee3.id],
       });
       await db.delete(emplyeeTable, qb);
+    });
+
+    test('Sort by values over a boolean column, then a second ordering', async () => {
+      // The rows where the flag holds first; false and never-set (NULL) rows are ONE group after them,
+      // each group by the second criterion. The CASE parameter binds with the column's own type.
+      const emplyeeTable: Table<Employee> = crudTestTables.Employee;
+      const remote = await db.insert(emplyeeTable, { name: 'Veronica', isRemote: true });
+      const onSite = await db.insert(emplyeeTable, { name: 'Cassidy', isRemote: false });
+      const unsaid = await db.insert(emplyeeTable, { name: 'Kiriko' });
+
+      const sortQuery = new QueryBuilder<Employee>(emplyeeTable.name)
+        .condition({ field: 'id', operator: 'IN', value: [remote.id, onSite.id, unsaid.id] })
+        .sort([
+          { field: 'isRemote', byValues: [true] },
+          { field: 'name', desc: false },
+        ]);
+      const sortResults = await db.query(emplyeeTable, sortQuery);
+
+      expect(sortResults.map((employee) => employee.name)).toEqual(['Veronica', 'Cassidy', 'Kiriko']);
+
+      // Clean up
+      const qb = new QueryBuilder<Employee>(emplyeeTable.name).condition({
+        field: 'id',
+        operator: 'IN',
+        value: [remote.id, onSite.id, unsaid.id],
+      });
+      await db.delete(emplyeeTable, qb);
+    });
+
+    test('Sort by values over an integer column', async () => {
+      const table: Table<TestRecord> = columnTypesTestTables.Test;
+      const first = await db.insert(table, { integerColumn: 1, stringColumn: 'one' });
+      const second = await db.insert(table, { integerColumn: 2, stringColumn: 'two' });
+      const third = await db.insert(table, { integerColumn: 3, stringColumn: 'three' });
+
+      const sortQuery = new QueryBuilder<TestRecord>(table.name)
+        .condition({ field: 'id', operator: 'IN', value: [first.id, second.id, third.id] })
+        .sort([{ field: 'integerColumn', byValues: [3, 1] }]);
+      const sortResults = await db.query(table, sortQuery);
+
+      expect(sortResults.map((record) => record.integerColumn)).toEqual([3, 1, 2]);
+
+      // Clean up
+      const qb = new QueryBuilder<TestRecord>(table.name).condition({
+        field: 'id',
+        operator: 'IN',
+        value: [first.id, second.id, third.id],
+      });
+      await db.delete(table, qb);
     });
 
     test('CRUD operations with undefined values', async () => {
