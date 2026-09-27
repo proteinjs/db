@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.49.1](https://github.com/proteinjs/db/compare/@proteinjs/db@1.49.0...@proteinjs/db@1.49.1) (2026-09-27)
+
+
+### Bug Fixes
+
+* **db-query:** a byValues sort binds each CASE parameter with the sorted column's driver type ([0521c88](https://github.com/proteinjs/db/commit/0521c88e4bf3e3349c9917942cd3842ec4d667f6))
+
+
+
+
+
 # [1.49.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.48.0...@proteinjs/db@1.49.0) (2026-09-25)
 
 
