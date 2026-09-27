@@ -139,8 +139,9 @@ export class FileStorage implements FileStorageService {
    * later request is served the same row without the maker). Server-only, like `getSignedUrl` —
    * the browser asks by URL, never by service call. Access is the original's ({@link getFile});
    * the variant is stored as the owner's own File whoever's read made it, carrying the original's
-   * provenance ({@link FileTable.provenanceColumns}), and is served like any File afterwards —
-   * with the same non-owner copy rule.
+   * provenance ({@link FileTable.provenanceColumns}) and what its pixels are
+   * ({@link FileTable.renditionColumns}), and is served like any File afterwards — with the same
+   * non-owner copy rule.
    * @returns The variant's File row, or `undefined` when the caller cannot read the original, no
    *          maker is registered, the maker does not apply to this file for this kind, or the
    *          maker could not make it of these bytes (the consumer then draws the original).
@@ -165,8 +166,8 @@ export class FileStorage implements FileStorageService {
   /**
    * Make and store every variant the registered maker applies to, with the original's bytes in
    * hand (the ingest's door — one decode of bytes just stored, never a re-read). Each is named on
-   * the row and carries the original's provenance ({@link FileTable.provenanceColumns}); a kind
-   * the maker does not apply to is left unset (the read path may derive it later if the maker's
+   * the row and carries the original's provenance ({@link FileTable.provenanceColumns}) and what
+   * its pixels are ({@link FileTable.renditionColumns}); a kind the maker does not apply to is left unset (the read path may derive it later if the maker's
    * rule changes). With no maker registered nothing is made.
    * @returns The caller's file row with each variant made here named on it (the row as the caller
    *          holds it, not a re-read — an unset column stays unset), and the variant Files made.
@@ -372,8 +373,8 @@ export class FileStorage implements FileStorageService {
 
   /**
    * Makes the copy (the maker's bytes, from the original's), stores it as a File in the owner's
-   * scope — the original's name, type, dimensions and provenance ({@link provenanceOf}) on it —
-   * and names it on the original's row. Two non-owners reading at once may both get here:
+   * scope — the original's name, type, dimensions, provenance and what its pixels are
+   * ({@link carriedFrom}) on it — and names it on the original's row. Two non-owners reading at once may both get here:
    * the row's word wins — decided in ONE transaction (the read of the row and the write of its
    * word together, so racing writers are serialized and the loser's transaction, retried, finds
    * the winner named) — and a copy that lost is deleted after the commit, the first is served.
@@ -398,7 +399,7 @@ export class FileStorage implements FileStorageService {
       ...(file.width !== undefined && file.width !== null ? { width: file.width } : {}),
       ...(file.height !== undefined && file.height !== null ? { height: file.height } : {}),
       ...(file.durationMs !== undefined && file.durationMs !== null ? { durationMs: file.durationMs } : {}),
-      ...this.provenanceOf(file),
+      ...this.carriedFrom(file),
       scope: file.scope,
     });
     await driver.createFile(copy, copyBytes.toString('base64'));
@@ -457,8 +458,9 @@ export class FileStorage implements FileStorageService {
 
   /**
    * Makes the variant (the maker's answer from the original's bytes), stores it as a File in the
-   * OWNER's scope naming its original and carrying the original's provenance ({@link provenanceOf}
-   * — the maker answers the bytes, their type and their dimensions, never where they came from),
+   * OWNER's scope naming its original and carrying the original's provenance and what its pixels
+   * are ({@link carriedFrom} — the maker answers the bytes, their type and their dimensions, never
+   * where they came from nor whether they are see-through: a rendition keeps the picture's alpha),
    * and names it on the original's row. Two readers may derive
    * the same kind at once: the row's word wins — decided in ONE transaction, exactly as the copy
    * for others is named — and the variant that lost is deleted after the commit. The maker's own
@@ -485,7 +487,7 @@ export class FileStorage implements FileStorageService {
       size: made.bytes.length,
       ...(made.width !== undefined ? { width: made.width } : {}),
       ...(made.height !== undefined ? { height: made.height } : {}),
-      ...this.provenanceOf(file),
+      ...this.carriedFrom(file),
       variantOf: new Reference<File>(tables.File.name, file.id),
       scope: file.scope,
     });
@@ -530,21 +532,24 @@ export class FileStorage implements FileStorageService {
   }
 
   /**
-   * The provenance a derived File carries — its original's, column for column, as the table names
-   * them ({@link FileTable.provenanceColumns}): a rendition of the bytes came to exist the way the
-   * bytes did, from where they did, under the rights they carry. Only what the row holds is
-   * copied, so a row with no provenance derives rows with none — nothing is invented. A row that
-   * is itself derived already carries its original's, so a derivation of it carries the same.
+   * What a derived File carries from the row it was made from, column for column as the table
+   * names them: the original's provenance ({@link FileTable.provenanceColumns}) — a rendition of
+   * the bytes came to exist the way the bytes did, from where they did, under the rights they
+   * carry — and what the picture's pixels are ({@link FileTable.renditionColumns}) — a rendition
+   * of a see-through picture is see-through. Only what the row holds is copied, so a row with
+   * none derives rows with none — nothing is invented. A row that is itself derived already
+   * carries its original's, so a derivation of it carries the same. THE one place a derived row's
+   * carried columns are decided: the maker answers the rendition's own (bytes, type, dimensions).
    */
-  private provenanceOf(file: File): Partial<File> {
-    const provenance: Partial<File> = {};
-    for (const column of FileTable.provenanceColumns) {
+  private carriedFrom(file: File): Partial<File> {
+    const carried: Partial<File> = {};
+    for (const column of [...FileTable.provenanceColumns, ...FileTable.renditionColumns]) {
       const value = file[column];
       if (value !== undefined && value !== null) {
-        Object.assign(provenance, { [column]: value });
+        Object.assign(carried, { [column]: value });
       }
     }
-    return provenance;
+    return carried;
   }
 
   /**

@@ -12,8 +12,10 @@ export const FILE_VARIANT_KINDS: readonly FileVariantKind[] = ['preview', 'stage
 
 /**
  * What the maker hands back for a variant: the bytes, their type, and the facts a consumer renders
- * from without loading them. Where the bytes came from is not the maker's to answer: the library
- * writes the original's provenance on the variant's row (`FileTable.provenanceColumns`).
+ * from without loading them. Where the bytes came from is not the maker's to answer, nor whether
+ * the pixels are see-through (a rendition keeps the picture's alpha): the library writes the
+ * original's provenance (`FileTable.provenanceColumns`) and what its pixels are
+ * (`FileTable.renditionColumns`) on the variant's row.
  */
 export interface FileVariant {
   bytes: Buffer;

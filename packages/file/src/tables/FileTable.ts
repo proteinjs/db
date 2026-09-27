@@ -25,7 +25,9 @@ export interface File extends ScopedRecord {
    * bytes in hand, or lazily on the first request through `FileStorage.getVariant`), dropped when
    * this file's bytes change (`FileStorage.updateFileData`), deleted with this file (cascade),
    * readable by whoever can read this file (`variantOf`), and carrying this file's provenance
-   * ({@link FileTable.provenanceColumns}) — a rendition's provenance is its original's.
+   * ({@link FileTable.provenanceColumns}) and what its pixels are ({@link FileTable.renditionColumns})
+   * — a rendition's provenance is its original's, and a rendition of a see-through picture is
+   * see-through.
    */
   preview?: Reference<File> | null;
   /**
@@ -53,7 +55,8 @@ export interface File extends ScopedRecord {
    * maker applies to this file, and serves the original when it does not. Dropped when the
    * original's bytes change (`FileStorage.updateFileData`) and deleted with this file (cascade).
    * The owner is never served it — their own scoped read serves the original. Carries this
-   * file's provenance ({@link FileTable.provenanceColumns}), as every derived File does.
+   * file's provenance ({@link FileTable.provenanceColumns}) and what its pixels are
+   * ({@link FileTable.renditionColumns}), as every derived File does.
    */
   copyForOthers?: Reference<File> | null;
   /**
@@ -71,7 +74,9 @@ export interface File extends ScopedRecord {
    * mark made on a transparent background is true; a photograph, a JPEG, an opaque PNG false.
    * A viewer reads it to seat the picture on the surface its thumbnail sat on instead of a black
    * stage (a see-through mark on black is not the mark the person saw). Absent for video, for
-   * non-media files and for pictures stored before the column existed — read as opaque.
+   * non-media files and for pictures stored before the column existed — read as opaque. Every
+   * rendition of the picture — a variant, the copy for others — carries it from the picture
+   * ({@link FileTable.renditionColumns}): a thumbnail of a see-through mark is see-through.
    */
   transparent?: boolean;
   /**
@@ -141,6 +146,22 @@ export class FileTable extends Table<File> {
     'licenseUrl',
     'attribution',
   ];
+
+  /**
+   * The columns that are a fact of the PICTURE every rendition of it shares — whether its pixels
+   * are see-through (`transparent`). A derived File is a rendition of the picture's pixels: the
+   * maker resizes a variant (`preview`, `stage`) and never flattens it, and the copy for others is
+   * the same pixels with the metadata off — so a thumbnail of a mark made on a transparent
+   * background is see-through and a photograph's is opaque, exactly as the picture is. ONE list,
+   * the table's own, beside {@link provenanceColumns}: `FileStorage` writes these on every derived
+   * File from the row it was made from, with the provenance, so a consumer seats a rendition on
+   * the surface its picture sat on by reading the row it draws, without a join; a row with no
+   * answer derives rows with none. What is the RENDITION'S OWN (its type, its size, its
+   * dimensions, its hash) is the maker's answer and is never copied. A column read off the
+   * picture's bytes that every rendition keeps is added HERE with its column; nothing else names
+   * the list.
+   */
+  static readonly renditionColumns: ReadonlyArray<keyof File> = ['transparent'];
 
   public name = FILE_TABLE_NAME;
   public auth: Table<File>['auth'] = {
