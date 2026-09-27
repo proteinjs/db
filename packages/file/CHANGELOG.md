@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.10.1](https://github.com/proteinjs/db/compare/@proteinjs/db-file@1.10.0...@proteinjs/db-file@1.10.1) (2026-09-27)
+
+
+### Bug Fixes
+
+* **db-file:** a picture's renditions carry whether its pixels are see-through — the variants (preview, stage) and the copy for others inherit `transparent` from the row they are made from, beside the provenance, through one table-owned list (FileTable.renditionColumns) ([a6cfdab](https://github.com/proteinjs/db/commit/a6cfdabecdec93987e3d1f5be10e831a1d21c4af))
+
+
+
+
+
 # [1.10.0](https://github.com/proteinjs/db/compare/@proteinjs/db-file@1.9.1...@proteinjs/db-file@1.10.0) (2026-09-27)
 
 
