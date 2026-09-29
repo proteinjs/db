@@ -5,7 +5,7 @@ import { SourceRecordRepo } from './source/SourceRecordRepo';
 import { SourceRecordSyncRunner } from './source/SourceRecordSyncRunner';
 import { getSourceRecordLoaders } from './source/SourceRecord';
 import { MigrationRunnerService, getMigrationRunnerService } from './services/MigrationRunnerService';
-import { Migration, MigrationTable } from './tables/MigrationTable';
+import { Migration, MigrationEstimate, MigrationTable } from './tables/MigrationTable';
 import { QueryBuilderFactory } from './QueryBuilderFactory';
 import { TableManager } from './schema/TableManager';
 import { Service } from '@proteinjs/service';
@@ -41,6 +41,62 @@ export interface MigrationSeriesSummary {
   failed?: { id: string; description: string; failureMessage?: string };
   /** Ordered after the failure — never started (later migrations may build on earlier ones). */
   notAttempted: string[];
+}
+
+/**
+ * The plan for the pending series, read BEFORE anything runs: each pending migration's estimate
+ * ({@link Migration.estimate}) and the projection over the ones that declared seconds per unit.
+ * {@link MigrationRunner.planPendingMigrations} returns it without applying anything (the dry
+ * run); {@link MigrationRunner.runPendingMigrations} logs it before its first run. Ids appear in
+ * the order the series would run them.
+ */
+export interface MigrationPlan {
+  /** The migrations the series would run, in order, each with its estimate when declared. */
+  pending: MigrationPlanEntry[];
+  /** Seconds projected over the entries that declared `secondsPerUnit` — the deadline's input. */
+  projectedSeconds: number;
+  /** How many entries the projection covers. */
+  projected: number;
+  /** Ids the projection does NOT cover: no estimate declared, or no seconds per unit. */
+  unprojected: string[];
+  /** Excluded by the explicit `manual` flag. */
+  skippedManual: string[];
+  /** Already in 'success' status. */
+  alreadyApplied: string[];
+  /** Ledger rows with no source record in this build (the run stamps these retired; the plan only reports). */
+  unresolved: string[];
+  /** Rows carrying `retired: true`. */
+  retired: string[];
+  /**
+   * True when the ledger table does not exist: a database no schema sync has touched, so every
+   * declared migration runs over empty tables — the estimates are not read (nothing to count).
+   */
+  freshDatabase: boolean;
+}
+
+export interface MigrationPlanEntry {
+  id: string;
+  description: string;
+  /**
+   * Runs during `Db.init()` before schema sync rather than in the series
+   * ({@link Migration.preSchemaSync}) — planned all the same: a deploy's deadline covers init.
+   */
+  preSchemaSync?: boolean;
+  estimate?: MigrationEstimate;
+  /** `ceil(units × secondsPerUnit)` when the estimate declares seconds per unit. */
+  projectedSeconds?: number;
+  /** Why the entry carries no projection, in the words the plan line uses. */
+  unprojectedReason?: string;
+}
+
+/** The classification of a ledger row against this build's source declarations. */
+interface LedgerClassification {
+  /** The source declarations that would run, in series order. */
+  pending: Migration[];
+  skippedManual: string[];
+  alreadyApplied: string[];
+  unresolved: string[];
+  retired: string[];
 }
 
 export class MigrationRunner implements MigrationRunnerService {
@@ -176,6 +232,9 @@ export class MigrationRunner implements MigrationRunnerService {
    *   build — until un-retired on the Migrations page; skipped, reported as `retired`.
    * - the FIRST failure STOPS the series (later migrations may build on earlier ones). The
    *   caller exits non-zero, the Job fails, the rollout does not advance.
+   * - the PLAN comes first: before the first run, every pending migration's estimate
+   *   ({@link Migration.estimate}) is logged as one line and the series' total as another — the
+   *   same lines {@link planPendingMigrations} produces on its own for a dry run.
    *
    * EXPAND-CONTRACT INVARIANT (documented at this seam on purpose): every automated migration —
    * and the schema sync that fronts it — must be backward-compatible with the STILL-RUNNING old
@@ -188,56 +247,40 @@ export class MigrationRunner implements MigrationRunnerService {
   async runPendingMigrations(): Promise<MigrationSeriesSummary> {
     const migrationTable: Table<Migration> = new MigrationTable();
     const db = getDbAsSystem();
-    const qb = new QueryBuilderFactory().createQueryBuilder(migrationTable).sort([
-      { field: 'created', desc: false },
-      { field: 'id', desc: false },
-    ]);
-    const ledger = await db.query(migrationTable, qb);
+    const ledger = await db.query(migrationTable, this.ledgerInSeriesOrder(migrationTable));
+    const sourceRecordRepo = new SourceRecordRepo();
+    const classified = this.classifyLedger(ledger, (id) =>
+      sourceRecordRepo.getSourceRecord<Migration>(migrationTable.name, id)
+    );
+    for (const id of classified.unresolved) {
+      // Stamp, don't just skip: the ledger must remember the source class was gone. If the
+      // class ships again in a later build, the row stays excluded until a human un-retires it
+      // on the Migrations page — a returned loader id is not consent to auto-run.
+      await db.update(migrationTable, { id, retired: true } as Partial<Migration>);
+    }
 
     const summary: MigrationSeriesSummary = {
       applied: [],
-      skippedManual: [],
-      alreadyApplied: [],
-      unresolved: [],
-      retired: [],
+      skippedManual: classified.skippedManual,
+      alreadyApplied: classified.alreadyApplied,
+      unresolved: classified.unresolved,
+      retired: classified.retired,
       notAttempted: [],
     };
-    const sourceRecordRepo = new SourceRecordRepo();
-    const pending: Migration[] = [];
-    for (const row of ledger) {
-      if (row.retired) {
-        summary.retired.push(row.id);
-        continue;
-      }
-      const source = sourceRecordRepo.getSourceRecord<Migration>(migrationTable.name, row.id);
-      if (!source) {
-        // Stamp, don't just skip: the ledger must remember the source class was gone. If the
-        // class ships again in a later build, the row stays excluded until a human un-retires it
-        // on the Migrations page — a returned loader id is not consent to auto-run.
-        await db.update(migrationTable, { id: row.id, retired: true } as Partial<Migration>);
-        summary.unresolved.push(row.id);
-        continue;
-      }
-      if (source.manual) {
-        summary.skippedManual.push(row.id);
-        continue;
-      }
-      if (row.status === 'success') {
-        summary.alreadyApplied.push(row.id);
-        continue;
-      }
-      pending.push(row);
-    }
-
+    const pending = classified.pending;
     this.logger.info({
       message: `Running ${pending.length} pending migration${pending.length === 1 ? '' : 's'} in series, oldest-first`,
       obj: {
-        pending: pending.map((row) => row.id),
+        pending: pending.map((migration) => migration.id),
         skippedManual: summary.skippedManual,
         skippedRetired: summary.retired,
         stampedRetired: summary.unresolved,
       },
     });
+    // The plan, BEFORE the first run: every pending migration's estimate as one line, then the
+    // total — the reader of the Job's log knows what the series is about to do and how long the
+    // projection says it takes, before a row changes.
+    await this.estimateSeries(pending, { ...classified, freshDatabase: false });
     for (let i = 0; i < pending.length; i++) {
       const outcome = await this.ensureMigrationRun(pending[i].id);
       if (outcome.status === 'success') {
@@ -249,12 +292,58 @@ export class MigrationRunner implements MigrationRunnerService {
         description: outcome.description,
         failureMessage: outcome.failureMessage,
       };
-      summary.notAttempted = pending.slice(i + 1).map((row) => row.id);
+      summary.notAttempted = pending.slice(i + 1).map((migration) => migration.id);
       break;
     }
 
     this.logger.info({ message: `Migration series finished`, obj: summary as any });
     return summary;
+  }
+
+  /**
+   * The DRY RUN — the plan and nothing else: what {@link runPendingMigrations} would run, with
+   * each migration's estimate ({@link Migration.estimate}, read-only by contract) and the
+   * projection over the ones that declared seconds per unit. Applies NOTHING: no `Db.init()`
+   * (the deploy entrypoint calls this INSTEAD of init — init would create the database, run the
+   * pre-schema-sync migrations, sync the schema and sync the source records), no run, no ledger
+   * write — an unresolved row is reported, not stamped.
+   *
+   * Runs before init by construction, so the declarations come from the BUILD (the reflection
+   * source-record loaders for the migration table) joined to the ledger as it stands: a row's
+   * status says whether its migration is pending; a declaration with no row yet is what this
+   * release's source sync will insert as 'proposed' — pending, planned after the ledger's own
+   * pending rows (their `created` is older than a row born at the next init), in id order among
+   * themselves. Source records already registered in this process (init has run, or a test
+   * planted them) take precedence over the build's declaration of the same id — the same object
+   * after init.
+   *
+   * A database the schema sync has never touched has no ledger table: every declared migration
+   * is listed, no estimate is read (their tables do not exist either — nothing to count), and
+   * the plan says `freshDatabase`. An estimate that throws fails the plan loudly — a plan that
+   * cannot count is not a plan.
+   */
+  async planPendingMigrations(): Promise<MigrationPlan> {
+    const migrationTable: Table<Migration> = new MigrationTable();
+    const db = getDbAsSystem();
+    const declared = this.declaredMigrations(migrationTable);
+    const sourceRecordRepo = new SourceRecordRepo();
+    const sourceOf = (id: string) =>
+      sourceRecordRepo.getSourceRecord<Migration>(migrationTable.name, id) ?? declared.get(id);
+    const freshDatabase = !(await db.tableExists(migrationTable));
+    const ledger = freshDatabase ? [] : await db.query(migrationTable, this.ledgerInSeriesOrder(migrationTable));
+    const classified = this.classifyLedger(ledger, sourceOf);
+    const inLedger = new Set(ledger.map((row) => row.id));
+    const unsynced = Array.from(declared.values())
+      .filter((migration) => !inLedger.has(migration.id))
+      .sort((a, b) => a.id.localeCompare(b.id));
+    for (const migration of unsynced) {
+      if (migration.manual) {
+        classified.skippedManual.push(migration.id);
+      } else {
+        classified.pending.push(migration);
+      }
+    }
+    return await this.estimateSeries(classified.pending, { ...classified, freshDatabase });
   }
 
   // The db is taken as a provider, resolved inside this async body: on the service path,
@@ -345,5 +434,136 @@ export class MigrationRunner implements MigrationRunnerService {
     }
 
     return parts.join(' ');
+  }
+
+  /** The ledger in SERIES order: oldest-first by the row's `created`, id tiebreak. */
+  private ledgerInSeriesOrder(migrationTable: Table<Migration>) {
+    return new QueryBuilderFactory().createQueryBuilder(migrationTable).sort([
+      { field: 'created', desc: false },
+      { field: 'id', desc: false },
+    ]);
+  }
+
+  /**
+   * One owner of "what does a ledger row mean for the series": retired rows are skipped; rows
+   * with no source record are unresolved (the RUN stamps them retired; the plan reports them);
+   * `manual` declarations are excluded; 'success' rows are already applied; anything else is
+   * pending — including 'running' (a crashed earlier run). Pure over the rows: no writes.
+   */
+  private classifyLedger(ledger: Migration[], sourceOf: (id: string) => Migration | undefined): LedgerClassification {
+    const classified: LedgerClassification = {
+      pending: [],
+      skippedManual: [],
+      alreadyApplied: [],
+      unresolved: [],
+      retired: [],
+    };
+    for (const row of ledger) {
+      if (row.retired) {
+        classified.retired.push(row.id);
+        continue;
+      }
+      const source = sourceOf(row.id);
+      if (!source) {
+        classified.unresolved.push(row.id);
+        continue;
+      }
+      if (source.manual) {
+        classified.skippedManual.push(row.id);
+        continue;
+      }
+      if (row.status === 'success') {
+        classified.alreadyApplied.push(row.id);
+        continue;
+      }
+      classified.pending.push(source);
+    }
+    return classified;
+  }
+
+  /** This build's migration declarations by id — the reflection source-record loaders for the migration table. */
+  private declaredMigrations(migrationTable: Table<Migration>): Map<string, Migration> {
+    const declared = new Map<string, Migration>();
+    for (const { loader } of getSourceRecordLoaders<Migration>()) {
+      if (loader.table.name === migrationTable.name) {
+        const migration = loader.record as Migration;
+        declared.set(migration.id, migration);
+      }
+    }
+    return declared;
+  }
+
+  /**
+   * The plan's lines: each pending migration's estimate (read here — the one call of
+   * {@link Migration.estimate}), logged as one line, then the total. Read-only by the door's
+   * contract; nothing here writes.
+   */
+  private async estimateSeries(
+    pending: Migration[],
+    context: Omit<MigrationPlan, 'pending' | 'projectedSeconds' | 'projected' | 'unprojected'>
+  ): Promise<MigrationPlan> {
+    const plan: MigrationPlan = {
+      pending: [],
+      projectedSeconds: 0,
+      projected: 0,
+      unprojected: [],
+      skippedManual: context.skippedManual,
+      alreadyApplied: context.alreadyApplied,
+      unresolved: context.unresolved,
+      retired: context.retired,
+      freshDatabase: context.freshDatabase,
+    };
+    for (const migration of pending) {
+      const entry: MigrationPlanEntry = {
+        id: migration.id,
+        description: migration.description,
+        ...(migration.preSchemaSync ? { preSchemaSync: true } : {}),
+      };
+      if (context.freshDatabase) {
+        entry.unprojectedReason = 'fresh database, nothing to count';
+      } else if (!migration.estimate) {
+        entry.unprojectedReason = 'no estimate declared';
+      } else {
+        entry.estimate = await migration.estimate();
+        if (entry.estimate.secondsPerUnit === undefined) {
+          entry.unprojectedReason = 'no seconds per unit declared';
+        } else {
+          entry.projectedSeconds = Math.ceil(entry.estimate.units * entry.estimate.secondsPerUnit);
+        }
+      }
+      if (entry.projectedSeconds === undefined) {
+        plan.unprojected.push(entry.id);
+      } else {
+        plan.projected++;
+        plan.projectedSeconds += entry.projectedSeconds;
+      }
+      plan.pending.push(entry);
+      this.logger.info({ message: this.planLine(entry) });
+    }
+    const without =
+      plan.unprojected.length > 0
+        ? `, ${plan.unprojected.length} without a projection (${plan.unprojected.join(', ')})`
+        : '';
+    this.logger.info({
+      message:
+        `Migration plan total: ${plan.pending.length} pending, ≈ ${plan.projectedSeconds} s projected over ` +
+        `${plan.projected} of them${without}`,
+      obj: plan as any,
+    });
+    return plan;
+  }
+
+  /** One line per pending migration: the count, the unit, the projection when there is one, the note. */
+  private planLine(entry: MigrationPlanEntry): string {
+    const head = `Migration plan: (${entry.id}) ${entry.description}${entry.preSchemaSync ? ' [runs at init, before schema sync]' : ''} — `;
+    if (!entry.estimate) {
+      return `${head}${entry.unprojectedReason}`;
+    }
+    const { units, unit, secondsPerUnit, note } = entry.estimate;
+    const projection =
+      entry.projectedSeconds === undefined
+        ? entry.unprojectedReason
+        : `≈ ${entry.projectedSeconds} s at ${secondsPerUnit} s per unit`;
+    return `${head}${units} ${unit}, ${projection}${note ? ` (${note})` : ''}`;
   }
 }

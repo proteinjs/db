@@ -3,6 +3,26 @@ import { BooleanColumn, DateTimeColumn, ObjectColumn, StringColumn } from '../Co
 import { Table } from '../Table';
 import { SourceRecord, withSourceRecordColumns } from '../source/SourceRecord';
 
+/**
+ * What a migration's run would touch, counted READ-ONLY before the series runs: the plan a
+ * deploy reads before it commits to the run ({@link MigrationRunner.planPendingMigrations}), and
+ * the number a caller sizes the run's deadline from.
+ */
+export interface MigrationEstimate {
+  /** How many units the run would touch — zero when nothing is left to do (a rerun over converted data). */
+  units: number;
+  /** The unit's name, a plural noun ("roots", "rows"). */
+  unit: string;
+  /**
+   * Seconds one unit takes, when the migration has measured it (a rehearsal over a copy of a live
+   * database); the plan projects `units × secondsPerUnit`. Absent, the plan reports the count and
+   * no projection.
+   */
+  secondsPerUnit?: number;
+  /** Where the numbers come from, and anything the reader of the plan should know. */
+  note?: string;
+}
+
 export interface Migration extends SourceRecord {
   /**
    * The declaring loader's class name (`BackfillOnboardingStateForExistingAccounts`) — the
@@ -61,6 +81,13 @@ export interface Migration extends SourceRecord {
   duration?: string;
   output?: any;
   run: () => Promise<any | void>;
+  /**
+   * The estimate door: a READ-ONLY count of the work `run` would do ({@link MigrationEstimate}).
+   * Optional — the plan logs "no estimate declared" without it. Read before the series runs (the
+   * plan lines {@link MigrationRunner.runPendingMigrations} logs before its first run) and by the
+   * dry run that applies nothing ({@link MigrationRunner.planPendingMigrations}). Never writes.
+   */
+  estimate?: () => Promise<MigrationEstimate>;
 }
 
 export class MigrationTable extends Table<Migration> {

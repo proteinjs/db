@@ -217,8 +217,12 @@ export abstract class Table<T extends Record> implements Loadable, CustomSeriali
   };
 }
 
+/**
+ * A record's data fields: its methods are not columns — a required one (`run`) and an OPTIONAL
+ * one (`estimate?`, whose type is the function or `undefined`) alike.
+ */
 type ExcludeFunctions<T> = {
-  [P in keyof T as T[P] extends Function ? never : P]: T[P];
+  [P in keyof T as NonNullable<T[P]> extends Function ? never : P]: T[P];
 };
 
 type RequiredProps<T> = {
