@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.50.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.49.1...@proteinjs/db@1.50.0) (2026-09-29)
+
+
+### Bug Fixes
+
+* **db:** the plan's failure names the migration whose estimate threw ([69e0090](https://github.com/proteinjs/db/commit/69e0090dce0623ffad7c9b3079432d1e604849f2))
+
+
+### Features
+
+* **db:** a migration may declare an estimate; the runner plans the series before it runs, and offers the plan as a dry run ([dff780b](https://github.com/proteinjs/db/commit/dff780b7680bdba1d61a47bbe6149d5374aceea4))
+
+
+
+
+
 ## [1.49.1](https://github.com/proteinjs/db/compare/@proteinjs/db@1.49.0...@proteinjs/db@1.49.1) (2026-09-27)
 
 
