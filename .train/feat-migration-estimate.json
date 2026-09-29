@@ -1,0 +1,11 @@
+{
+  "branch": "feat/migration-estimate",
+  "packages": ["db"],
+  "suites": [
+    "packages/db/test/MigrationPlan.test.ts",
+    "packages/db/test/MigrationRunnerContainment.test.ts",
+    "packages/db/test/MigrationAuth.test.ts",
+    "packages/db/test/SourceRecordLoaderQualifiedName.test.ts"
+  ],
+  "removes": []
+}
