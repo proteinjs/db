@@ -524,7 +524,7 @@ export class MigrationRunner implements MigrationRunnerService {
       } else if (!migration.estimate) {
         entry.unprojectedReason = 'no estimate declared';
       } else {
-        entry.estimate = await migration.estimate();
+        entry.estimate = await this.readEstimate(migration);
         if (entry.estimate.secondsPerUnit === undefined) {
           entry.unprojectedReason = 'no seconds per unit declared';
         } else {
@@ -551,6 +551,23 @@ export class MigrationRunner implements MigrationRunnerService {
       obj: plan as any,
     });
     return plan;
+  }
+
+  /**
+   * The one call of {@link Migration.estimate}. A throw fails the plan loudly, NAMING the migration:
+   * the reader of a plan that could not count must know which count failed, and the estimate's own
+   * message ("count query failed") does not say.
+   */
+  private async readEstimate(migration: Migration): Promise<MigrationEstimate> {
+    try {
+      return await migration.estimate!();
+    } catch (error: any) {
+      const failure = new Error(
+        `Migration plan: (${migration.id}) ${migration.description} — the estimate failed: ${error?.message ?? error}`
+      );
+      (failure as Error & { cause?: unknown }).cause = error;
+      throw failure;
+    }
   }
 
   /** One line per pending migration: the count, the unit, the projection when there is one, the note. */

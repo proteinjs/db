@@ -313,4 +313,25 @@ describe('MigrationRunner — the plan before the run', () => {
     expect(events.filter((event) => event.startsWith('run:'))).toEqual([]);
     expect(db.writes).toEqual([]);
   });
+
+  it('a throwing estimate names the migration in the failure — the reader of the plan Job’s log knows which count failed', async () => {
+    const fine = plant('names-a-fine', { estimate: async () => ({ units: 1, unit: 'rows', secondsPerUnit: 1 }) });
+    const broken = plant('names-b-broken', {
+      estimate: async () => {
+        throw new Error('count query failed');
+      },
+    });
+    ledgerRow(fine);
+    ledgerRow(broken);
+
+    await expect(runner().planPendingMigrations()).rejects.toThrow(
+      'Migration plan: (names-b-broken) plan test migration names-b-broken — the estimate failed: count query failed'
+    );
+    expect(events.filter((event) => event.startsWith('run:'))).toEqual([]);
+    expect(db.writes).toEqual([]);
+    // The line for the migration before it landed; no line for the one that could not count.
+    expect(planLines()).toEqual([
+      'log:Migration plan: (names-a-fine) plan test migration names-a-fine — 1 rows, ≈ 1 s at 1 s per unit',
+    ]);
+  });
 });
