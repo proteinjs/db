@@ -7,10 +7,11 @@
  * user draws no affordance, because the act could only end in a refused save. A UI act rides
  * the service RPC and DbService's inner Db re-checks the db api as the calling user, so an
  * affordance requires BOTH doors — and TableAuth derives the db half: a db door the block leaves
- * undeclared mirrors the door the service block declares for the same operation (one-way — a
- * service block that omits the door keeps the lock), so a service-only declaration is an
- * affordance for the identity the service door names. Tables with no auth block keep the
- * historic default (admin-only break-glass — both buttons for admin, none for anyone else).
+ * undeclared mirrors the door the service block declares for the same operation where that door
+ * admits the admin role alone (one-way — a service block that omits the door keeps the lock; a
+ * wider service door mirrors nothing), so a service-only `['admin']` declaration is an affordance
+ * for the admin and nothing else. Tables with no auth block keep the historic default (admin-only
+ * break-glass — both buttons for admin, none for anyone else).
  */
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
@@ -77,13 +78,32 @@ class FullDoorsTable extends Table<Session> {
 }
 
 /**
- * Service doors open, the db block query-only: the db write doors are UNDECLARED, so TableAuth
- * mirrors the service block's door for each — DbService's inner Db re-check admits what the gate
- * admitted, and the affordance follows the service door. (A service block that OMITS the door —
- * QueryOnlyTable — keeps the lock on both apis: the mirror is one-way.)
+ * Service write doors declared for the admin role alone, the db block query-only: the db write
+ * doors are UNDECLARED, so TableAuth mirrors the `['admin']` service doors — DbService's inner Db
+ * re-check admits the admin the gate admitted, and the affordances follow for the admin. (A
+ * service block that OMITS the door — QueryOnlyTable — keeps the lock on both apis: the mirror
+ * is one-way.)
  */
 class AsymmetricDoorsTable extends Table<Session> {
   public name = 'half_open';
+  public auth: Table<Session>['auth'] = {
+    db: { query: { permission: 'users' } },
+    service: { query: { permission: 'users' }, insert: ['admin'], delete: ['admin'] },
+  };
+  public columns = withRecordColumns<Session>({
+    userEmail: new StringColumn('user_email'),
+  });
+}
+
+/**
+ * The same asymmetry with WIDER service doors — a permission: the mirror reaches only a service
+ * door that admits the admin role alone, so the db write doors stay shut and no affordance draws
+ * for the permission holder (the act would clear the gate and be refused behind it) — nor for
+ * the admin. A table that means the permission to write through the db api declares that door
+ * at the db block itself.
+ */
+class WiderAsymmetricDoorsTable extends Table<Session> {
+  public name = 'half_open_wider';
   public auth: Table<Session>['auth'] = {
     db: { query: { permission: 'users' } },
     service: { all: { permission: 'users' } },
@@ -241,12 +261,36 @@ describe('RecordTable — auth-derived affordances', () => {
     expect(selectRowCheckbox()).toBeNull();
   });
 
-  it('a service door whose db half is undeclared is an affordance — the db door mirrors it, so the inner re-check admits the act', async () => {
-    setUser(['staff']);
+  it("an ['admin'] service door whose db half is undeclared is an affordance for the admin — the db door mirrors it, so the inner re-check admits the act", async () => {
+    setUser(['admin']);
     await mount(new AsymmetricDoorsTable());
 
     expect(createButton()).not.toBeNull();
     expect(selectRowCheckbox()).not.toBeNull();
+  });
+
+  it("an ['admin'] service door draws nothing for a user it does not name — the read door alone opens for them", async () => {
+    setUser(['staff']);
+    await mount(new AsymmetricDoorsTable());
+
+    expect(createButton()).toBeNull();
+    expect(selectRowCheckbox()).toBeNull();
+  });
+
+  it('a wider service door (a permission) whose db half is undeclared is NOT an affordance for its holder — the mirror reaches only an admin-only door', async () => {
+    setUser(['staff']);
+    await mount(new WiderAsymmetricDoorsTable());
+
+    expect(createButton()).toBeNull();
+    expect(selectRowCheckbox()).toBeNull();
+  });
+
+  it('a wider service door whose db half is undeclared draws nothing for the admin either — the db door is shut, not mirrored', async () => {
+    setUser(['admin']);
+    await mount(new WiderAsymmetricDoorsTable());
+
+    expect(createButton()).toBeNull();
+    expect(selectRowCheckbox()).toBeNull();
   });
 
   it("a declared db door is never overridden by the mirror: the db block's stricter write doors stand", async () => {

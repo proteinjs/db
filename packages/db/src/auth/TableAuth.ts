@@ -138,26 +138,41 @@ export class TableAuth {
     }
 
     // ...except that a db door the block leaves UNDECLARED mirrors the door the table's SERVICE
-    // block declares for the same operation. The RPC runs both doors — the service gate
-    // (TableServiceAuth), then the inner Db's db-api re-check as the calling user — so a service
-    // door with no db mirror admitted the caller at the gate and refused them behind it, in the
-    // gate's own words ("db doors mirror service doors" was a rule tables hand-copied; the owner
-    // derives it). One-way: a service block that omits the door keeps the lock (the session /
-    // audit-trail pattern — no write door on either api, break-glass included), and a table with
-    // no service block keeps its db block as written.
+    // block declares for the same operation — and only where that door admits the admin role
+    // ALONE. The RPC runs both doors — the service gate (TableServiceAuth), then the inner Db's
+    // db-api re-check as the calling user — so an ['admin'] service write door with no db mirror
+    // admitted the admin at the gate and refused them behind it, in the gate's own words ("db
+    // doors mirror service doors" was a rule tables hand-copied; the owner derives it). Any wider
+    // service door — a permission, a non-admin role, 'authenticated', 'public' — leaves the
+    // undeclared db door shut: role privilege and the reach of a permission are different things,
+    // so a table that means a wider identity to write through the db api declares that door at
+    // the db block itself. One-way: a service block that omits the door keeps the lock (the
+    // session / audit-trail pattern — no write door on either api, break-glass included), and a
+    // table with no service block keeps its db block as written.
     return api === 'db' && tableAuth.all === undefined && tableAuth[operation] === undefined
-      ? this.allowsServiceDoor(table, operation)
+      ? this.mirrorsAdminOnlyServiceDoor(table, operation)
       : false;
   }
 
-  /** The service block's door for `operation`, as the RPC gate reads it; a table with no service block declares none. */
-  private allowsServiceDoor(table: Table<any>, operation: 'query' | 'insert' | 'update' | 'delete'): boolean {
+  /**
+   * The mirror: the service block's door for `operation` (its `all` and its own entry, as the RPC
+   * gate reads them) where every identity it declares is exactly `['admin']` admits the admin
+   * here too; a door declared any wider, or not at all, mirrors nothing. A table with no service
+   * block declares no door to mirror.
+   */
+  private mirrorsAdminOnlyServiceDoor(table: Table<any>, operation: 'query' | 'insert' | 'update' | 'delete'): boolean {
     const serviceAuth = table.auth?.service;
     if (!serviceAuth || Object.keys(serviceAuth).length == 0) {
       return false;
     }
 
-    return this.allows(serviceAuth.all) || this.allows(serviceAuth[operation]);
+    const door = [serviceAuth.all, serviceAuth[operation]].filter((identity) => identity !== undefined);
+    return door.length > 0 && door.every((identity) => this.isAdminOnly(identity)) && UserAuth.hasRole('admin');
+  }
+
+  /** A roles list naming the admin role and nothing else. */
+  private isAdminOnly(identity: Identity | undefined): boolean {
+    return Array.isArray(identity) && identity.length === 1 && identity[0] === 'admin';
   }
 
   /** One identity against the current user; undefined (nothing declared) is not a grant. */
