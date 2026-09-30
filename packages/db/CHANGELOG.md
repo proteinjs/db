@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.50.1](https://github.com/proteinjs/db/compare/@proteinjs/db@1.50.0...@proteinjs/db@1.50.1) (2026-09-30)
+
+
+### Bug Fixes
+
+* **db:** an undeclared db door mirrors the declared service door — the RPC runs both, so a service write door with no db mirror admitted the caller at the gate and refused them behind it ([35a3621](https://github.com/proteinjs/db/commit/35a362170d92b521b9104f8349f2e27d7bec98b8))
+
+
+
+
+
 # [1.50.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.49.1...@proteinjs/db@1.50.0) (2026-09-29)
 
 

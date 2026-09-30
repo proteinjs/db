@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.21.3](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.21.2...@proteinjs/db-ui@1.21.3) (2026-09-30)
+
+
+### Bug Fixes
+
+* **db-ui:** the record table's derived affordances follow the db door's mirror — a service door whose db half is undeclared is an affordance; a declared db door still stands ([283a491](https://github.com/proteinjs/db/commit/283a491c5febc3d5388844e0b0e8efb5f84901f8))
+
+
+
+
+
 ## [1.21.2](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.21.1...@proteinjs/db-ui@1.21.2) (2026-09-29)
 
 **Note:** Version bump only for package @proteinjs/db-ui
