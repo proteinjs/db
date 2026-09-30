@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.21.4](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.21.3...@proteinjs/db-ui@1.21.4) (2026-09-30)
+
+
+### Bug Fixes
+
+* **db:** the undeclared-db-door mirror reaches only a service door that admits the admin role alone ([3c93de7](https://github.com/proteinjs/db/commit/3c93de7860f475037012ce651f0363f20dec7b1e))
+
+
+
+
+
 ## [1.21.3](https://github.com/proteinjs/db/compare/@proteinjs/db-ui@1.21.2...@proteinjs/db-ui@1.21.3) (2026-09-30)
 
 
