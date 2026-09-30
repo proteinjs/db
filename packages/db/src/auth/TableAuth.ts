@@ -132,8 +132,32 @@ export class TableAuth {
 
     // Within a declared block an undeclared operation stays closed to everyone (the block is
     // the whole declaration) — `allows` reads undefined as false, so the two doors are exactly
-    // the ones the table wrote down.
-    return this.allows(tableAuth.all) || this.allows(tableAuth[operation]);
+    // the ones the table wrote down...
+    if (this.allows(tableAuth.all) || this.allows(tableAuth[operation])) {
+      return true;
+    }
+
+    // ...except that a db door the block leaves UNDECLARED mirrors the door the table's SERVICE
+    // block declares for the same operation. The RPC runs both doors — the service gate
+    // (TableServiceAuth), then the inner Db's db-api re-check as the calling user — so a service
+    // door with no db mirror admitted the caller at the gate and refused them behind it, in the
+    // gate's own words ("db doors mirror service doors" was a rule tables hand-copied; the owner
+    // derives it). One-way: a service block that omits the door keeps the lock (the session /
+    // audit-trail pattern — no write door on either api, break-glass included), and a table with
+    // no service block keeps its db block as written.
+    return api === 'db' && tableAuth.all === undefined && tableAuth[operation] === undefined
+      ? this.allowsServiceDoor(table, operation)
+      : false;
+  }
+
+  /** The service block's door for `operation`, as the RPC gate reads it; a table with no service block declares none. */
+  private allowsServiceDoor(table: Table<any>, operation: 'query' | 'insert' | 'update' | 'delete'): boolean {
+    const serviceAuth = table.auth?.service;
+    if (!serviceAuth || Object.keys(serviceAuth).length == 0) {
+      return false;
+    }
+
+    return this.allows(serviceAuth.all) || this.allows(serviceAuth[operation]);
   }
 
   /** One identity against the current user; undefined (nothing declared) is not a grant. */
