@@ -358,7 +358,9 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
    * declaration doesn't open for the current user draws no button (a create button on the
    * session table, whose rows are system-written, could only lead to a refused save). A UI act
    * rides the service RPC and DbService's inner Db re-checks the db api as the calling user,
-   * so an affordance requires BOTH doors. Explicit `buttons` props pass through untouched.
+   * so an affordance requires BOTH doors — TableAuth answers each, and derives the db half where
+   * the block leaves it undeclared (it mirrors the declared service door for the same operation,
+   * one-way). Explicit `buttons` props pass through untouched.
    *
    * A table whose rows have their OWN page (`Table.ui.recordTable.recordLink`) draws neither
    * derived affordance: its rows are created and removed by whatever owns that page, so a

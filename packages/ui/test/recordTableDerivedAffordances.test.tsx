@@ -6,8 +6,11 @@
  * table's declared auth doors — an operation the declaration doesn't open for the current
  * user draws no affordance, because the act could only end in a refused save. A UI act rides
  * the service RPC and DbService's inner Db re-checks the db api as the calling user, so an
- * affordance requires BOTH doors. Tables with no auth block keep the historic default
- * (admin-only break-glass — both buttons for admin, none for anyone else).
+ * affordance requires BOTH doors — and TableAuth derives the db half: a db door the block leaves
+ * undeclared mirrors the door the service block declares for the same operation (one-way — a
+ * service block that omits the door keeps the lock), so a service-only declaration is an
+ * affordance for the identity the service door names. Tables with no auth block keep the
+ * historic default (admin-only break-glass — both buttons for admin, none for anyone else).
  */
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
@@ -74,13 +77,31 @@ class FullDoorsTable extends Table<Session> {
 }
 
 /**
- * Service door open, db door closed: DbService's inner Db re-checks the db api as the calling
- * user, so this shape's insert still ends refused — the affordance must require BOTH doors.
+ * Service doors open, the db block query-only: the db write doors are UNDECLARED, so TableAuth
+ * mirrors the service block's door for each — DbService's inner Db re-check admits what the gate
+ * admitted, and the affordance follows the service door. (A service block that OMITS the door —
+ * QueryOnlyTable — keeps the lock on both apis: the mirror is one-way.)
  */
 class AsymmetricDoorsTable extends Table<Session> {
   public name = 'half_open';
   public auth: Table<Session>['auth'] = {
     db: { query: { permission: 'users' } },
+    service: { all: { permission: 'users' } },
+  };
+  public columns = withRecordColumns<Session>({
+    userEmail: new StringColumn('user_email'),
+  });
+}
+
+/**
+ * The mirror reaches only an UNDECLARED db door: here the service block opens everything to
+ * 'users' while the db block declares its own, stricter write doors — those stand as written,
+ * so the inner re-check refuses the writes and the affordances stay off.
+ */
+class StricterDbDoorsTable extends Table<Session> {
+  public name = 'stricter_db';
+  public auth: Table<Session>['auth'] = {
+    db: { query: { permission: 'users' }, insert: { permission: 'admins' }, delete: { permission: 'admins' } },
     service: { all: { permission: 'users' } },
   };
   public columns = withRecordColumns<Session>({
@@ -220,9 +241,17 @@ describe('RecordTable — auth-derived affordances', () => {
     expect(selectRowCheckbox()).toBeNull();
   });
 
-  it('a service door without its db half is not an affordance — the inner re-check would refuse the act', async () => {
+  it('a service door whose db half is undeclared is an affordance — the db door mirrors it, so the inner re-check admits the act', async () => {
     setUser(['staff']);
     await mount(new AsymmetricDoorsTable());
+
+    expect(createButton()).not.toBeNull();
+    expect(selectRowCheckbox()).not.toBeNull();
+  });
+
+  it("a declared db door is never overridden by the mirror: the db block's stricter write doors stand", async () => {
+    setUser(['staff']);
+    await mount(new StricterDbDoorsTable());
 
     expect(createButton()).toBeNull();
     expect(selectRowCheckbox()).toBeNull();
