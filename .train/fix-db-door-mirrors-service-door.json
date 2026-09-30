@@ -1,0 +1,11 @@
+{
+  "branch": "fix/db-door-mirrors-service-door",
+  "packages": ["db"],
+  "suites": [
+    "packages/db/test/TableAuthIdentity.test.ts",
+    "packages/db/test/TableServiceAuth.test.ts",
+    "packages/db/test/MigrationAuth.test.ts",
+    "packages/db/test/DurableTable.test.ts"
+  ],
+  "removes": []
+}
