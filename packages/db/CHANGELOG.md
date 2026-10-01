@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.51.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.50.2...@proteinjs/db@1.51.0) (2026-10-01)
+
+
+### Features
+
+* **db:** the db service's reads declared on the factory — query, get, getRowCount and tableExists ride the service client's retry policy ([173ab85](https://github.com/proteinjs/db/commit/173ab8598f4f9bd413795baa80136d85ca684267))
+
+
+
+
+
 ## [1.50.2](https://github.com/proteinjs/db/compare/@proteinjs/db@1.50.1...@proteinjs/db@1.50.2) (2026-09-30)
 
 
