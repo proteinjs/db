@@ -1,0 +1,16 @@
+{
+  "branch": "ci/mint-served-clock-restamp-retry",
+  "packages": [
+    "drivers/knex",
+    "drivers/spanner",
+    "encryption-drivers/gcp-kms",
+    "file",
+    "file-storage-drivers/google-cloud-storage",
+    "settings",
+    "spanner-common",
+    "transaction-context",
+    "ui"
+  ],
+  "suites": [],
+  "removes": []
+}
