@@ -47,9 +47,12 @@ jobs:
     # main unpublished, exactly as it did in the single-job shape.
     needs: verify
     runs-on: ubuntu-latest
-    # Guard + lock commit + lerna publish: well under a minute on ordinary runs; 20 bounds a
-    # hung push or a slow registry.
-    timeout-minutes: 20
+    # Guard + lock commit + lerna publish: well under a minute on ordinary runs. The bound holds
+    # the re-stamp step's two clocks with margin: the job's preamble (checkout, the artifact, the
+    # guard, lerna publish — about a minute; up to 3 on a slow runner) + MintServed's 15-minute wait
+    # + LockFloors' 5-minute retry clock and the stamps and checks of its last round (about half a
+    # minute) + the lock commit's push (seconds): about 24 minutes worst case; 30 leaves 6.
+    timeout-minutes: 30
     permissions:
       contents: write
       packages: write
@@ -156,15 +159,20 @@ jobs:
         # moved no consumer floor commits nothing. "Now that the registry serves the mint" is a WAIT,
         # not an assumption: `lerna publish` returns on the registry's accept, and the packument a
         # resolver reads lags it (run 36295867264 stamped at 05:04:51Z, ETARGET on db-file@^1.10.0;
-        # the registry served 1.10.0 ~40 s later — LockFloors throws on that ETARGET, so its retry
-        # rounds never ran and main stayed torn). MintServed.js polls `npm view <name>@<version>
+        # the registry served 1.10.0 ~40 s later — LockFloors then threw on that ETARGET, so its
+        # retry rounds never ran and main stayed torn). MintServed.js polls `npm view <name>@<version>
         # version` for every tag this run's `lerna publish` made (the tags at HEAD), 10 s apart on one
-        # 5-minute clock, one "served after N s" line per package; a package still not served is a
+        # 15-minute clock (run 36818699801: a ten-package publish had its last package served about
+        # 450 s after the accept, past the 5-minute clock this step first shipped with — the lag grows
+        # with the publish), one "served after N s" line per package; a package still not served is a
         # WARNING line and exit 1, and the re-stamp still tries (`|| [ $? -eq 1 ]`: only a timeout
-        # goes on; git or npm unrunnable stops here). Best-effort by design (continue-on-error): the
-        # packages are published, so a registry still not serving the mint leaves main as lerna left
-        # it, this step red, the job green; `node .github/scripts/LockFloors.js --restamp` under
-        # npm 10, committed, is the hand recipe.
+        # goes on; git or npm unrunnable stops here). LockFloors --restamp retries a stamp the
+        # registry refuses (ETARGET / E404) 20 s apart on its own 5-minute clock before reporting the
+        # tree torn, so a package served a minute after the wait expired still lands. Best-effort by
+        # design (continue-on-error): the packages are published, so a registry still not serving the
+        # mint past both clocks leaves main as lerna left it, this step red naming the floor it never
+        # served, the job green; `node .github/scripts/LockFloors.js --restamp` under npm 10,
+        # committed, is the hand recipe. The job's timeout-minutes above is sized to both clocks.
         if: steps.tip.outputs.is_tip == 'true'
         continue-on-error: true
         run: |
