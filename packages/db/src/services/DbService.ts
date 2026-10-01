@@ -5,7 +5,19 @@ import { QueryBuilder } from '@proteinjs/db-query';
 import { ArrayMembershipUpdate } from '../reference/ArrayMembershipOps';
 import { PreservedPath } from '../UpdatePreserving';
 
-export const getDbService = serviceFactory<DbService>('@proteinjs/db/DbService');
+/**
+ * The db service rides the service client's retry policy by declaration alone, no logic of its
+ * own: the reads (`query`, `get`, `getRowCount`, `tableExists`) are declared `'read'` — bounded at
+ * the first contact and redelivered under the client's series when a delivery produced no
+ * response — and every write stays undeclared: one delivery, never redelivered (a redelivered
+ * `insert` would insert twice). The policy's numbers and exceptions are @proteinjs/service's.
+ */
+export const getDbService = serviceFactory<DbService>('@proteinjs/db/DbService', undefined, {
+  query: 'read',
+  get: 'read',
+  getRowCount: 'read',
+  tableExists: 'read',
+});
 
 export type Query<T> = ObjectQuery<T> | QueryBuilder<T>;
 export type ObjectQuery<T> = Partial<{ [P in keyof T]: any }>;
