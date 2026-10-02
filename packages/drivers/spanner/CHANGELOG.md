@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.33.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.32.6...@proteinjs/db-driver-spanner@1.33.0) (2026-10-02)
+
+
+### Features
+
+* **db:** insertMany — one multi-row INSERT for N rows, every per-row contract kept ([2b64627](https://github.com/proteinjs/db/commit/2b64627db7b642c00df1a3aa128c912b2bff3960))
+
+
+
+
+
 ## [1.32.6](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.32.5...@proteinjs/db-driver-spanner@1.32.6) (2026-10-01)
 
 **Note:** Version bump only for package @proteinjs/db-driver-spanner
