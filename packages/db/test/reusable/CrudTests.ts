@@ -25,6 +25,36 @@ export const crudTests = (
       await db.delete(emplyeeTable, { id: fetchedEmployee.id });
     });
 
+    test('Insert many: every row lands with its defaults, as its own single insert would', async () => {
+      const emplyeeTable: Table<Employee> = crudTestTables.Employee;
+      const rows: Omit<Employee, keyof Record>[] = [
+        { name: 'Veronica', department: 'Cake Factory' },
+        { name: 'Ada', department: 'Cake Factory', jobTitle: null, isRemote: true },
+        { name: 'Sean' },
+      ];
+      const inserted = await db.insertMany(emplyeeTable, rows);
+      expect(inserted.map((employee) => employee.name)).toEqual(['Veronica', 'Ada', 'Sean']);
+      const qb = new QueryBuilder<Employee>(emplyeeTable.name).condition({
+        field: 'id',
+        operator: 'IN',
+        value: inserted.map((employee) => employee.id),
+      });
+      const fetched = await db.query(emplyeeTable, qb);
+      expect(fetched.length).toBe(3);
+      const byName = new Map(fetched.map((employee) => [employee.name, employee]));
+      expect(byName.get('Veronica')?.department).toBe('Cake Factory');
+      // A column one row carries and another leaves out stores NULL for the row without it —
+      // the stored value of a single-row insert that left it out.
+      expect(byName.get('Veronica')?.jobTitle).toBeNull();
+      expect(byName.get('Ada')?.isRemote).toBe(true);
+      expect(byName.get('Sean')?.department).toBeNull();
+      for (const employee of fetched) {
+        expect(employee.created).toBeTruthy();
+        expect(employee.updated).toBeTruthy();
+      }
+      await db.delete(emplyeeTable, qb);
+    });
+
     test('Update', async () => {
       const testEmployee: Omit<Employee, keyof Record> = { name: 'Veronica' };
       const emplyeeTable: Table<Employee> = crudTestTables.Employee;

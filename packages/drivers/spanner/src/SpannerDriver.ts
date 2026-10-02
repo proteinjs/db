@@ -55,6 +55,8 @@ export class SpannerDriver implements DbDriver {
   private static readonly DEFAULT_TRANSACTION_RETRY_TIMEOUT_MS = 3_600_000;
   /** The per-operation deadline when `SpannerConfig.operationDeadlineMs` is unset (see getOperationDeadlineMs). */
   private static readonly DEFAULT_OPERATION_DEADLINE_MS = 60_000;
+  /** Spanner's quota on query parameters per statement (see getStatementParameterLimit). */
+  private static readonly STATEMENT_PARAMETER_LIMIT = 950;
   /**
    * The attempt number of every transaction the runner currently drives, keyed by that attempt's
    * transaction handle — how the failure path (operationFailure) knows a statement ran inside a
@@ -556,6 +558,15 @@ export class SpannerDriver implements DbDriver {
    */
   getOperationDeadlineMs(): number {
     return this.config.operationDeadlineMs ?? SpannerDriver.DEFAULT_OPERATION_DEADLINE_MS;
+  }
+
+  /**
+   * Spanner bounds one statement at 950 query parameters (its documented quota, the same on the
+   * emulator): a multi-row insert binding `columns × rows` of them is sized by this
+   * (`Db.insertMany`), so a wide batch goes as the fewest statements under the bound.
+   */
+  getStatementParameterLimit(): number {
+    return SpannerDriver.STATEMENT_PARAMETER_LIMIT;
   }
 
   /**

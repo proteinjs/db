@@ -1,4 +1,5 @@
 import { UserAuth } from '@proteinjs/user-auth';
+import { Logger } from '@proteinjs/logger';
 import { Table } from '../src/Table';
 import { withRecordColumns, Record } from '../src/Record';
 import { StringColumn } from '../src/Columns';
@@ -266,6 +267,17 @@ describe('TableServiceAuth — default deny (no auth block)', () => {
     expect(auth().canAccess('insert', [table, { title: 't' }])).toBe(true);
     expect(auth().canAccess('update', [table, { id: 'x', title: 't' }])).toBe(true);
     expect(auth().canAccess('delete', [table, { id: 'x' }])).toBe(true);
+  });
+
+  it('the multi-row insert is a server-side door only: the service refuses it, admin included', () => {
+    setUser(['admin']);
+    const table = new NoAuthTable();
+    const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    try {
+      expect(auth().canAccess('insertMany', [table, [{ title: 't' }]])).toBe(false);
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 });
 

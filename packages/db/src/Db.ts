@@ -104,6 +104,14 @@ export interface DbDriver {
    * configured its database to tolerate rather than a number of its own.
    */
   getOperationDeadlineMs(): number;
+  /**
+   * The most bound parameters one statement may carry on this driver's backend, when the backend
+   * bounds it — `Db.insertMany` sizes its multi-row statements by it (`columns × rows` parameters
+   * each), so a batch wider than the bound goes as the fewest statements that fit instead of one
+   * the backend refuses. A driver whose backend declares no such bound leaves this undeclared,
+   * and a batch on it is always one statement.
+   */
+  getStatementParameterLimit?(): number;
 }
 
 export class Db<R extends Record = Record> implements DbService<R> {
@@ -226,6 +234,77 @@ export class Db<R extends Record = Record> implements DbService<R> {
     await this.runColumnAfterInsertHooks(table, recordCopy);
     await this.tableWatcherRunner.runAfterInsertTableWatchers(table, recordCopy as T);
     return recordCopy as T;
+  }
+
+  /**
+   * Insert `records` as ONE statement (a multi-row INSERT) instead of one statement per row,
+   * each row keeping every contract {@link insert} gives a single one: the table's default field
+   * values, the before-insert table watchers, the columns' before-insert hooks, the encryption
+   * context, then — after the statement — the search-token upkeep, the columns' after-insert
+   * hooks and the after-insert table watchers. Each phase runs per row, in the order given, and
+   * sees the row exactly as `insert` would; what differs from N single inserts is only that every
+   * row's before-phases precede the statement and every row's after-phases follow it.
+   *
+   * Atomic: inside a transaction the statement rides it; outside one this opens a transaction
+   * of its own around the batch, so a row the database refuses fails the whole batch and no row
+   * of it lands. A batch wider than the driver's statement parameter bound
+   * ({@link DbDriver.getStatementParameterLimit}) goes as the fewest statements that fit, in
+   * order, inside that same transaction.
+   *
+   * Returns the rows as inserted (defaults applied, watchers' changes carried), in order. An
+   * empty list inserts nothing and returns [].
+   */
+  async insertMany<T extends R>(table: Table<T>, records: Omit<T, keyof R>[]): Promise<T[]> {
+    if (!this.runAsSystem) {
+      this.auth.canInsert(table);
+    }
+    if (records.length === 0) {
+      return [];
+    }
+    if (!this.transactionContextFactory.getTransactionContext().currentTransaction) {
+      const db = this.newSelfWrapDb();
+      return await db.runTransaction(async () => await db.insertMany(table, records));
+    }
+
+    const prepared: {
+      recordCopy: any;
+      encryptionContext?: { keyOwner: string };
+      serializedRecord: SerializedRecord;
+    }[] = [];
+    for (const record of records) {
+      let recordCopy = Object.assign({}, record);
+      await addDefaultFieldValues(table, recordCopy, this.runAsSystem);
+      recordCopy = await this.tableWatcherRunner.runBeforeInsertTableWatchers(table, recordCopy);
+      await this.addColumnInsertHooks(table, recordCopy);
+      const encryptionContext = await this.encryptionWriteContext(table, recordCopy);
+      const serializedRecord = await new RecordSerializer(table, encryptionContext).serialize(recordCopy);
+      prepared.push({ recordCopy, encryptionContext, serializedRecord });
+    }
+
+    for (const statementRows of this.chunkByParameterLimit(prepared.map((row) => row.serializedRecord))) {
+      const generateInsert = (config: DbDriverDmlStatementConfig) =>
+        new StatementFactory<T>().insertMany(
+          table.name,
+          statementRows as Partial<T>[],
+          this.statementConfigFactory.getStatementConfig(config)
+        );
+      await this.dbDriver.runDml(generateInsert, this.transactionForDriver());
+    }
+
+    for (const { recordCopy, encryptionContext } of prepared) {
+      if (encryptionContext) {
+        const { EncryptionTokenMaintenance } = await import('./encryption/EncryptionTokenMaintenance');
+        await new EncryptionTokenMaintenance().afterInsert(
+          table,
+          recordCopy,
+          encryptionContext.keyOwner,
+          this.newSystemDb()
+        );
+      }
+      await this.runColumnAfterInsertHooks(table, recordCopy);
+      await this.tableWatcherRunner.runAfterInsertTableWatchers(table, recordCopy as T);
+    }
+    return prepared.map((row) => row.recordCopy as T);
   }
 
   async update<T extends R>(table: Table<T>, record: Partial<T>, query?: Query<T>): Promise<number> {
@@ -1043,6 +1122,29 @@ export class Db<R extends Record = Record> implements DbService<R> {
     }
 
     return context.currentTransaction;
+  }
+
+  /**
+   * The rows of one multi-row insert split into the fewest statements the driver's statement
+   * parameter bound admits (`insertMany`): each statement binds `columns × rows` parameters,
+   * the columns being the union over the whole batch (what `StatementFactory.insertMany` lists),
+   * so the split follows the batch's widest shape rather than the first statement's. One
+   * statement when the driver declares no bound.
+   */
+  private chunkByParameterLimit(rows: SerializedRecord[]): SerializedRecord[][] {
+    const limit = this.dbDriver.getStatementParameterLimit?.();
+    if (limit === undefined) {
+      return [rows];
+    }
+
+    const columns = new Set<string>();
+    for (const row of rows) {
+      for (const column of Object.keys(row)) {
+        columns.add(column);
+      }
+    }
+    const rowsPerStatement = Math.max(1, Math.floor(limit / Math.max(1, columns.size)));
+    return this.chunk(rows, rowsPerStatement);
   }
 
   // Utility: simple chunker

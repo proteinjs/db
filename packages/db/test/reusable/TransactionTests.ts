@@ -88,6 +88,52 @@ export const transactionTests = (
       }
     });
 
+    test('Insert many inside a transaction: a refused row rolls the whole batch back, and the writes before it', async () => {
+      const emplyeeTable: Table<TransactionEmployee> = transactionTestTables.TransactionEmployee;
+      let singleId: string | undefined;
+      let batchIds: string[] = [];
+
+      await expect(
+        db.runTransaction(async () => {
+          const single = await db.insert(emplyeeTable, { name: 'Veronica', department: 'Engineering' });
+          singleId = single.id;
+          // The third row reuses the first row's id: the statement is refused as a whole.
+          const rows: Omit<TransactionEmployee, keyof Record>[] = [
+            { name: 'Ada', department: 'Engineering' },
+            { name: 'Sean', department: 'Engineering' },
+            { name: 'Cassidy', department: 'Engineering' },
+          ];
+          const first = await db.insertMany(emplyeeTable, [rows[0]]);
+          batchIds = [first[0].id];
+          await db.insertMany(emplyeeTable, [
+            rows[1],
+            { ...rows[2], id: first[0].id } as Omit<TransactionEmployee, keyof Record>,
+          ]);
+        })
+      ).rejects.toThrow();
+
+      expect(singleId).toBeDefined();
+      expect(await db.get(emplyeeTable, { id: singleId })).toBeFalsy();
+      expect(await db.get(emplyeeTable, { id: batchIds[0] })).toBeFalsy();
+      expect(await db.query(emplyeeTable, { department: 'Engineering' })).toHaveLength(0);
+    });
+
+    test('Insert many outside a transaction is one unit: a refused row lands none of the batch', async () => {
+      const emplyeeTable: Table<TransactionEmployee> = transactionTestTables.TransactionEmployee;
+      const anchor = await db.insert(emplyeeTable, { name: 'Veronica', department: 'Sales' });
+
+      await expect(
+        db.insertMany(emplyeeTable, [
+          { name: 'Ada', department: 'Sales' },
+          { name: 'Sean', department: 'Sales', id: anchor.id } as Omit<TransactionEmployee, keyof Record>,
+        ])
+      ).rejects.toThrow();
+
+      const sales = await db.query(emplyeeTable, { department: 'Sales' });
+      expect(sales.map((employee) => employee.name)).toEqual(['Veronica']);
+      await db.delete(emplyeeTable, { id: anchor.id });
+    });
+
     test('Nested transactions are not allowed', async () => {
       const testEmployee: Omit<TransactionEmployee, keyof Record> = {
         name: 'Veronica',

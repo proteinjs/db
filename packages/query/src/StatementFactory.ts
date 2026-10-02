@@ -87,6 +87,43 @@ export class StatementFactory<T> {
     return { sql, ...paramManager.getParams() };
   }
 
+  /**
+   * One INSERT of several rows — `INSERT INTO t (a, b) VALUES (r1a, r1b), (r2a, r2b);` — the
+   * multi-row form of {@link insert}. The column list is the union of the rows' keys, in the order
+   * they are first seen; a row that carries no value for a listed column binds NULL there, which is
+   * what the database stores for a column an insert leaves out (this factory's DDL declares no
+   * column defaults), so each row lands exactly as its own single-row insert would. Rows bind in
+   * the order given and every value is a parameter of its own: the statement carries
+   * `columns × rows` parameters, which a caller chunks against its driver's bound.
+   */
+  insertMany(tableName: string, rows: Partial<T>[], config: StatementConfig): Statement {
+    if (rows.length === 0) {
+      throw new Error(`insertMany requires at least one row (table: ${tableName})`);
+    }
+
+    const paramManager = new StatementParamManager(config);
+    const props: string[] = [];
+    for (const row of rows) {
+      for (const prop of Object.keys(row)) {
+        if (!props.includes(prop)) {
+          props.push(prop);
+        }
+      }
+    }
+    const tuples = rows.map((row) => {
+      const values = props.map((prop) => {
+        const value = Object.prototype.hasOwnProperty.call(row, prop) ? row[prop as keyof T] : null;
+        return paramManager.parameterize(
+          value,
+          config.getDriverColumnType ? config.getDriverColumnType(tableName, prop) : typeof value
+        );
+      });
+      return `(${values.join(', ')})`;
+    });
+    const sql = `INSERT INTO ${config.dbName ? `\`${config.dbName}\`.` : ''}\`${tableName}\` (\`${props.join('`, `')}\`) VALUES ${tuples.join(', ')};`;
+    return { sql, ...paramManager.getParams() };
+  }
+
   update(tableName: string, data: Partial<T>, queryBuilder: QueryBuilder<T>, config: StatementConfig): Statement {
     const paramManager = new StatementParamManager(config);
     const props = Object.keys(data);
