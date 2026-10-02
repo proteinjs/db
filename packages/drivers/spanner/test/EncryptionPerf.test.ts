@@ -10,7 +10,6 @@ import {
 import { SpannerDriver } from '@proteinjs/db-driver-spanner';
 import { TransactionContext } from '@proteinjs/db-transaction-context';
 import { getDropTestTable } from './util/getDropTestTable';
-import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
 import { EncPerfRow, EncPerfRowTable, PlainPerfRowTable } from './util/columnEncryptionTestTables';
 import { loadColumnEncryptionTestSchema, purgeColumnEncryptionTestRows } from './util/columnEncryptionTestHarness';
 import { registerTestUser, clearTestUser } from '@proteinjs/db/test';
@@ -41,11 +40,6 @@ describe('Column encryption performance sanity', () => {
   const tableManager = spannerDriver.getTableManager();
 
   beforeAll(async () => {
-    await SpannerEmulatorProvisioner.ensureProvisioned({
-      projectId: 'proteinjs-test',
-      instanceName: 'proteinjs-test',
-      databaseName: 'test',
-    });
     registerTestUser();
     setDbEncryptionConfig({
       masterKeyProvider: new InMemoryMasterKeyProvider('column-encryption-test'),
@@ -79,7 +73,6 @@ describe('Column encryption performance sanity', () => {
     clearTestUser();
     await dropTable(encTable);
     await dropTable(plainTable);
-    await SpannerEmulatorProvisioner.release();
   }, 120000);
 
   const timeQuery = async (table: Table<EncPerfRow>): Promise<{ ms: number; rows: number }> => {

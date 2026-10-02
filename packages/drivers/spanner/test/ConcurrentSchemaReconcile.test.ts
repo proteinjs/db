@@ -2,7 +2,6 @@ import { IntegerColumn, Record, StringColumn, Table, TableChanges, withRecordCol
 import { SpannerDriver } from '@proteinjs/db-driver-spanner';
 import { LogLineErrors } from '@proteinjs/logger';
 import { getDropTestTable } from './util/getDropTestTable';
-import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
 import '../generated/test/index';
 
 /**
@@ -104,10 +103,6 @@ describe('Concurrent schema reconcile', () => {
   const dropTable = getDropTestTable(spannerDriver);
   const tableManager = spannerDriver.getTableManager();
 
-  beforeAll(async () => {
-    await SpannerEmulatorProvisioner.ensureProvisioned(spannerConfig);
-  }, 60000);
-
   beforeEach(async () => {
     await dropTable(baseTable());
     await dropTable(conflictStringTable());
@@ -116,7 +111,6 @@ describe('Concurrent schema reconcile', () => {
   afterAll(async () => {
     await dropTable(baseTable());
     await dropTable(conflictStringTable());
-    SpannerEmulatorProvisioner.release();
   }, 60000);
 
   afterEach(() => {

@@ -4,7 +4,6 @@ import { SpannerDriver } from '@proteinjs/db-driver-spanner';
 import { registerTestUser, clearTestUser } from '@proteinjs/db/test';
 import { SourceRepository } from '@proteinjs/reflection';
 import { getDropTestTable } from './util/getDropTestTable';
-import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
 import '../generated/test/index';
 
 interface SafetyEmployee extends Record {
@@ -56,14 +55,12 @@ describe('Transaction safety (stateless contract)', () => {
     (SourceRepository.get() as unknown as { objectCache: { [key: string]: unknown[] } }).objectCache[
       '@proteinjs/db/Table'
     ] = [employeeTable];
-    await SpannerEmulatorProvisioner.ensureProvisioned(spannerConfig);
     await spannerDriver.createDbIfNotExists();
     await spannerDriver.getTableManager().loadTable(employeeTable);
   }, 60000);
 
   afterAll(async () => {
     await dropTable(employeeTable);
-    await SpannerEmulatorProvisioner.release();
     delete (SourceRepository.get() as unknown as { objectCache: { [key: string]: unknown[] } }).objectCache[
       '@proteinjs/db/Table'
     ];

@@ -5,7 +5,6 @@ import { Database, Transaction } from '@google-cloud/spanner';
 import { registerTestUser, clearTestUser } from '@proteinjs/db/test';
 import { SourceRepository } from '@proteinjs/reflection';
 import { getDropTestTable } from './util/getDropTestTable';
-import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
 import '../generated/test/index';
 
 /**
@@ -122,7 +121,6 @@ describe('statements issued concurrently in one transaction reach the wire in or
     (SourceRepository.get() as unknown as { objectCache: { [key: string]: unknown[] } }).objectCache[
       '@proteinjs/db/Table'
     ] = [table];
-    await SpannerEmulatorProvisioner.ensureProvisioned(spannerConfig);
     await spannerDriver.createDbIfNotExists();
     await spannerDriver.getTableManager().loadTable(table);
     // Warm the data client so the gapic SpannerClient + resolved stub exist to patch.
@@ -131,7 +129,6 @@ describe('statements issued concurrently in one transaction reach the wire in or
 
   afterAll(async () => {
     await dropTable(table);
-    await SpannerEmulatorProvisioner.release();
     delete (SourceRepository.get() as unknown as { objectCache: { [key: string]: unknown[] } }).objectCache[
       '@proteinjs/db/Table'
     ];

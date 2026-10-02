@@ -6,8 +6,10 @@ import { Database, Spanner } from '@google-cloud/spanner';
  * The emulator holds instances IN MEMORY — any container restart (Docker updates, host reboots,
  * fresh CI service containers) silently wipes them, and every suite then fast-fails with a
  * cryptic gRPC "Instance not found" until someone re-provisions by hand. Harnesses call
- * `ensureProvisioned` in beforeAll; it is idempotent (ALREADY_EXISTS answers are success) and
- * gated on `SPANNER_EMULATOR_HOST`, so it can never touch real GCP.
+ * `ensureProvisioned` in beforeAll — this package's own suites through jest's once-per-run
+ * globalSetup (test/globalSetup.ts), so any one of them runs alone on a bare emulator; it is
+ * idempotent (ALREADY_EXISTS answers are success) and gated on `SPANNER_EMULATOR_HOST`, so it
+ * can never touch real GCP.
  *
  * Provisioning uses the ADMIN API over gRPC on the SAME address the suites' data client uses —
  * no second endpoint to derive or configure, any docker port mapping works (the emulator's REST

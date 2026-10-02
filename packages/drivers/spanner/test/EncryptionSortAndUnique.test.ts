@@ -10,7 +10,6 @@ import {
 import { SpannerDriver } from '@proteinjs/db-driver-spanner';
 import { TransactionContext } from '@proteinjs/db-transaction-context';
 import { getDropTestTable } from './util/getDropTestTable';
-import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
 import { EncSortedItem, EncSortedItemTable, EncUniqueTag, EncUniqueTagTable } from './util/columnEncryptionTestTables';
 import { loadColumnEncryptionTestSchema, purgeColumnEncryptionTestRows } from './util/columnEncryptionTestHarness';
 import { registerTestUser, clearTestUser } from '@proteinjs/db/test';
@@ -41,11 +40,6 @@ describe('Encrypted sortKey ORDER BY + fingerprint uniqueness', () => {
   const tableManager = spannerDriver.getTableManager();
 
   beforeAll(async () => {
-    await SpannerEmulatorProvisioner.ensureProvisioned({
-      projectId: 'proteinjs-test',
-      instanceName: 'proteinjs-test',
-      databaseName: 'test',
-    });
     registerTestUser();
     setDbEncryptionConfig({
       masterKeyProvider: new InMemoryMasterKeyProvider('column-encryption-test'),
@@ -61,7 +55,6 @@ describe('Encrypted sortKey ORDER BY + fingerprint uniqueness', () => {
     await dropTable(new EncryptedColumns().tokenTableFor(sortedTable)!);
     await dropTable(sortedTable);
     await dropTable(uniqueTable);
-    await SpannerEmulatorProvisioner.release();
   }, 120000);
 
   test('sortKey: native ORDER BY + sorted pagination over encrypted values; only the declared prefix is revealed at rest', async () => {

@@ -1,7 +1,6 @@
 import { SpannerDriver } from '@proteinjs/db-driver-spanner';
 import { StringColumn, Table, withRecordColumns, Record } from '@proteinjs/db';
 import { getDropTestTable } from './util/getDropTestTable';
-import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
 import '../generated/test/index';
 
 const spannerDriver = new SpannerDriver({
@@ -31,17 +30,11 @@ describe('Spanner STRING widening', () => {
   const tableManager = spannerDriver.getTableManager();
 
   beforeAll(async () => {
-    await SpannerEmulatorProvisioner.ensureProvisioned({
-      projectId: 'proteinjs-test',
-      instanceName: 'proteinjs-test',
-      databaseName: 'test',
-    });
     await dropTable(wideningTable(255));
   }, 30000);
 
   afterAll(async () => {
     await dropTable(wideningTable(255));
-    await SpannerEmulatorProvisioner.release();
   }, 30000);
 
   test('widens STRING(255) to STRING(MAX) in place, preserving rows and nullability', async () => {

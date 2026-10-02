@@ -12,7 +12,6 @@ import {
 import { SpannerDriver } from '@proteinjs/db-driver-spanner';
 import { TransactionContext } from '@proteinjs/db-transaction-context';
 import { getDropTestTable } from './util/getDropTestTable';
-import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
 import { EncNote, EncNoteTable } from './util/columnEncryptionTestTables';
 import { loadColumnEncryptionTestSchema, purgeColumnEncryptionTestRows } from './util/columnEncryptionTestHarness';
 import { registerTestUser, clearTestUser } from '@proteinjs/db/test';
@@ -73,11 +72,6 @@ describe('Column encryption: the transparent seam', () => {
   const tableManager = spannerDriver.getTableManager();
 
   beforeAll(async () => {
-    await SpannerEmulatorProvisioner.ensureProvisioned({
-      projectId: 'proteinjs-test',
-      instanceName: 'proteinjs-test',
-      databaseName: 'test',
-    });
     registerTestUser();
     setDbEncryptionConfig({
       masterKeyProvider,
@@ -93,7 +87,6 @@ describe('Column encryption: the transparent seam', () => {
     const { EncryptedColumns } = await import('@proteinjs/db');
     await dropTable(new EncryptedColumns().tokenTableFor(noteTable)!);
     await dropTable(noteTable);
-    await SpannerEmulatorProvisioner.release();
   }, 60000);
 
   beforeEach(() => {

@@ -3,7 +3,6 @@ import { Logger } from '@proteinjs/logger';
 import { SpannerDriver } from '@proteinjs/db-driver-spanner';
 import { getTables, Record, StringColumn, Table, withRecordColumns } from '@proteinjs/db';
 import { getDropTestTable } from './util/getDropTestTable';
-import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
 import '../generated/test/index';
 
 const spannerConfig = {
@@ -66,7 +65,6 @@ describe('Batched DDL', () => {
   const tableManager = spannerDriver.getTableManager();
 
   beforeAll(async () => {
-    await SpannerEmulatorProvisioner.ensureProvisioned(spannerConfig);
     await dropTable(childTable());
     await dropTable(parentTable());
   }, 60000);
@@ -74,7 +72,6 @@ describe('Batched DDL', () => {
   afterAll(async () => {
     await dropTable(childTable());
     await dropTable(parentTable());
-    SpannerEmulatorProvisioner.release();
   }, 60000);
 
   afterEach(() => {

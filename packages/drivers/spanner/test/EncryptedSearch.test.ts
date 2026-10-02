@@ -9,7 +9,6 @@ import {
 import { SpannerDriver } from '@proteinjs/db-driver-spanner';
 import { TransactionContext } from '@proteinjs/db-transaction-context';
 import { getDropTestTable } from './util/getDropTestTable';
-import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
 import { EncSearchDoc, EncSearchDocTable } from './util/columnEncryptionTestTables';
 import { loadColumnEncryptionTestSchema, purgeColumnEncryptionTestRows } from './util/columnEncryptionTestHarness';
 import { registerTestUser, clearTestUser } from '@proteinjs/db/test';
@@ -54,11 +53,6 @@ describe('Encrypted search: exact contains/prefix, equality, shared-scope OR', (
   };
 
   beforeAll(async () => {
-    await SpannerEmulatorProvisioner.ensureProvisioned({
-      projectId: 'proteinjs-test',
-      instanceName: 'proteinjs-test',
-      databaseName: 'test',
-    });
     registerTestUser();
     setDbEncryptionConfig({
       masterKeyProvider: new InMemoryMasterKeyProvider('column-encryption-test'),
@@ -92,7 +86,6 @@ describe('Encrypted search: exact contains/prefix, equality, shared-scope OR', (
     clearTestUser();
     await dropTable(new EncryptedColumns().tokenTableFor(docTable)!);
     await dropTable(docTable);
-    await SpannerEmulatorProvisioner.release();
   }, 120000);
 
   beforeEach(() => {

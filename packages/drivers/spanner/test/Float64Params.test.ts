@@ -2,7 +2,6 @@ import { SpannerDriver } from '@proteinjs/db-driver-spanner';
 import { FloatColumn, Record, StatementFactory, Table, tableByName, withRecordColumns } from '@proteinjs/db';
 import { QueryBuilder } from '@proteinjs/db-query';
 import { getDropTestTable } from './util/getDropTestTable';
-import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
 import '../generated/test/index';
 
 /**
@@ -65,18 +64,12 @@ describe('Spanner FLOAT64 param encoding', () => {
   const dropTable = getDropTestTable(spannerDriver);
 
   beforeAll(async () => {
-    await SpannerEmulatorProvisioner.ensureProvisioned({
-      projectId: 'proteinjs-test',
-      instanceName: 'proteinjs-test',
-      databaseName: 'test',
-    });
     await dropTable(float64ParamsTable);
     await spannerDriver.getTableManager().loadTable(float64ParamsTable);
   }, 60000);
 
   afterAll(async () => {
     await dropTable(float64ParamsTable);
-    await SpannerEmulatorProvisioner.release();
   }, 60000);
 
   test('writes 0 into a FLOAT64 column (the telemetry failure shape)', async () => {

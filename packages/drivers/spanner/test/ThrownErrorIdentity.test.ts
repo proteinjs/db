@@ -3,7 +3,6 @@ import * as path from 'path';
 import { Transaction } from '@google-cloud/spanner';
 import { SpannerDriver } from '@proteinjs/db-driver-spanner';
 import { Logger } from '@proteinjs/logger';
-import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
 
 /**
  * THE LAW of the statement-log contract: it changes what the driver LOGS about a statement's
@@ -249,7 +248,6 @@ describe('what the driver throws is what the release line throws, at every door 
   };
 
   beforeAll(async () => {
-    await SpannerEmulatorProvisioner.ensureProvisioned(spannerConfig);
     await driver.createDbIfNotExists();
     // From here on the driver writes at DEBUG into a counting writer: every statement line is
     // written while the errors under test are made, and none of it reaches the console.
@@ -277,7 +275,6 @@ describe('what the driver throws is what the release line throws, at every door 
   afterAll(async () => {
     await dropTables();
     internals.logger = driverLogger;
-    await SpannerEmulatorProvisioner.release();
     if (RECORD_TO) {
       const recording: Recording = {
         source: process.env.THROWN_ERROR_IDENTITY_SOURCE ?? 'the release line',

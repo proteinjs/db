@@ -3,7 +3,6 @@ import { getDbAsSystem, Migration, MigrationRunner, MigrationTable, SourceRecord
 import { registerTestUser, clearTestUser } from '@proteinjs/db/test';
 import moment from 'moment';
 import { getDropTestTable } from './util/getDropTestTable';
-import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
 import '../generated/test/index';
 
 /**
@@ -65,14 +64,6 @@ describe('MigrationRunner.runPendingMigrations (spanner)', () => {
     } as any);
   };
 
-  beforeAll(async () => {
-    await SpannerEmulatorProvisioner.ensureProvisioned({
-      projectId: 'proteinjs-test',
-      instanceName: 'proteinjs-test',
-      databaseName: 'test',
-    });
-  }, 60000);
-
   beforeEach(async () => {
     // Fresh ledger per test: runPendingMigrations sweeps the WHOLE table, so each scenario owns
     // its rows outright. Planted source records from earlier tests stay in the repo harmlessly —
@@ -84,7 +75,6 @@ describe('MigrationRunner.runPendingMigrations (spanner)', () => {
 
   afterAll(async () => {
     await dropTable(migrationTable);
-    SpannerEmulatorProvisioner.release();
   }, 30000);
 
   test('runs the series oldest-first by ledger created, id tiebreak — not insert order', async () => {

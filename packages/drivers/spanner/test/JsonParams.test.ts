@@ -4,7 +4,6 @@ import { Record, StatementFactory, Table, tableByName, withRecordColumns } from 
 import { JsonColumn } from '@proteinjs/db-spanner-common';
 import { QueryBuilder } from '@proteinjs/db-query';
 import { getDropTestTable } from './util/getDropTestTable';
-import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
 import '../generated/test/index';
 
 /**
@@ -128,18 +127,12 @@ describe('Spanner JSON param encoding', () => {
   const dropTable = getDropTestTable(spannerDriver);
 
   beforeAll(async () => {
-    await SpannerEmulatorProvisioner.ensureProvisioned({
-      projectId: 'proteinjs-test',
-      instanceName: 'proteinjs-test',
-      databaseName: 'test',
-    });
     await dropTable(jsonParamsTable);
     await spannerDriver.getTableManager().loadTable(jsonParamsTable);
   }, 60000);
 
   afterAll(async () => {
     await dropTable(jsonParamsTable);
-    await SpannerEmulatorProvisioner.release();
   }, 60000);
 
   test('the value Spanner refused as a JSON param: 0.915908 does not round-trip its exact-mode parser', async () => {

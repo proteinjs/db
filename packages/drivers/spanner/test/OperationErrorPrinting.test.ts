@@ -8,7 +8,6 @@ import { SpannerDriver, SpannerOperationError } from '@proteinjs/db-driver-spann
 import { registerTestUser, clearTestUser } from '@proteinjs/db/test';
 import { SourceRepository } from '@proteinjs/reflection';
 import { getDropTestTable } from './util/getDropTestTable';
-import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
 import '../generated/test/index';
 
 /**
@@ -76,7 +75,6 @@ describe('A failed statement`s error never prints a record`s values (emulator)',
     (SourceRepository.get() as unknown as { objectCache: { [key: string]: unknown[] } }).objectCache[
       '@proteinjs/db/Table'
     ] = [table];
-    await SpannerEmulatorProvisioner.ensureProvisioned(spannerConfig);
     await spannerDriver.createDbIfNotExists();
     await spannerDriver.getTableManager().loadTable(table);
 
@@ -103,7 +101,6 @@ describe('A failed statement`s error never prints a record`s values (emulator)',
 
   afterAll(async () => {
     await dropTable(table);
-    await SpannerEmulatorProvisioner.release();
     delete (SourceRepository.get() as unknown as { objectCache: { [key: string]: unknown[] } }).objectCache[
       '@proteinjs/db/Table'
     ];

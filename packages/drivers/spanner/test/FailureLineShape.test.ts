@@ -2,7 +2,6 @@ import * as fs from 'fs';
 import { SpannerDriver } from '@proteinjs/db-driver-spanner';
 import { Logger } from '@proteinjs/logger';
 import { CapturedLog } from './util/printedLine';
-import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
 
 /**
  * The SHAPE of the driver's failure lines is an interface: whoever reads a deployment's logs by
@@ -100,7 +99,6 @@ describe('the shape of the driver`s failure lines, as a reader of the logs parse
   };
 
   beforeAll(async () => {
-    await SpannerEmulatorProvisioner.ensureProvisioned(spannerConfig);
     await spannerDriver.createDbIfNotExists();
     await quietly(() => spannerDriver.runUpdateSchema(`DROP INDEX ${DUPLICATES_TABLE}_email`));
     await quietly(() => spannerDriver.runUpdateSchema(`DROP TABLE ${DUPLICATES_TABLE}`));
@@ -118,7 +116,6 @@ describe('the shape of the driver`s failure lines, as a reader of the logs parse
     await quietly(() => spannerDriver.runUpdateSchema(`DROP INDEX ${DUPLICATES_TABLE}_email`));
     await quietly(() => spannerDriver.runUpdateSchema(`DROP TABLE ${DUPLICATES_TABLE}`));
     await quietly(() => spannerDriver.runUpdateSchema(`DROP TABLE ${TABLE}`));
-    await SpannerEmulatorProvisioner.release();
     if (RECORD_TO) {
       const recording = { recordedFrom: process.env.FAILURE_LINES_RECORDED_FROM ?? 'unknown', lines: recorded };
       fs.writeFileSync(RECORD_TO, `${JSON.stringify(recording, null, 1)}\n`);

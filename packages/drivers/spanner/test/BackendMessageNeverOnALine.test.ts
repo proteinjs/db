@@ -1,7 +1,6 @@
 import { SpannerDriver } from '@proteinjs/db-driver-spanner';
 import { Logger } from '@proteinjs/logger';
 import { CapturedLog, lineOf } from './util/printedLine';
-import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
 
 /**
  * The backend's own message never reaches a LOG LINE — the driver's own lines, and any line a
@@ -54,7 +53,6 @@ describe('the backend`s message never reaches a log line; the thrown error still
   };
 
   beforeAll(async () => {
-    await SpannerEmulatorProvisioner.ensureProvisioned(spannerConfig);
     await spannerDriver.createDbIfNotExists();
     await quietly(() => spannerDriver.runUpdateSchema(`DROP INDEX ${DUPLICATES_TABLE}_email`));
     await quietly(() => spannerDriver.runUpdateSchema(`DROP TABLE ${DUPLICATES_TABLE}`));
@@ -72,7 +70,6 @@ describe('the backend`s message never reaches a log line; the thrown error still
     await quietly(() => spannerDriver.runUpdateSchema(`DROP INDEX ${DUPLICATES_TABLE}_email`));
     await quietly(() => spannerDriver.runUpdateSchema(`DROP TABLE ${DUPLICATES_TABLE}`));
     await quietly(() => spannerDriver.runUpdateSchema(`DROP TABLE ${TYPED_TABLE}`));
-    await SpannerEmulatorProvisioner.release();
   }, 120000);
 
   beforeEach(() => {

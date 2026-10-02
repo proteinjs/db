@@ -7,5 +7,7 @@ module.exports = {
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   testEnvironment: 'node',
   testTimeout: 30000,
-  setupFiles: ['./test/setup'],
+  setupFiles: ['./test/setup.ts'],
+  globalSetup: './test/globalSetup.ts',
+  globalTeardown: './test/globalTeardown.ts',
 };

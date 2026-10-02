@@ -5,7 +5,6 @@ import { SpannerDriver } from '@proteinjs/db-driver-spanner';
 import { registerTestUser, clearTestUser } from '@proteinjs/db/test';
 import { SourceRepository } from '@proteinjs/reflection';
 import { getDropTestTable } from './util/getDropTestTable';
-import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
 import '../generated/test/index';
 
 interface WedgeEmployee extends Record {
@@ -69,7 +68,6 @@ describe('Session pool at max=1 (wedge designed out; real exhaustion documented)
     (SourceRepository.get() as unknown as { objectCache: { [key: string]: unknown[] } }).objectCache[
       '@proteinjs/db/Table'
     ] = [employeeTable];
-    await SpannerEmulatorProvisioner.ensureProvisioned(spannerConfig);
     await spannerDriver.createDbIfNotExists();
     // Setup issues overlapping schema-metadata queries; with fail: true the second acquisition
     // would error instantly at max=1. Let setup queue on the single session, then restore the
@@ -83,7 +81,6 @@ describe('Session pool at max=1 (wedge designed out; real exhaustion documented)
   afterAll(async () => {
     getSessionPool().options.fail = false; // teardown queries queue like setup's
     await dropTable(employeeTable);
-    await SpannerEmulatorProvisioner.release();
     delete (SourceRepository.get() as unknown as { objectCache: { [key: string]: unknown[] } }).objectCache[
       '@proteinjs/db/Table'
     ];

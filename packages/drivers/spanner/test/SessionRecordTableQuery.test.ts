@@ -4,7 +4,6 @@ import { Db, DateColumn, QueryBuilderFactory, Record, StringColumn, Table, withR
 import { registerTestUser, clearTestUser } from '@proteinjs/db/test';
 import { TransactionContext } from '@proteinjs/db-transaction-context';
 import { getDropTestTable } from './util/getDropTestTable';
-import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
 import '../generated/test/index';
 
 /**
@@ -81,11 +80,6 @@ describe('Session-shaped record table query (the admin Sessions table path)', ()
     // The admin Sessions table reads as an admin; UserAuth is fail-closed, so the suite carries
     // that identity explicitly (the session table defaults to the admin door — no auth block).
     registerTestUser();
-    await SpannerEmulatorProvisioner.ensureProvisioned({
-      projectId: 'proteinjs-test',
-      instanceName: 'proteinjs-test',
-      databaseName: 'test',
-    });
     await dropTable(table);
     await spannerDriver.getTableManager().loadTable(table);
   }, 60000);
@@ -93,7 +87,6 @@ describe('Session-shaped record table query (the admin Sessions table path)', ()
   afterAll(async () => {
     clearTestUser();
     await dropTable(table);
-    await SpannerEmulatorProvisioner.release();
   }, 30000);
 
   test('store-written session rows all come back through the record-table query, newest-first', async () => {

@@ -2,7 +2,6 @@ import { SpannerDriver } from '@proteinjs/db-driver-spanner';
 import { Db, Record, Reference, ReferenceColumn, StringColumn, Table, withRecordColumns } from '@proteinjs/db';
 import { TransactionContext } from '@proteinjs/db-transaction-context';
 import { getDropTestTable } from './util/getDropTestTable';
-import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
 import {
   AdoptWidthRecord,
   ADOPT_WIDTH_TABLE_NAME,
@@ -81,17 +80,11 @@ describe('ReferenceColumn width adoption (string uuid column retyped in place)',
   const REFERENCE_ERA_UUID = '9b7c1e52-0d4f-4a63-8e91-2c85d6f03a47';
 
   beforeAll(async () => {
-    await SpannerEmulatorProvisioner.ensureProvisioned({
-      projectId: 'proteinjs-test',
-      instanceName: 'proteinjs-test',
-      databaseName: 'test',
-    });
     await dropTable(legacyTable());
   }, 30000);
 
   afterAll(async () => {
     await dropTable(legacyTable());
-    await SpannerEmulatorProvisioner.release();
   }, 30000);
 
   test('retype with the adopted width is invisible to the schema sync — zero DDL', async () => {

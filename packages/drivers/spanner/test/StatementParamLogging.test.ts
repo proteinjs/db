@@ -6,7 +6,6 @@ import { Logger } from '@proteinjs/logger';
 import { SourceRepository } from '@proteinjs/reflection';
 import { getDropTestTable } from './util/getDropTestTable';
 import { CapturedLog, lineOf } from './util/printedLine';
-import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
 import '../generated/test/index';
 
 /**
@@ -82,7 +81,6 @@ describe('The driver never prints a bound value (emulator)', () => {
     (SourceRepository.get() as unknown as { objectCache: { [key: string]: unknown[] } }).objectCache[
       '@proteinjs/db/Table'
     ] = [table];
-    await SpannerEmulatorProvisioner.ensureProvisioned(spannerConfig);
     await spannerDriver.createDbIfNotExists();
     await spannerDriver.getTableManager().loadTable(table);
     // From here on the driver writes at DEBUG into a capturing writer — the level at which the
@@ -98,7 +96,6 @@ describe('The driver never prints a bound value (emulator)', () => {
   afterAll(async () => {
     internals.logger = driverLogger;
     await dropTable(table);
-    await SpannerEmulatorProvisioner.release();
     delete (SourceRepository.get() as unknown as { objectCache: { [key: string]: unknown[] } }).objectCache[
       '@proteinjs/db/Table'
     ];

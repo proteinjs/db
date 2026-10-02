@@ -3,7 +3,6 @@ import { Db, getTables, isTable, QueryBuilderFactory, Table, tableByName } from 
 import { registerTestUser, clearTestUser } from '@proteinjs/db/test';
 import { TransactionContext } from '@proteinjs/db-transaction-context';
 import { getDropTestTable } from './util/getDropTestTable';
-import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
 import { DeletableLedgerEntryTable, DurableLedgerEntryTable, LedgerEntry } from './util/durableTableDoorsTestTables';
 import '../generated/test/index';
 
@@ -67,11 +66,6 @@ describe('a durable table keeps its rows through every caller door', () => {
     // An admin identity: break-glass passes every declared door — the durable delete door is the
     // one it must not pass.
     registerTestUser(['admin']);
-    await SpannerEmulatorProvisioner.ensureProvisioned({
-      projectId: 'proteinjs-test',
-      instanceName: 'proteinjs-test',
-      databaseName: 'test',
-    });
     for (const table of [durableTable, deletableTable]) {
       await dropTable(table);
       await spannerDriver.getTableManager().loadTable(table);
@@ -91,7 +85,6 @@ describe('a durable table keeps its rows through every caller door', () => {
     for (const table of [durableTable, deletableTable]) {
       await dropTable(table);
     }
-    await SpannerEmulatorProvisioner.release();
   }, 30000);
 
   test('the DbService door refuses the delete with the typed 403 naming the table; the row stays', async () => {

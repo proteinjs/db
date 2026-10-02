@@ -13,7 +13,6 @@ import {
 import { registerTestUser, clearTestUser } from '@proteinjs/db/test';
 import { TransactionContext } from '@proteinjs/db-transaction-context';
 import { getDropTestTable } from './util/getDropTestTable';
-import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
 import '../generated/test/index';
 
 /**
@@ -78,11 +77,6 @@ describe('Db.queryAggregates (grouped aggregation + UTC day buckets)', () => {
   beforeAll(async () => {
     // The table declares no auth block → the default admin door; carry that identity.
     registerTestUser();
-    await SpannerEmulatorProvisioner.ensureProvisioned({
-      projectId: 'proteinjs-test',
-      instanceName: 'proteinjs-test',
-      databaseName: 'test',
-    });
     await dropTable(table);
     await spannerDriver.getTableManager().loadTable(table);
 
@@ -123,7 +117,6 @@ describe('Db.queryAggregates (grouped aggregation + UTC day buckets)', () => {
   afterAll(async () => {
     clearTestUser();
     await dropTable(table);
-    await SpannerEmulatorProvisioner.release();
   }, 30000);
 
   test('grouped SUM/COUNT rows carry group fields + aggregate resultProps', async () => {

@@ -10,7 +10,6 @@ import {
 } from '@proteinjs/db';
 import { registerTestUser, clearTestUser } from '@proteinjs/db/test';
 import { getDropTestTable } from './util/getDropTestTable';
-import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
 import '../generated/test/index';
 
 /**
@@ -113,11 +112,6 @@ describe('MigrationRunner (spanner)', () => {
     // 'dev' permission with admin break-glass — the permission mapping itself is pinned in
     // @proteinjs/db's MigrationAuth suite.
     registerTestUser();
-    await SpannerEmulatorProvisioner.ensureProvisioned({
-      projectId: 'proteinjs-test',
-      instanceName: 'proteinjs-test',
-      databaseName: 'test',
-    });
     await dropTable(migrationTable);
     await spannerDriver.getTableManager().loadTable(migrationTable);
     for (const migration of [
@@ -141,7 +135,6 @@ describe('MigrationRunner (spanner)', () => {
   afterAll(async () => {
     clearTestUser();
     await dropTable(migrationTable);
-    SpannerEmulatorProvisioner.release();
   }, 30000);
 
   test('a mid-run throw resolves the detached promise and records failure status', async () => {

@@ -5,7 +5,6 @@ import { SpannerDriver } from '@proteinjs/db-driver-spanner';
 import { registerTestUser, clearTestUser } from '@proteinjs/db/test';
 import { SourceRepository } from '@proteinjs/reflection';
 import { getDropTestTable } from './util/getDropTestTable';
-import { SpannerEmulatorProvisioner } from './util/SpannerEmulatorProvisioner';
 import '../generated/test/index';
 
 /**
@@ -194,7 +193,6 @@ describe('DML retry safety (a lost response must never re-execute a statement)',
     (SourceRepository.get() as unknown as { objectCache: { [key: string]: unknown[] } }).objectCache[
       '@proteinjs/db/Table'
     ] = [anchorTable, targetTable];
-    await SpannerEmulatorProvisioner.ensureProvisioned(spannerConfig);
     await spannerDriver.createDbIfNotExists();
     await spannerDriver.getTableManager().loadTable(anchorTable);
     await spannerDriver.getTableManager().loadTable(targetTable);
@@ -205,7 +203,6 @@ describe('DML retry safety (a lost response must never re-execute a statement)',
   afterAll(async () => {
     await dropTable(targetTable);
     await dropTable(anchorTable);
-    await SpannerEmulatorProvisioner.release();
     delete (SourceRepository.get() as unknown as { objectCache: { [key: string]: unknown[] } }).objectCache[
       '@proteinjs/db/Table'
     ];
