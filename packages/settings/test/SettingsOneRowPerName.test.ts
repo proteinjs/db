@@ -1,6 +1,7 @@
 import { Db, Table, getDbAsSystem, isDuplicateKeyError } from '@proteinjs/db';
 import { SpannerDriver } from '@proteinjs/db-driver-spanner';
 import { SpannerEmulatorProvisioner, getDropTestTable } from '@proteinjs/db-driver-spanner/test';
+import { Logger } from '@proteinjs/logger';
 import { Settings } from '../src/Settings';
 import { tables } from '../src/tables/tables';
 import { HeldFirstWriteDriver } from './util/HeldFirstWriteDriver';
@@ -13,8 +14,9 @@ import '../generated/index';
  * driver and transaction context resolved through reflection — the path `getScopedDb` takes in
  * production): two concurrent `set`s of a fresh name — each observing no row before either
  * writes, the interleaving that created two rows — leave ONE row, `get` reads its value, a later
- * `set` rewrites that row, the table's unique index refuses a second row of the name in the scope
- * by its typed error, and the same name in another scope is another person's row.
+ * `set` rewrites that row without the driver reporting a refused statement (the common act stays
+ * quiet), the table's unique index refuses a second row of the name in the scope by its typed
+ * error, and the same name in another scope is another person's row.
  */
 
 const emulator = { projectId: 'proteinjs-test', instanceName: 'proteinjs-test', databaseName: 'test' };
@@ -59,8 +61,24 @@ describe('one setting row per name within a scope', () => {
     expect(await settings.get('theme')).toBe(rows[0].value);
   });
 
-  test('a later set rewrites the one row', async () => {
-    await settings.set('theme', 'blue');
+  test('a later set rewrites the one row, and the driver writes no error line for it', async () => {
+    // The driver's log lines, captured at its writer for the rewrite: a rewrite of an existing
+    // name is the common act (a setting written on every change) and must not be a refused
+    // statement the driver reports as a failure.
+    const internals = driver as unknown as { logger: Logger };
+    const driverLogger = internals.logger;
+    const lines: { logLevel: string; message?: string }[] = [];
+    internals.logger = new Logger({
+      name: 'SpannerDriver',
+      logLevel: 'info',
+      logWriter: { write: (line: { logLevel: string; message?: string }) => lines.push(line) } as any,
+    });
+    try {
+      await settings.set('theme', 'blue');
+    } finally {
+      internals.logger = driverLogger;
+    }
+    expect(lines.filter((line) => line.logLevel === 'error' || line.logLevel === 'warn')).toEqual([]);
     expect((await rowsOf(ada.id, 'theme')).map((row) => row.value)).toEqual(['blue']);
     expect(await settings.get('theme')).toBe('blue');
   });

@@ -7,11 +7,13 @@ export const getSettings = () => (typeof self === 'undefined' ? new Settings() :
 
 /**
  * The caller's named settings: one row per name within their scope (`SettingTable`'s unique
- * index), so `get` reads the one row. `set` is ONE write that cannot create a second row: it
- * inserts, and when the index refuses the insert because the row is already there (the typed
- * `DuplicateKeyError`) it updates that one row — the only step after the refusal; the last
- * writer's value is what the row holds. An update-then-insert let two concurrent writers each
- * update nothing and each insert, two rows of one name.
+ * index), so `get` reads the one row. `set` is one write that cannot mint a second row: it
+ * updates the row; when there is none it inserts; and when the index refuses that insert because
+ * another writer landed the row in between (the typed `DuplicateKeyError` — the race's only path)
+ * it updates the one row — the last writer's value is what the row holds. The update comes first
+ * because a rewrite of an existing name is the common act: insert-first made every rewrite a
+ * refused statement the driver reports as a failure. Without the index, two concurrent writers
+ * each updated nothing and each inserted, two rows of one name.
  */
 export class Settings implements SettingsService {
   public serviceMetadata = {
@@ -32,6 +34,9 @@ export class Settings implements SettingsService {
 
   async set(name: string, value: any) {
     const db = getScopedDb();
+    if ((await db.update(tables.Setting, { value }, { name })) > 0) {
+      return;
+    }
     try {
       await db.insert(tables.Setting, { name, value });
     } catch (error) {
