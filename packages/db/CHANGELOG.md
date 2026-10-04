@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.53.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.52.0...@proteinjs/db@1.53.0) (2026-10-04)
+
+
+### Features
+
+* **db:** DuplicateKeyError — an insert refused because the row is already there reaches the caller typed ([7d0828b](https://github.com/proteinjs/db/commit/7d0828bb180f771518bb9d654613ba3f27ef5999))
+
+
+
+
+
 # [1.52.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.51.0...@proteinjs/db@1.52.0) (2026-10-02)
 
 

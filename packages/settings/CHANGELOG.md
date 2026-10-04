@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.3.47](https://github.com/brentbahry/db/compare/@proteinjs/db-settings@1.3.46...@proteinjs/db-settings@1.3.47) (2026-10-04)
+
+
+### Bug Fixes
+
+* **settings:** one row per name within a scope — a unique index over (scope, name), set inserts then updates on the refusal, a pre-schema-sync dedupe ([8f9b8ef](https://github.com/brentbahry/db/commit/8f9b8efb5eb1dcb60f0c782fff8074b8a7dcd1e6))
+* **settings:** set updates first — a rewrite of an existing name is never a refused insert the driver reports ([4317d08](https://github.com/brentbahry/db/commit/4317d08d6bd9c1d7b5465a1459e980d9b787ab06))
+
+
+
+
+
 ## [1.3.46](https://github.com/brentbahry/db/compare/@proteinjs/db-settings@1.3.45...@proteinjs/db-settings@1.3.46) (2026-10-02)
 
 **Note:** Version bump only for package @proteinjs/db-settings

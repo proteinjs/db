@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.3.44](https://github.com/proteinjs/db/compare/@proteinjs/db-spanner-common@1.3.43...@proteinjs/db-spanner-common@1.3.44) (2026-10-04)
+
+**Note:** Version bump only for package @proteinjs/db-spanner-common
+
+
+
+
+
 ## [1.3.43](https://github.com/proteinjs/db/compare/@proteinjs/db-spanner-common@1.3.42...@proteinjs/db-spanner-common@1.3.43) (2026-10-02)
 
 **Note:** Version bump only for package @proteinjs/db-spanner-common

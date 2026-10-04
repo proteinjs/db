@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.16.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.15.7...@proteinjs/db-driver-knex@1.16.0) (2026-10-04)
+
+
+### Features
+
+* **db:** DuplicateKeyError — an insert refused because the row is already there reaches the caller typed ([7d0828b](https://github.com/proteinjs/db/commit/7d0828bb180f771518bb9d654613ba3f27ef5999))
+
+
+
+
+
 ## [1.15.7](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-knex@1.15.6...@proteinjs/db-driver-knex@1.15.7) (2026-10-02)
 
 **Note:** Version bump only for package @proteinjs/db-driver-knex
