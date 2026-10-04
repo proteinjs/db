@@ -32,6 +32,7 @@ import { ReferenceArray } from './reference/ReferenceArray';
 import { ReferenceCache } from './reference/ReferenceCache';
 import { ArrayMembershipUpdate, applyArrayMembershipOps } from './reference/ArrayMembershipOps';
 import { PreservedPath, overlayPreservedPaths } from './UpdatePreserving';
+import { DuplicateKeyError } from './DuplicateKeyError';
 
 /** get `Db` if on server, and `DbService` if on browser */
 export const getDb = <R extends Record = Record>() =>
@@ -112,6 +113,13 @@ export interface DbDriver {
    * and a batch on it is always one statement.
    */
   getStatementParameterLimit?(): number;
+  /**
+   * Whether `error` — what this driver's `runDml` threw — is the backend refusing a row because a
+   * row with the same key is already there (the primary key, or a unique index). `Db.insert` and
+   * `Db.insertMany` rethrow such a refusal as the typed `DuplicateKeyError`, so a caller can take
+   * it by type. A driver that declares no classifier lets the backend's error through as it came.
+   */
+  isDuplicateKeyError?(error: unknown): boolean;
 }
 
 export class Db<R extends Record = Record> implements DbService<R> {
@@ -219,7 +227,11 @@ export class Db<R extends Record = Record> implements DbService<R> {
         serializedRecord as Partial<T>,
         this.statementConfigFactory.getStatementConfig(config)
       );
-    await this.dbDriver.runDml(generateInsert, this.transactionForDriver());
+    try {
+      await this.dbDriver.runDml(generateInsert, this.transactionForDriver());
+    } catch (error) {
+      throw this.insertFailure(table, error);
+    }
     if (encryptionContext) {
       // The same write that stored the ciphertext maintains its search tokens (rides the
       // ambient transaction when there is one).
@@ -288,7 +300,11 @@ export class Db<R extends Record = Record> implements DbService<R> {
           statementRows as Partial<T>[],
           this.statementConfigFactory.getStatementConfig(config)
         );
-      await this.dbDriver.runDml(generateInsert, this.transactionForDriver());
+      try {
+        await this.dbDriver.runDml(generateInsert, this.transactionForDriver());
+      } catch (error) {
+        throw this.insertFailure(table, error);
+      }
     }
 
     for (const { recordCopy, encryptionContext } of prepared) {
@@ -1018,6 +1034,15 @@ export class Db<R extends Record = Record> implements DbService<R> {
 
     const { EncryptionRecordHooks } = await import('./encryption/EncryptionRecordHooks');
     return { keyOwner: await new EncryptionRecordHooks().resolveKeyOwnerForWrite(table, record) };
+  }
+
+  /**
+   * What an insert statement's failure becomes for the caller: the typed `DuplicateKeyError` when
+   * the driver classifies the backend's refusal as a row already there; any other failure as it
+   * came.
+   */
+  private insertFailure(table: Table<any>, error: unknown): unknown {
+    return this.dbDriver.isDuplicateKeyError?.(error) ? new DuplicateKeyError(table.name, error) : error;
   }
 
   private async updateTouchesEncryptedColumns(table: Table<any>, record: any): Promise<boolean> {

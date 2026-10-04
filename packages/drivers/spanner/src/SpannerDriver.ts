@@ -561,6 +561,17 @@ export class SpannerDriver implements DbDriver {
   }
 
   /**
+   * The backend refusing a row because a row with the same key is already there: gRPC
+   * ALREADY_EXISTS (code 6) on a data operation — Spanner answers it for a primary-key collision
+   * and for a unique index's refusal alike, and the typed error this driver throws carries the
+   * code (`SpannerOperationError`). Nothing else is this class: not a FAILED_PRECONDITION, not an
+   * ABORTED the transaction runner retries, not a deadline.
+   */
+  isDuplicateKeyError(error: unknown): boolean {
+    return (error as { code?: unknown } | null | undefined)?.code === 6;
+  }
+
+  /**
    * Spanner bounds one statement at 950 query parameters (its documented quota, the same on the
    * emulator): a multi-row insert binding `columns × rows` of them is sized by this
    * (`Db.insertMany`), so a wide batch goes as the fewest statements under the bound.

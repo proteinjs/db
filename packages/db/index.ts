@@ -2,6 +2,7 @@ export * from './src/Db';
 export * from './src/DetachedDbOps';
 export * from './src/Table';
 export * from './src/RecordAccessError';
+export * from './src/DuplicateKeyError';
 export * from './src/auth/TableAuth';
 export * from './src/auth/TableServiceAuth';
 export * from './src/Columns';

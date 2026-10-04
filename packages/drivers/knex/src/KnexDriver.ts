@@ -227,6 +227,15 @@ export class KnexDriver implements DbDriver {
   }
 
   /**
+   * The backend refusing a row because a row with the same key is already there: MySQL's
+   * ER_DUP_ENTRY (errno 1062), the `code` on the vendor error this driver rethrows untouched — a
+   * primary-key collision and a unique index's refusal alike.
+   */
+  isDuplicateKeyError(error: unknown): boolean {
+    return (error as { code?: unknown } | null | undefined)?.code === 'ER_DUP_ENTRY';
+  }
+
+  /**
    * The one line a failed statement writes. What is THROWN is the vendor's error itself, untouched
    * (runQuery rethrows it); this is only what the driver PRINTS of it.
    *
