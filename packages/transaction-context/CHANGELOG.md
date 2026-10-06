@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [0.5.45](https://github.com/proteinjs/db/compare/@proteinjs/db-transaction-context@0.5.44...@proteinjs/db-transaction-context@0.5.45) (2026-10-06)
+
+**Note:** Version bump only for package @proteinjs/db-transaction-context
+
+
+
+
+
 ## [0.5.44](https://github.com/proteinjs/db/compare/@proteinjs/db-transaction-context@0.5.43...@proteinjs/db-transaction-context@0.5.44) (2026-10-04)
 
 **Note:** Version bump only for package @proteinjs/db-transaction-context

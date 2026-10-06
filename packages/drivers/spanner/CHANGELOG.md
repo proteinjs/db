@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.35.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.34.0...@proteinjs/db-driver-spanner@1.35.0) (2026-10-06)
+
+
+### Features
+
+* **db:** a write names its transaction retry policy at the call; a bounded one surfaces the abort typed ([9675257](https://github.com/proteinjs/db/commit/967525752f9d2dd06accff6ea0f9397e590a96dc))
+
+
+
+
+
 # [1.34.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.33.0...@proteinjs/db-driver-spanner@1.34.0) (2026-10-04)
 
 

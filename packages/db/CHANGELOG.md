@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.54.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.53.0...@proteinjs/db@1.54.0) (2026-10-06)
+
+
+### Features
+
+* **db:** a write names its transaction retry policy at the call; a bounded one surfaces the abort typed ([9675257](https://github.com/proteinjs/db/commit/967525752f9d2dd06accff6ea0f9397e590a96dc))
+
+
+
+
+
 # [1.53.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.52.0...@proteinjs/db@1.53.0) (2026-10-04)
 
 
