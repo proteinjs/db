@@ -1,5 +1,5 @@
 {
-  "branch": "stack/db-retry",
+  "branch": "stack/db-retry-561358b3",
   "packages": [
     "db",
     "drivers/spanner",
