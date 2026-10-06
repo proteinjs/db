@@ -3,6 +3,7 @@ export * from './src/DetachedDbOps';
 export * from './src/Table';
 export * from './src/RecordAccessError';
 export * from './src/DuplicateKeyError';
+export * from './src/TransactionRetryExhaustedError';
 export * from './src/auth/TableAuth';
 export * from './src/auth/TableServiceAuth';
 export * from './src/Columns';
@@ -25,6 +26,7 @@ export * from './src/TableWatcher';
 export * from './src/transaction/Transaction';
 export * from './src/transaction/TransactionRunner';
 export * from './src/transaction/TransactionContextFactory';
+export * from './src/transaction/TransactionRetryPolicy';
 
 export * from './src/schema/SchemaOperations';
 export * from './src/schema/SchemaMetadata';

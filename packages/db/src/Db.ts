@@ -33,6 +33,7 @@ import { ReferenceCache } from './reference/ReferenceCache';
 import { ArrayMembershipUpdate, applyArrayMembershipOps } from './reference/ArrayMembershipOps';
 import { PreservedPath, overlayPreservedPaths } from './UpdatePreserving';
 import { DuplicateKeyError } from './DuplicateKeyError';
+import { TransactionOptions } from './transaction/TransactionRetryPolicy';
 
 /** get `Db` if on server, and `DbService` if on browser */
 export const getDb = <R extends Record = Record>() =>
@@ -94,8 +95,24 @@ export interface DbDriver {
     generateStatement: (config: DbDriverQueryStatementConfig) => Statement,
     transaction?: any
   ): Promise<SerializedRecord[]>;
-  runDml(generateStatement: (config: DbDriverDmlStatementConfig) => Statement, transaction?: any): Promise<number>;
-  runTransaction<T>(fn: (transaction: any) => Promise<T>): Promise<T>;
+  /**
+   * Run one write statement. On `transaction` it rides that transaction; without one it is a
+   * transaction of its own, and `options.retry` (`TransactionRetryPolicy`) is how the driver
+   * re-runs it when the database aborts it — the driver's own road when omitted, else the bound
+   * named, past which the driver throws `TransactionRetryExhaustedError`. A driver that never
+   * re-runs an aborted statement (the abort reaches the caller at once) already satisfies every
+   * policy.
+   */
+  runDml(
+    generateStatement: (config: DbDriverDmlStatementConfig) => Statement,
+    transaction?: any,
+    options?: TransactionOptions
+  ): Promise<number>;
+  /**
+   * Run `fn` as one transaction. `options.retry` (`TransactionRetryPolicy`) is how the driver
+   * re-runs the whole body when the database aborts the transaction — see `runDml`.
+   */
+  runTransaction<T>(fn: (transaction: any) => Promise<T>, options?: TransactionOptions): Promise<T>;
   /**
    * The driver's per-operation deadline, in milliseconds: the longest one statement it runs may
    * take before the driver fails it — the bound the driver enforces, as configured. Not a whole
@@ -209,10 +226,18 @@ export class Db<R extends Record = Record> implements DbService<R> {
     return (await this.query(table, query, options))[0];
   }
 
-  async insert<T extends R>(table: Table<T>, record: Omit<T, keyof R>): Promise<T> {
+  /**
+   * Insert one row. Outside a transaction the insert is a transaction of its own, and
+   * `options.retry` names how it is re-run when the database aborts it (`TransactionRetryPolicy`:
+   * the driver's own road when omitted; a bounded policy for a best-effort write, past which the
+   * caller takes `TransactionRetryExhaustedError`). Inside a transaction the transaction's policy
+   * governs, and an insert naming one of its own is refused.
+   */
+  async insert<T extends R>(table: Table<T>, record: Omit<T, keyof R>, options?: TransactionOptions): Promise<T> {
     if (!this.runAsSystem) {
       this.auth.canInsert(table);
     }
+    const driverOptions = this.ownTransactionOptions(options);
 
     let recordCopy = Object.assign({}, record);
     await addDefaultFieldValues(table, recordCopy, this.runAsSystem);
@@ -228,7 +253,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
         this.statementConfigFactory.getStatementConfig(config)
       );
     try {
-      await this.dbDriver.runDml(generateInsert, this.transactionForDriver());
+      await this.dbDriver.runDml(generateInsert, this.transactionForDriver(), driverOptions);
     } catch (error) {
       throw this.insertFailure(table, error);
     }
@@ -323,7 +348,20 @@ export class Db<R extends Record = Record> implements DbService<R> {
     return prepared.map((row) => row.recordCopy as T);
   }
 
-  async update<T extends R>(table: Table<T>, record: Partial<T>, query?: Query<T>): Promise<number> {
+  /**
+   * Update the rows `query` selects (the one row `record.id` names when there is no query).
+   * Outside a transaction the update is a transaction of its own, and `options.retry` names how
+   * it is re-run when the database aborts it (`TransactionRetryPolicy`: the driver's own road when
+   * omitted; a bounded policy for a best-effort write — a live progress row the next step
+   * rewrites anyway — past which the caller takes `TransactionRetryExhaustedError`). Inside a
+   * transaction the transaction's policy governs, and an update naming one of its own is refused.
+   */
+  async update<T extends R>(
+    table: Table<T>,
+    record: Partial<T>,
+    query?: Query<T>,
+    options?: TransactionOptions
+  ): Promise<number> {
     if (!this.runAsSystem) {
       this.auth.canUpdate(table);
     }
@@ -331,6 +369,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     if (!query && !record.id) {
       throw new Error(`Update must be called with either a Query or a record with an id property`);
     }
+    const driverOptions = this.ownTransactionOptions(options);
 
     let recordCopy = Object.assign({}, record);
     // Immutable columns can never be rewritten through an update — strip them from the payload
@@ -353,7 +392,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     recordCopy = await this.tableWatcherRunner.runBeforeUpdateTableWatchers(table, recordCopy, qb);
     let recordUpdateCount: number;
     if (await this.updateTouchesEncryptedColumns(table, recordCopy)) {
-      recordUpdateCount = await this.updateEncrypted(table, recordCopy, qb);
+      recordUpdateCount = await this.updateEncrypted(table, recordCopy, qb, driverOptions);
     } else {
       const recordSerializer = new RecordSerializer<T>(table);
       const serializedRecord = await recordSerializer.serialize(recordCopy);
@@ -365,7 +404,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
           qb,
           this.statementConfigFactory.getStatementConfig(config)
         );
-      recordUpdateCount = await this.dbDriver.runDml(generateUpdate, this.transactionForDriver());
+      recordUpdateCount = await this.dbDriver.runDml(generateUpdate, this.transactionForDriver(), driverOptions);
     }
     if (!this.runAsSystem && recordUpdateCount === 0) {
       const id = this.singleRowIdTarget(record, query);
@@ -928,6 +967,11 @@ export class Db<R extends Record = Record> implements DbService<R> {
    *
    * Note: Nested transactions are not supported; will throw.
    *
+   * `options.retry` names how the driver re-runs the whole body when the database aborts the
+   * transaction (`TransactionRetryPolicy`: the driver's own road when omitted; a bounded policy
+   * for best-effort work, past which this throws `TransactionRetryExhaustedError`). Every write
+   * inside the body rides this policy; none may name one of its own.
+   *
    * Note: work spawned inside the body but NOT awaited by it escapes the transaction's
    * lifetime while still holding its context — such work fails loudly on its next db
    * operation (see TransactionContextData.ended). Await everything inside the body, or run
@@ -946,7 +990,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
    * });
    * ```
    */
-  async runTransaction<T>(fn: () => Promise<T>): Promise<T> {
+  async runTransaction<T>(fn: () => Promise<T>, options?: TransactionOptions): Promise<T> {
     if (this.transactionContextFactory.getTransactionContext().currentTransaction) {
       throw new Error(`Nested transactions are not supported. A transaction is already running in this context.`);
     }
@@ -969,7 +1013,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
         // silent op on a finished transaction (see transactionForDriver).
         contextData.ended = true;
       }
-    });
+    }, options);
 
     // COMMIT BOUNDARY: the driver resolves only after the transaction is durably committed (and
     // rejects on rollback, in which case the queue above is never drained). Hook failures are
@@ -1062,7 +1106,8 @@ export class Db<R extends Record = Record> implements DbService<R> {
   private async updateEncrypted<T extends R>(
     table: Table<T>,
     recordCopy: Partial<T>,
-    qb: QueryBuilder<T>
+    qb: QueryBuilder<T>,
+    options?: TransactionOptions
   ): Promise<number> {
     const targetRows = await this._query(table, qb);
     if (targetRows.length === 0) {
@@ -1096,7 +1141,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
           groupQb,
           this.statementConfigFactory.getStatementConfig(config)
         );
-      recordUpdateCount += await this.dbDriver.runDml(generateUpdate, this.transactionForDriver());
+      recordUpdateCount += await this.dbDriver.runDml(generateUpdate, this.transactionForDriver(), options);
       await tokenMaintenance.afterUpdate(table, ids, recordCopy, owner, this.newSystemDb());
     }
 
@@ -1147,6 +1192,22 @@ export class Db<R extends Record = Record> implements DbService<R> {
     }
 
     return context.currentTransaction;
+  }
+
+  /**
+   * A write's transaction options as the driver takes them: its own, when the write runs outside
+   * any transaction and so is a transaction of its own. Inside a transaction the write rides the
+   * transaction, whose policy was named on `runTransaction`; a policy named on the write would be
+   * one nothing honours — refused by name, never dropped.
+   */
+  private ownTransactionOptions(options?: TransactionOptions): TransactionOptions | undefined {
+    if (options?.retry !== undefined && this.transactionContextFactory.getTransactionContext().currentTransaction) {
+      throw new Error(
+        `A write inside a transaction cannot name a retry policy of its own: the transaction's policy (runTransaction's options) governs every write in it`
+      );
+    }
+
+    return options;
   }
 
   /**

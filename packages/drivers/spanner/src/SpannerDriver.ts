@@ -8,6 +8,9 @@ import {
   Table,
   TableManager,
   tableByName,
+  TransactionOptions,
+  TransactionRetryExhaustedError,
+  TransactionRetryPolicy,
 } from '@proteinjs/db';
 import { SpannerConfig } from './SpannerConfig';
 import { SpannerEnvTokenAuth, SpannerEnvTokenAuthError, SPANNER_ENV_TOKEN_VAR } from './SpannerEnvTokenAuth';
@@ -26,6 +29,20 @@ type ParamDescription = { type: string; length?: number; null?: true };
 
 /** A statement's parameters as a log line carries them: by name — or the one word for a params map that could not be read at all. */
 type ParamsDescription = { [param: string]: ParamDescription } | 'unreadable';
+
+/** A caller's retry policy with its bounds read: how many attempts in all, and the wall-clock past which no attempt starts. */
+type RetryBound = { attempts: number; maxMs?: number };
+
+/**
+ * An attempt the database ABORTED under a caller-bounded retry policy, thrown through the client
+ * library's transaction runner in the abort's place. The runner re-runs a body on the abort's own
+ * code (ABORTED, after its backoff ladder); carried in this, with no code, the abort leaves the
+ * runner at once and the driver's bounded road decides what it means (runBoundedTransaction).
+ * Never leaves the driver: the road unwraps it.
+ */
+class BoundedAttemptAbort {
+  constructor(readonly abort: unknown) {}
+}
 
 /**
  * Google Spanner driver for ProteinJs Db
@@ -58,12 +75,24 @@ export class SpannerDriver implements DbDriver {
   /** Spanner's quota on query parameters per statement (see getStatementParameterLimit). */
   private static readonly STATEMENT_PARAMETER_LIMIT = 950;
   /**
-   * The attempt number of every transaction the runner currently drives, keyed by that attempt's
-   * transaction handle — how the failure path (operationFailure) knows a statement ran inside a
-   * runner-driven transaction, and which attempt it was. Process-wide like the Database the
-   * transactions come from; an entry dies with its handle.
+   * Between the attempts of a transaction under a caller-bounded retry policy
+   * (runBoundedTransaction): a short ladder of the driver's own — `BASE · 2^(attempt−1)` capped
+   * at `MAX`, plus up to `JITTER` — never the client library's (2^n seconds), which is sized for
+   * a write that must land however long a conflict lasts. A bounded policy is a best-effort
+   * write's: it re-tries promptly and loses promptly.
    */
-  private static readonly RUNNER_ATTEMPTS = new WeakMap<Transaction, number>();
+  private static readonly BOUNDED_RETRY_BASE_DELAY_MS = 100;
+  private static readonly BOUNDED_RETRY_MAX_DELAY_MS = 1_000;
+  private static readonly BOUNDED_RETRY_JITTER_MS = 100;
+  /**
+   * Every transaction the driver currently drives, keyed by that attempt's transaction handle:
+   * its attempt number, and whether it runs under a caller-bounded retry policy — how the failure
+   * path (operationFailure) knows a statement ran inside a driver-driven transaction, which
+   * attempt it was, and who decides on an abort (the client library's runner, or the driver's
+   * bounded road). Process-wide like the Database the transactions come from; an entry dies with
+   * its handle.
+   */
+  private static readonly RUNNER_ATTEMPTS = new WeakMap<Transaction, { attempt: number; bounded: boolean }>();
   /**
    * The statement lane of every transaction handle: the tail of the statements issued on it, in
    * issue order. A read-write transaction is a SEQUENCE on the wire — the client numbers every
@@ -343,22 +372,26 @@ export class SpannerDriver implements DbDriver {
   }
 
   /**
-   * Execute a write operation.
+   * Execute a write operation. On `transaction` it rides that transaction; without one it is a
+   * single-statement transaction of its own, re-run on an abort as `options.retry` says (see
+   * runRetriedTransaction).
    *
    * @returns number of affected rows
    */
   async runDml(
     generateStatement: (config: DbDriverDmlStatementConfig) => Statement,
-    transaction?: Transaction
+    transaction?: Transaction,
+    options?: TransactionOptions
   ): Promise<number> {
     const callSiteStack = this.callSiteStack(this.runDml);
     if (transaction) {
       return await this.executeDml(generateStatement, transaction, callSiteStack);
     }
 
-    // A single-statement transaction of its own, under the runner (see runRetriedTransaction).
-    return await this.runRetriedTransaction('spanner dml transaction', (transaction) =>
-      this.executeDml(generateStatement, transaction, callSiteStack)
+    return await this.runRetriedTransaction(
+      'spanner dml transaction',
+      (transaction) => this.executeDml(generateStatement, transaction, callSiteStack),
+      options
     );
   }
 
@@ -484,7 +517,9 @@ export class SpannerDriver implements DbDriver {
     if (retried) {
       this.writeStatementLine(() =>
         this.logger.debug({
-          message: `Transaction aborted at ${operation}; the transaction runner retries it`,
+          message: retried.bounded
+            ? `Transaction aborted at ${operation}; its retry policy decides whether it runs again`
+            : `Transaction aborted at ${operation}; the transaction runner retries it`,
           obj: {
             attempt: retried.attempt,
             statement,
@@ -515,17 +550,26 @@ export class SpannerDriver implements DbDriver {
   }
 
   /**
-   * The one classification of a retried abort: the statement ran on a transaction the runner
-   * drives (marked with its attempt by runRetriedTransaction) and the backend answered ABORTED
-   * (gRPC code 10) — the code the runner retries. Any other rejection, and an ABORTED on a
-   * transaction nobody retries (a caller-managed handle, a single-use read), is a failure.
+   * The one classification of a retried abort: the statement ran on a transaction the driver
+   * drives (marked with its attempt by runUnderRunner) and the backend answered ABORTED (gRPC
+   * code 10) — the code the client library's runner retries, or the driver's bounded road
+   * decides on. Any other rejection, and an ABORTED on a transaction nobody retries (a
+   * caller-managed handle, a single-use read), is a failure.
    */
-  private retriedAbort(runner: Database | Transaction, error: unknown): { attempt: number } | undefined {
-    const attempt = SpannerDriver.RUNNER_ATTEMPTS.get(runner as Transaction);
-    if (attempt === undefined || (error as { code?: unknown } | null | undefined)?.code !== 10) {
+  private retriedAbort(
+    runner: Database | Transaction,
+    error: unknown
+  ): { attempt: number; bounded: boolean } | undefined {
+    const driven = SpannerDriver.RUNNER_ATTEMPTS.get(runner as Transaction);
+    if (driven === undefined || !SpannerDriver.isAbort(error)) {
       return undefined;
     }
-    return { attempt };
+    return driven;
+  }
+
+  /** The database aborted the transaction: gRPC ABORTED (code 10), on the vendor error or the typed error that carries it. */
+  private static isAbort(error: unknown): boolean {
+    return (error as { code?: unknown } | null | undefined)?.code === 10;
   }
 
   /**
@@ -541,12 +585,12 @@ export class SpannerDriver implements DbDriver {
   }
 
   /**
-   * Execute a transaction.
+   * Execute a transaction, re-run on an abort as `options.retry` says (see runRetriedTransaction).
    * @param fn all db operations within this function will be part of this transaction
    * @returns the return of the `fn`
    */
-  async runTransaction<T>(fn: (transaction: Transaction) => Promise<T>): Promise<T> {
-    return await this.runRetriedTransaction('spanner transaction', fn);
+  async runTransaction<T>(fn: (transaction: Transaction) => Promise<T>, options?: TransactionOptions): Promise<T> {
+    return await this.runRetriedTransaction('spanner transaction', fn, options);
   }
 
   /**
@@ -581,13 +625,90 @@ export class SpannerDriver implements DbDriver {
   }
 
   /**
+   * One read-write transaction — the shape both `runTransaction` and the single-statement
+   * `runDml` ride — re-run when the database aborts it as the CALLER's retry policy says
+   * (`options.retry`, a `TransactionRetryPolicy`):
+   *
+   * - No policy: the client library's runner re-runs the body on its own backoff ladder (2^n
+   *   seconds, 32 s at most, plus jitter) inside the driver's budget (transactionRetryTimeoutMs,
+   *   an hour unless configured) — right for a durable write, which must land however long the
+   *   conflict lasts (runUnderRunner).
+   * - A bounded policy (`'none'`, or `{ attempts, maxMs }`): the driver's own road
+   *   (runBoundedTransaction) — each attempt one single-attempt run under the runner, a short
+   *   backoff of the driver's own between them, and past the bound the last abort reaches the
+   *   caller typed (`TransactionRetryExhaustedError`), never re-run behind its back. The road a
+   *   best-effort write names: one that the next write of its kind supersedes anyway.
+   *
+   * A policy that cannot be read (a non-whole or zero attempts, a non-positive maxMs) is refused
+   * at the call, before any attempt.
+   */
+  private async runRetriedTransaction<T>(
+    op: string,
+    fn: (transaction: Transaction) => Promise<T>,
+    options?: TransactionOptions
+  ): Promise<T> {
+    const bound = this.retryBound(options?.retry);
+    if (!bound) {
+      return await this.runUnderRunner(op, fn);
+    }
+    return await this.runBoundedTransaction(op, fn, bound);
+  }
+
+  /**
+   * The bounded road (see runRetriedTransaction): attempt after attempt, each a single-attempt
+   * run under the client library's runner (runUnderRunner with `bounded`, which hands an abort
+   * back as BoundedAttemptAbort instead of letting the runner re-run it), until one commits or
+   * the bound is reached — `attempts` made in all, or the next attempt would start past `maxMs`
+   * from the first one's start. Between attempts the driver's own short ladder
+   * (boundedRetryDelayMs). The refusal is the typed `TransactionRetryExhaustedError`, carrying
+   * the attempts made, the elapsed wall-clock and the last abort; logged at debug, once — the
+   * caller chose the bound and handles the refusal, so it is the caller's line to write at
+   * whatever level its own outcome warrants. Any error that is not an abort leaves as it is,
+   * exactly as on the runner's road.
+   */
+  private async runBoundedTransaction<T>(
+    op: string,
+    fn: (transaction: Transaction) => Promise<T>,
+    bound: RetryBound
+  ): Promise<T> {
+    const startTime = process.hrtime.bigint();
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await this.runUnderRunner(op, fn, { attempt });
+      } catch (error) {
+        if (!(error instanceof BoundedAttemptAbort)) {
+          throw error;
+        }
+        const elapsedMs = Number(process.hrtime.bigint() - startTime) / 1_000_000;
+        const delayMs = this.boundedRetryDelayMs(attempt);
+        const pastTheBudget = bound.maxMs !== undefined && elapsedMs + delayMs >= bound.maxMs;
+        if (attempt >= bound.attempts || pastTheBudget) {
+          const lastAbort = error.abort;
+          this.logger.debug({
+            message: `Transaction aborted and not retried further; its retry policy is spent: ${op}`,
+            obj: {
+              attempts: attempt,
+              allowedAttempts: bound.attempts,
+              maxMs: bound.maxMs,
+              elapsedMs,
+              statement: lastAbort instanceof SpannerOperationError ? lastAbort.statement : undefined,
+              cause: SpannerFailureLine.causeOf(lastAbort),
+            },
+          });
+          throw new TransactionRetryExhaustedError(op, attempt, elapsedMs, lastAbort);
+        }
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+
+  /**
    * One read-write transaction under the client library's runner, committed on success and
-   * rolled back on failure — the shape both `runTransaction` and the single-statement `runDml`
-   * ride. Every await inside the run function is deadline-bounded (statements, commit, rollback):
-   * the run function therefore ALWAYS settles, which is what makes runTransactionAsync's own
-   * `finally` release the transaction's session back to the pool on a dead channel. Stalls in the
-   * wrapper itself (session acquisition / begin / commit) happen OUTSIDE the statements'
-   * instrumentation, so the whole round trip is deadline-wrapped too.
+   * rolled back on failure. Every await inside the run function is deadline-bounded (statements,
+   * commit, rollback): the run function therefore ALWAYS settles, which is what makes
+   * runTransactionAsync's own `finally` release the transaction's session back to the pool on a
+   * dead channel. Stalls in the wrapper itself (session acquisition / begin / commit) happen
+   * OUTSIDE the statements' instrumentation, so the whole round trip is deadline-wrapped too.
    *
    * The runner RETRIES an aborted attempt (transactionRetryTimeoutMs()): the body runs again on a
    * fresh transaction, and the abort that ended the previous attempt was a retry signal, not a
@@ -595,9 +716,18 @@ export class SpannerDriver implements DbDriver {
    * logs that abort at debug (operationFailure via retriedAbort). Only the runner giving up — its
    * budget spent, thrown as its DeadlineError carrying the last abort — is the failure, logged
    * here at error with that cause, once.
+   *
+   * Under a caller-bounded policy (`bounded`: the attempt number the bounded road is on), the
+   * runner never re-runs: an abort leaves the body as BoundedAttemptAbort — no code, so the runner
+   * throws it at once, no attempt and no backoff of its own — for runBoundedTransaction to decide
+   * on. What else the body throws leaves exactly as it does without the policy.
    */
-  private async runRetriedTransaction<T>(op: string, fn: (transaction: Transaction) => Promise<T>): Promise<T> {
-    let attempt = 0;
+  private async runUnderRunner<T>(
+    op: string,
+    fn: (transaction: Transaction) => Promise<T>,
+    bounded?: { attempt: number }
+  ): Promise<T> {
+    let attempt = bounded ? bounded.attempt - 1 : 0;
     const bodyErrors = new Set<unknown>();
     const budgetMs = this.transactionRetryTimeoutMs();
     const startTime = process.hrtime.bigint();
@@ -607,7 +737,7 @@ export class SpannerDriver implements DbDriver {
         '(runTransactionAsync)',
         this.getSpannerDb().runTransactionAsync({ timeout: budgetMs }, async (transaction) => {
           attempt += 1;
-          SpannerDriver.RUNNER_ATTEMPTS.set(transaction, attempt);
+          SpannerDriver.RUNNER_ATTEMPTS.set(transaction, { attempt, bounded: bounded !== undefined });
           try {
             const result = await fn(transaction);
             await this.commit(transaction);
@@ -615,6 +745,11 @@ export class SpannerDriver implements DbDriver {
           } catch (error) {
             bodyErrors.add(error);
             await this.rollbackQuietly(transaction);
+            if (bounded && SpannerDriver.isAbort(error)) {
+              const handedBack = new BoundedAttemptAbort(error);
+              bodyErrors.add(handedBack);
+              throw handedBack;
+            }
             throw error;
           }
         })
@@ -950,6 +1085,38 @@ export class SpannerDriver implements DbDriver {
 
   private transactionRetryTimeoutMs(): number {
     return this.config.transactionRetryTimeoutMs ?? SpannerDriver.DEFAULT_TRANSACTION_RETRY_TIMEOUT_MS;
+  }
+
+  /**
+   * A caller's retry policy as a bound the bounded road runs under — none for no policy (the
+   * runner's road), one attempt for `'none'`. A policy that cannot be read is refused here, at
+   * the call, before any attempt: attempts a whole number of at least 1, maxMs positive when given.
+   */
+  private retryBound(policy: TransactionRetryPolicy | undefined): RetryBound | undefined {
+    if (policy === undefined) {
+      return undefined;
+    }
+    if (policy === 'none') {
+      return { attempts: 1 };
+    }
+    if (!Number.isInteger(policy.attempts) || policy.attempts < 1) {
+      throw new Error(
+        `A transaction retry policy's attempts must be a whole number of at least 1; got ${String(policy.attempts)}`
+      );
+    }
+    if (policy.maxMs !== undefined && !(policy.maxMs > 0)) {
+      throw new Error(`A transaction retry policy's maxMs must be a positive number; got ${String(policy.maxMs)}`);
+    }
+    return { attempts: policy.attempts, maxMs: policy.maxMs };
+  }
+
+  /** The bounded road's wait before re-running the attempt after `attempt` (see BOUNDED_RETRY_BASE_DELAY_MS). */
+  private boundedRetryDelayMs(attempt: number): number {
+    const ladder = Math.min(
+      SpannerDriver.BOUNDED_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1),
+      SpannerDriver.BOUNDED_RETRY_MAX_DELAY_MS
+    );
+    return ladder + Math.floor(Math.random() * SpannerDriver.BOUNDED_RETRY_JITTER_MS);
   }
 
   private deadlineFailuresBeforeRecycle(): number {

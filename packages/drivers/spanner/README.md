@@ -141,6 +141,17 @@ export class DbDriverFactory implements DefaultDbDriverFactory {
 }
 ```
 
+# Transaction retries: the caller's policy, per write
+
+Spanner resolves a lock conflict between read-write transactions by aborting one of them (gRPC `ABORTED`, code 10, at that transaction's next statement or at its commit). What happens next is the CALLER's to say, at the call — never a default a caller cannot see:
+
+- **No policy (the default, unchanged):** the client library's transaction runner re-runs the transaction on its own backoff ladder (2^n seconds, 32 s at most, plus jitter) inside the driver's budget (`SpannerConfig.transactionRetryTimeoutMs`, an hour unless configured). Right for a durable write, which must land however long the conflict lasts. Each retried abort logs at debug; only the budget running out logs at error (the runner's `DeadlineError`, with the last abort as its cause).
+- **A bounded policy — `retry: 'none'` or `retry: { attempts, maxMs }`:** at most `attempts` attempts in all (`'none'` is one), no attempt starting past `maxMs` milliseconds from the first one's start, a short backoff of the driver's own between them (100 ms doubling to 1 s at most, plus jitter — never the library's ladder). Past the bound, the last abort reaches the caller as the typed `TransactionRetryExhaustedError` from `@proteinjs/db` (name-tagged; `attempts`, `elapsedMs`, and the abort as a non-enumerable `cause`), logged at debug — the caller chose the bound and owns the outcome. Nothing is re-run behind the caller's back, and nothing is dropped: the refusal is thrown, never swallowed.
+
+The policy rides the public write road: `db.update(table, record, query, { retry })`, `db.insert(table, record, { retry })`, `db.runTransaction(body, { retry })`, and the driver's own `runDml(statement, undefined, { retry })` / `runTransaction(body, { retry })`. A write outside a transaction is a transaction of its own and names its policy at the write; a write inside a `runTransaction` body rides the body's policy, and one naming a policy of its own is refused by name. A policy that cannot be read (`attempts` not a whole number of at least 1, `maxMs` not positive) is refused at the call, before any attempt.
+
+Name a bounded policy for a BEST-EFFORT write: one the next write of its kind supersedes anyway (a live progress row rewritten at every step), which must not stall its caller for the ladder's seconds — or minutes — against a conflict it will lose. For example, a progress write that loses to the final save: `db.update(progressTable, { id, progress }, undefined, { retry: { attempts: 2, maxMs: 1500 } })`, with the caller taking `isTransactionRetryExhaustedError(error)` as "superseded; carry on".
+
 # What the driver's log lines carry
 
 The driver never prints the value of a parameter bound to a statement, at any level. Every line it writes about a statement (`Executing query` and `Executing dml` at debug, `Failed when executing …` at error, the retried-abort line at debug) carries the SQL text (placeholders only) and, as `params`, a description of each parameter: its name, its type and, for strings, arrays and bytes, its length.
