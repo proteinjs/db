@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.54.1](https://github.com/proteinjs/db/compare/@proteinjs/db@1.54.0...@proteinjs/db@1.54.1) (2026-10-13)
+
+
+### Bug Fixes
+
+* **db:** afterRows may name any row an insert references through a reference column — the runner waits for it before the write ([d391330](https://github.com/proteinjs/db/commit/d39133014d711761de40e4bbb8792f14d9d48b48))
+
+
+
+
+
 # [1.54.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.53.0...@proteinjs/db@1.54.0) (2026-10-06)
 
 
