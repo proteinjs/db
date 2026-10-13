@@ -17,7 +17,9 @@ export type TransactionRunOptions = {
    * Ids of rows the operations depend on that may not exist yet: the row an update or a
    * membership update targets while its insert is still in flight, the permission source a
    * child row attaches to while the root's own insert (and the owner grant that commits with
-   * it) is still landing. Every id must be a row the operations themselves reference. The
+   * it) is still landing, any row an insert names through one of its table's reference columns
+   * while that row is still being born. Every id must be a row the operations themselves
+   * reference (an insert references every row its reference columns name). The
    * runner waits, bounded, for each to exist AND be visible to the caller before running the
    * operations; a row that never appears fails the request with a plain clause — never a
    * silent zero-row write, never a hang.

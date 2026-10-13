@@ -1,6 +1,11 @@
 import { Logger } from '@proteinjs/logger';
+import { isInstanceOf } from '@proteinjs/util';
 import { Db, getDb } from '../Db';
-import { Table, tableByName } from '../Table';
+import { Column, Table, getColumnPropertyName, tableByName } from '../Table';
+// After Table: Columns ↔ Table ↔ Record load in a cycle that resolves only when Record is entered
+// before Columns (Record constructs its columns at module load); a module that enters Columns
+// first — as this one would when it is the first module loaded — leaves those constructors undefined.
+import { DynamicReferenceColumn, ReferenceColumn } from '../Columns';
 import { getDefaultTransactionContextFactory } from './TransactionContextFactory';
 import {
   TransactionRunnerService,
@@ -135,10 +140,11 @@ export class TransactionRunner implements TransactionRunnerService {
   }
 
   /**
-   * The rows the operations reference, by id → the table(s) they are read from: the permission
-   * source a row attaches to (an insert whose `permissionSource` is another row), the row an
-   * update / preserving update / membership update / delete targets. The rows the operations
-   * insert themselves are not dependencies.
+   * The rows the operations reference, by id → the table(s) they are read from. An insert
+   * references every row its table's reference columns name (`rowsTheInsertReferences`) — the
+   * permission source a row attaches to is one of these, a row named through any other reference
+   * column another. An update / preserving update / membership update / delete references the row
+   * it targets. The rows the operations insert themselves are not dependencies.
    */
   private static rowsTheOperationsReference(ops: Operation<any>[]): Map<string, Table<any>[]> {
     const inserted: string[] = [];
@@ -161,16 +167,12 @@ export class TransactionRunner implements TransactionRunnerService {
       const args = op.args as unknown[];
       const table = args[0] as Table<any> | undefined;
       if (op.name === 'insert') {
-        const record = args[1] as
-          | { id?: string; permissionSource?: { _table?: string; _id?: string }; permissionSourceTable?: string }
-          | undefined;
+        const record = args[1] as { id?: string } | undefined;
         if (record?.id) {
           inserted.push(record.id);
         }
-        const source = record?.permissionSource;
-        if (source?._id && source._id !== record?.id) {
-          const sourceTableName = record?.permissionSourceTable ?? source._table;
-          reference(sourceTableName ? TransactionRunner.tableNamed(sourceTableName, table) : table, source._id);
+        for (const row of TransactionRunner.rowsTheInsertReferences(table, record)) {
+          reference(TransactionRunner.tableNamed(row.tableName, table), row.id);
         }
       } else if (op.name === 'update' || op.name === 'updatePreserving') {
         const record = args[1] as { id?: string } | undefined;
@@ -188,7 +190,45 @@ export class TransactionRunner implements TransactionRunnerService {
     return referenced;
   }
 
-  /** The table a permission source lives in: the insert's own table when it names the same one. */
+  /**
+   * The rows an inserted record names through its table's reference columns: for each column
+   * whose value carries an id, that id and the table it lives in — a `ReferenceColumn`'s declared
+   * table; for a `DynamicReferenceColumn`, the table its paired table-name column carries on the
+   * record (a client's queued insert ran the column's default), else the reference's own.
+   */
+  private static rowsTheInsertReferences(
+    table: Table<any> | undefined,
+    record: { [field: string]: unknown } | undefined
+  ): { id: string; tableName: string }[] {
+    if (!table || !record) {
+      return [];
+    }
+
+    const rows: { id: string; tableName: string }[] = [];
+    for (const [field, column] of Object.entries(table.columns as { [field: string]: Column<any, any> })) {
+      const value = record[field] as { _id?: unknown; _table?: unknown } | null | undefined;
+      if (!value || typeof value._id !== 'string') {
+        continue;
+      }
+      let tableName: unknown;
+      if (isInstanceOf(column, ReferenceColumn)) {
+        tableName = (column as ReferenceColumn<any>).referenceTable;
+      } else if (isInstanceOf(column, DynamicReferenceColumn)) {
+        const tableNameField = getColumnPropertyName(
+          table,
+          (column as DynamicReferenceColumn<any>).dynamicRefTableColName
+        );
+        tableName = (tableNameField && record[tableNameField]) || value._table;
+      }
+      if (typeof tableName === 'string' && tableName) {
+        rows.push({ id: value._id, tableName });
+      }
+    }
+
+    return rows;
+  }
+
+  /** The table a referenced row lives in: the insert's own table when it names the same one. */
   private static tableNamed(tableName: string, inserting: Table<any> | undefined): Table<any> {
     return inserting && inserting.name === tableName ? inserting : tableByName(tableName);
   }
