@@ -2,6 +2,7 @@ import { Logger } from '@proteinjs/logger';
 import { DateTimeColumn, UuidColumn } from './Columns';
 import { Column, Table, Columns } from './Table';
 import { moment } from './opt/moment';
+import type { EncryptionRecordHooks } from './encryption/EncryptionRecordHooks';
 
 export interface Record {
   id: string;
@@ -51,10 +52,26 @@ export type SerializedRecord = { [columnName: string]: any };
  *  (see `EncryptionRecordHooks`). Resolved by `Db` for writes touching encrypted columns. */
 export type RecordEncryptionContext = { keyOwner: string };
 
+/** One column's seat in a hydration: the property the record carries it under, and the column. */
+interface HydrationSlot {
+  propertyName: string;
+  column: Column<any, any>;
+}
+
+/**
+ * What a hydration resolves ONCE per serializer, never per row: the decryption hook and every
+ * column's seat, keyed by the name a stored row carries it under.
+ */
+interface HydrationPlan {
+  hooks: EncryptionRecordHooks;
+  slotsByColumnName: { [columnName: string]: HydrationSlot | undefined };
+}
+
 export class RecordSerializer<T extends Record> {
   private logger = new Logger({ name: this.constructor.name });
   private table: Table<T>;
   private encryptionContext?: RecordEncryptionContext;
+  private plan?: HydrationPlan;
 
   constructor(table: Table<T>, encryptionContext?: RecordEncryptionContext) {
     this.table = table;
@@ -97,35 +114,152 @@ export class RecordSerializer<T extends Record> {
     return serialized;
   }
 
-  async deserialize(serializedRecord: SerializedRecord): Promise<T> {
-    // The transparent decryption seam: ciphertext envelopes decrypt (self-describing — the
-    // envelope names its key), framework companion columns drop out of the result.
-    const { EncryptionRecordHooks } = await import('./encryption/EncryptionRecordHooks');
-    const prepared = await new EncryptionRecordHooks().onDeserialize(this.table, serializedRecord);
-
-    const deserialized: any = {};
-    const fieldSerializer = new FieldSerializer(this.table);
-    const omittedFields: string[] = [];
-    for (const columnName in prepared) {
-      const serializedFieldValue = prepared[columnName];
-      try {
-        const { fieldPropertyName, fieldValue } = await fieldSerializer.deserialize(
-          columnName,
-          serializedFieldValue,
-          prepared
-        );
-        deserialized[fieldPropertyName] = fieldValue;
-      } catch (MissingFieldError) {
-        omittedFields.push(columnName);
+  /**
+   * A result set's rows → records, in ONE pass. A row whose hook and columns all answer directly
+   * is hydrated synchronously, and when every row did the array returns synchronously: no promise
+   * per row, no yield of the event loop between rows. A row that needs an await — a ciphertext
+   * envelope to decrypt, a column whose `deserialize` answers with a promise — settles through one
+   * promise for the whole set. The hook and the column seats are resolved once per serializer.
+   */
+  deserializeAll(serializedRecords: SerializedRecord[]): T[] | Promise<T[]> {
+    const plan = this.hydrationPlan();
+    const records: (T | Promise<T>)[] = new Array(serializedRecords.length);
+    let settles = false;
+    for (let i = 0; i < serializedRecords.length; i++) {
+      const record = this.hydrate(plan, serializedRecords[i]);
+      if (this.isPromise(record)) {
+        settles = true;
       }
+      records[i] = record;
     }
 
-    if (omittedFields.length > 0) {
+    return settles ? Promise.all(records) : (records as T[]);
+  }
+
+  /** One row → one record (`deserializeAll` is the door for a result set). */
+  async deserialize(serializedRecord: SerializedRecord): Promise<T> {
+    return await this.hydrate(this.hydrationPlan(), serializedRecord);
+  }
+
+  private hydrate(plan: HydrationPlan, serializedRecord: SerializedRecord): T | Promise<T> {
+    // The transparent decryption seam: ciphertext envelopes decrypt (self-describing — the
+    // envelope names its key), framework companion columns drop out of the result. The hook
+    // answers directly for a row holding no envelope.
+    const prepared = plan.hooks.onDeserialize(this.table, serializedRecord);
+    if (this.isPromise(prepared)) {
+      return prepared.then((row) => this.hydratePrepared(plan, row));
+    }
+
+    return this.hydratePrepared(plan, prepared);
+  }
+
+  private hydratePrepared(plan: HydrationPlan, prepared: SerializedRecord): T | Promise<T> {
+    const record: any = {};
+    let settling: Promise<void>[] | undefined;
+    let omittedFields: string[] | undefined;
+    for (const columnName in prepared) {
+      const slot = plan.slotsByColumnName[columnName];
+      if (!slot) {
+        // a column exists in the db that is no longer defined in Table.columns
+        (omittedFields ??= []).push(columnName);
+        continue;
+      }
+
+      const { propertyName, column } = slot;
+      const storedValue = prepared[columnName];
+      if (!column.deserialize) {
+        record[propertyName] = storedValue;
+        continue;
+      }
+
+      if (column.deserializeOnFirstRead && storedValue !== null && storedValue !== undefined) {
+        this.defineFieldReadOnFirstRead(record, propertyName, column, storedValue);
+        continue;
+      }
+
+      const fieldValue = column.deserialize(storedValue, prepared);
+      if (this.isPromise(fieldValue)) {
+        record[propertyName] = undefined; // seats the property in column order; the value lands when it settles
+        (settling ??= []).push(
+          fieldValue.then((value) => {
+            record[propertyName] = value;
+          })
+        );
+        continue;
+      }
+
+      record[propertyName] = fieldValue;
+    }
+
+    if (omittedFields) {
       // expected when passing a base table into the query api
       this.logger.debug({ message: `Fields were omitted during deserialization`, obj: { omittedFields } });
     }
 
-    return deserialized;
+    if (settling) {
+      return Promise.all(settling).then(() => record as T);
+    }
+
+    return record as T;
+  }
+
+  /**
+   * The field as an own, enumerable property whose value is deserialized on its first read, once
+   * (`Column.deserializeOnFirstRead`); a write replaces it like any other field.
+   */
+  private defineFieldReadOnFirstRead(
+    record: any,
+    propertyName: string,
+    column: Column<any, any>,
+    storedValue: unknown
+  ): void {
+    let value: unknown;
+    let read = false;
+    Object.defineProperty(record, propertyName, {
+      enumerable: true,
+      configurable: true,
+      get() {
+        if (!read) {
+          value = column.deserialize!(storedValue, undefined);
+          read = true;
+        }
+
+        return value;
+      },
+      set(next: unknown) {
+        value = next;
+        read = true;
+      },
+    });
+  }
+
+  private hydrationPlan(): HydrationPlan {
+    if (this.plan) {
+      return this.plan;
+    }
+
+    // Required at call time — this module sits below the encryption machinery in the package's
+    // module graph (the seam `Table.ts` uses for the same reason).
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { EncryptionRecordHooks } =
+      require('./encryption/EncryptionRecordHooks') as typeof import('./encryption/EncryptionRecordHooks');
+    const slotsByColumnName: HydrationPlan['slotsByColumnName'] = {};
+    const columns: { [propertyName: string]: Column<any, any> } = this.table.columns;
+    // Seated by column name, then by property name — a stored key that is a property name
+    // resolves to that property's column first, as it always has.
+    for (const propertyName in columns) {
+      slotsByColumnName[columns[propertyName].name] = { propertyName, column: columns[propertyName] };
+    }
+    for (const propertyName in columns) {
+      slotsByColumnName[propertyName] = { propertyName, column: columns[propertyName] };
+    }
+
+    this.plan = { hooks: new EncryptionRecordHooks(), slotsByColumnName };
+    return this.plan;
+  }
+
+  private isPromise<V>(value: V | Promise<V>): value is Promise<V> {
+    return typeof (value as { then?: unknown } | null | undefined)?.then === 'function';
   }
 }
 

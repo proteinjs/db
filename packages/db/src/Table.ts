@@ -263,7 +263,27 @@ export type Column<T, Serialized> = {
   oldName?: string;
   options?: ColumnOptions;
   serialize?: (fieldValue: T | null | undefined) => Promise<Serialized | null | undefined>;
-  deserialize?: (serializedFieldValue: Serialized | null, serializedRecord: any) => Promise<T | null | void>;
+  /**
+   * The stored value → the field's value. Answers directly when building the value needs no
+   * await (every column this package ships does), or with a promise when it does: record
+   * hydration (`RecordSerializer.deserializeAll`) awaits only what comes back as a promise, so a
+   * result set whose rows all answer directly hydrates synchronously — no promise per row, no
+   * yield of the event loop between rows.
+   */
+  deserialize?: (
+    serializedFieldValue: Serialized | null,
+    serializedRecord: any
+  ) => T | null | void | Promise<T | null | void>;
+  /**
+   * When true, a hydrated record builds this column's field on the FIRST READ of the field, not
+   * at hydration: `deserialize` runs then, once, with the stored value alone (the row is not
+   * kept), so a deserializer under this flag reads nothing but its value and answers directly,
+   * never with a promise. For a pure, synchronous deserializer whose value costs more to build
+   * than to store and is often never read on a row — a DateTime column's moment. The record's
+   * shape is unchanged: the field is an own, enumerable property that reads as the deserialized
+   * value and takes a write like any other; a stored null reads null, undeferred.
+   */
+  deserializeOnFirstRead?: boolean;
   /**
    * The column's QUERY-side contract, paralleling `serialize`/`deserialize` on the storage
    * side: how uses of this column in a query (conditions, ORDER BY, aggregation, GROUP BY)

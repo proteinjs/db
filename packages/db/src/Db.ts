@@ -750,10 +750,9 @@ export class Db<R extends Record = Record> implements DbService<R> {
     const generateQuery = (config: DbDriverQueryStatementConfig) =>
       qb.toSql(this.statementConfigFactory.getStatementConfig(config));
     const serializedRecords = await this.dbDriver.runQuery(generateQuery, this.transactionForDriver());
-    const recordSerializer = new RecordSerializer(table);
-    const records = await Promise.all(
-      serializedRecords.map(async (serializedRecord) => recordSerializer.deserialize(serializedRecord))
-    );
+    // One pass over the result set — synchronous when no row needs an await (see
+    // `RecordSerializer.deserializeAll`): no promise per row, no yield of the loop between rows.
+    const records = await new RecordSerializer<T>(table).deserializeAll(serializedRecords);
     await this.preloadReferences(records, options);
     return records;
   }

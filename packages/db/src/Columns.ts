@@ -74,7 +74,7 @@ export class BooleanColumn implements Column<boolean | null, boolean | null> {
     return null;
   }
 
-  async deserialize(serializedFieldValue: boolean | null): Promise<boolean | null> {
+  deserialize(serializedFieldValue: boolean | null): boolean | null {
     if (serializedFieldValue) {
       return true;
     }
@@ -95,6 +95,13 @@ export class DateColumn implements Column<Date, Date> {
 }
 
 export class DateTimeColumn implements Column<moment.Moment | null, Date | null> {
+  /**
+   * The moment is built on the field's first read, not at hydration (`Column.deserializeOnFirstRead`):
+   * a row carries several of these and most are never read, and a moment costs more to build than
+   * the stored Date it is built from.
+   */
+  readonly deserializeOnFirstRead = true;
+
   constructor(
     public name: string,
     public options?: ColumnOptions
@@ -112,7 +119,7 @@ export class DateTimeColumn implements Column<moment.Moment | null, Date | null>
     return fieldValue.toDate();
   }
 
-  async deserialize(serializedFieldValue: Date | null): Promise<moment.Moment | null> {
+  deserialize(serializedFieldValue: Date | null): moment.Moment | null {
     if (serializedFieldValue === undefined || serializedFieldValue === null) {
       return null;
     }
@@ -186,7 +193,7 @@ export class ObjectColumn<T> extends StringColumn<T> {
     return Serializer.serialize(fieldValue);
   }
 
-  async deserialize(serializedFieldValue: string): Promise<T | null> {
+  deserialize(serializedFieldValue: string): T | null {
     if (serializedFieldValue === undefined || serializedFieldValue == null) {
       return null;
     }
@@ -247,8 +254,8 @@ export class ReferenceArrayColumn<T extends Record> extends ObjectColumn<Referen
     return await super.serialize(returnIds as any);
   }
 
-  async deserialize(serializedFieldValue: string): Promise<ReferenceArray<T> | null> {
-    let ids = (await super.deserialize(serializedFieldValue)) as string[] | null;
+  deserialize(serializedFieldValue: string): ReferenceArray<T> | null {
+    let ids = super.deserialize(serializedFieldValue) as string[] | null;
     if (ids === null) {
       ids = [];
     }
@@ -315,7 +322,7 @@ export class ReferenceColumn<T extends Record> extends StringColumn<Reference<T>
     return fieldValue._id;
   }
 
-  async deserialize(serializedFieldValue: string): Promise<Reference<T> | null> {
+  deserialize(serializedFieldValue: string): Reference<T> | null {
     const reference = new Reference(this.referenceTable, serializedFieldValue);
     if (reference._id === null) {
       return null;
@@ -487,7 +494,7 @@ export class DynamicReferenceColumn<T extends Record> extends StringColumn<Refer
     return fieldValue._id;
   }
 
-  async deserialize(serializedFieldValue: string, serializedRecord: any): Promise<Reference<T> | null> {
+  deserialize(serializedFieldValue: string, serializedRecord: any): Reference<T> | null {
     const reference = new Reference('', serializedFieldValue);
     if (reference._id === null) {
       return null;

@@ -9,6 +9,9 @@ import { SearchTokenizer } from './SearchTokenizer';
 /** Who a row being written belongs to — the data key its values encrypt under. */
 export type EncryptionWriteContext = { keyOwner: string };
 
+/** A stored cell holding a ciphertext envelope, and the key the envelope names. */
+type EnvelopeCell = { columnName: string; owner: string; version: number };
+
 /**
  * The transparent encrypt/decrypt seam, invoked by `RecordSerializer` on every write's
  * serialize and every read's deserialize — the same per-column hook layer every caller
@@ -31,6 +34,7 @@ export class EncryptionRecordHooks {
   private encryptedColumns = new EncryptedColumns();
   private envelope = new EncryptionEnvelope();
   private tokenizer = new SearchTokenizer();
+  private internalNames?: { table: Table<any>; names: Set<string> };
 
   /** Encrypt encrypted-column values in `serialized` (column-name-keyed) and add companions. */
   async onSerialize(table: Table<any>, serialized: SerializedRecord, context?: EncryptionWriteContext): Promise<void> {
@@ -88,34 +92,46 @@ export class EncryptionRecordHooks {
   }
 
   /**
-   * A copy of `serializedRecord` with framework companion columns dropped and every
-   * envelope value decrypted (any column — self-describing ciphertext also covers the
-   * decrypt-out transition, where the config no longer marks the column).
+   * `serializedRecord` with framework companion columns dropped and every envelope value
+   * decrypted (any column — self-describing ciphertext also covers the decrypt-out transition,
+   * where the config no longer marks the column). Answers directly — the row itself when
+   * nothing drops or decrypts, else a copy — unless an envelope must be decrypted: its key is
+   * read asynchronously, so the copy settles through a promise.
    */
-  async onDeserialize(table: Table<any>, serializedRecord: SerializedRecord): Promise<SerializedRecord> {
+  onDeserialize(table: Table<any>, serializedRecord: SerializedRecord): SerializedRecord | Promise<SerializedRecord> {
     this.encryptedColumns.ensureSchema(table);
-    const prepared: SerializedRecord = {};
     const internalColumnNames = this.internalColumnNames(table);
-    let decrypted = false;
-    for (const columnName of Object.keys(serializedRecord)) {
+    let dropsInternal = false;
+    let envelopes: EnvelopeCell[] | undefined;
+    for (const columnName in serializedRecord) {
       if (internalColumnNames.has(columnName)) {
+        dropsInternal = true;
         continue;
       }
 
-      const value = serializedRecord[columnName];
-      const parsed = this.envelope.parse(value);
-      if (!parsed) {
-        prepared[columnName] = value;
-        continue;
+      const parsed = this.envelope.parse(serializedRecord[columnName]);
+      if (parsed) {
+        (envelopes ??= []).push({ columnName, owner: parsed.owner, version: parsed.version });
       }
-
-      this.assertServerSide();
-      const key = await new DataKeyStore().getKeyByVersion(parsed.owner, parsed.version);
-      prepared[columnName] = this.envelope.decrypt(value as string, key);
-      decrypted = true;
     }
 
-    return decrypted || internalColumnNames.size > 0 ? prepared : serializedRecord;
+    if (!dropsInternal && !envelopes) {
+      return serializedRecord;
+    }
+
+    const prepared: SerializedRecord = {};
+    for (const columnName in serializedRecord) {
+      if (!internalColumnNames.has(columnName)) {
+        prepared[columnName] = serializedRecord[columnName];
+      }
+    }
+
+    if (!envelopes) {
+      return prepared;
+    }
+
+    this.assertServerSide();
+    return this.decryptInto(prepared, envelopes);
   }
 
   /**
@@ -144,7 +160,21 @@ export class EncryptionRecordHooks {
     );
   }
 
+  private async decryptInto(prepared: SerializedRecord, envelopes: EnvelopeCell[]): Promise<SerializedRecord> {
+    for (const cell of envelopes) {
+      const key = await new DataKeyStore().getKeyByVersion(cell.owner, cell.version);
+      prepared[cell.columnName] = this.envelope.decrypt(prepared[cell.columnName] as string, key);
+    }
+
+    return prepared;
+  }
+
+  /** The table's framework-derived companion column names — resolved once per table per instance, not per row. */
   private internalColumnNames(table: Table<any>): Set<string> {
+    if (this.internalNames?.table === table) {
+      return this.internalNames.names;
+    }
+
     const names = new Set<string>();
     for (const prop of Object.keys(table.columns)) {
       const column = (table.columns as any)[prop];
@@ -153,6 +183,7 @@ export class EncryptionRecordHooks {
       }
     }
 
+    this.internalNames = { table, names };
     return names;
   }
 

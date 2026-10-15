@@ -35,7 +35,7 @@ export class JsonColumn<T> implements Column<T, any> {
     return fieldValue;
   }
 
-  async deserialize(serializedFieldValue: any): Promise<T | null> {
+  deserialize(serializedFieldValue: any): T | null {
     if (serializedFieldValue === undefined || serializedFieldValue == null) {
       return null;
     }
