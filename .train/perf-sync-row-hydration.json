@@ -2,7 +2,8 @@
   "branch": "perf/sync-row-hydration",
   "packages": [
     "db",
-    "spanner-common"
+    "spanner-common",
+    "drivers/spanner"
   ],
   "suites": [
     "packages/db/test/ArrayMembershipOps.test.ts",
