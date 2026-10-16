@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.54.2](https://github.com/proteinjs/db/compare/@proteinjs/db@1.54.1...@proteinjs/db@1.54.2) (2026-10-16)
+
+
+### Performance Improvements
+
+* **db:** a result set hydrates in one synchronous pass; a DateTime field builds its moment on first read ([df7728a](https://github.com/proteinjs/db/commit/df7728a6c09a3dbe2ba9e25cd89101c47c8e9d15))
+
+
+
+
+
 ## [1.54.1](https://github.com/proteinjs/db/compare/@proteinjs/db@1.54.0...@proteinjs/db@1.54.1) (2026-10-13)
 
 
