@@ -1,6 +1,5 @@
 import {
   Db,
-  Record,
   StringColumn,
   Table,
   withRecordColumns,

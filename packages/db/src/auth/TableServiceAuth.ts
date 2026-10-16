@@ -1,7 +1,7 @@
 import { Logger } from '@proteinjs/logger';
 import { ServiceError, ServiceRefusal } from '@proteinjs/service';
 import { Table, isTable } from '../Table';
-import { TableAuth, TableAuthError } from './TableAuth';
+import { TableAuth } from './TableAuth';
 
 export class TableServiceAuth {
   private logger = new Logger({ name: this.constructor.name });

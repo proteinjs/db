@@ -662,7 +662,7 @@ export class SourceRecordSyncRunner {
             break;
           }
         }
-      } catch (error) {
+      } catch {
         // Unresolvable from cwd — reported below.
       }
     }

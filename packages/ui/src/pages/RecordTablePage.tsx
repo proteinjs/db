@@ -42,7 +42,7 @@ const DynamicRecordTable = ({ urlParams }: PageComponentProps) => {
     if (tableName) {
       try {
         table = tableByName(tableName);
-      } catch (error) {
+      } catch {
         errorMessage = `Table not accessible in UI: ${tableName}`;
       }
     } else {

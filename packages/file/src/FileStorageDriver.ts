@@ -1,5 +1,4 @@
 import { File } from './tables/FileTable';
-import type { FileStorageError } from './FileStorageError';
 
 /**
  * Byte store behind `FileStorage`.

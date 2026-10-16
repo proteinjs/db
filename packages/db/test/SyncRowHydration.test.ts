@@ -4,7 +4,7 @@ import { Db, DbDriver } from '../src/Db';
 import { TableWatcherRunner } from '../src/TableWatcherRunner';
 import { Column, Table } from '../src/Table';
 import { Record, RecordSerializer, SerializedRecord, withRecordColumns } from '../src/Record';
-import { IntegerColumn, StringColumn } from '../src/Columns';
+import { StringColumn } from '../src/Columns';
 import { DefaultTransactionContextFactory, TransactionContextData } from '../src/transaction/TransactionContextFactory';
 import { DataKeyMaterial, DataKeyStore } from '../src/encryption/DataKeyStore';
 import { EncryptionEnvelope } from '../src/encryption/EncryptionEnvelope';

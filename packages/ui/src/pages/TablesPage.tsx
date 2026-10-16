@@ -1,13 +1,5 @@
 import React from 'react';
-import {
-  FormPage,
-  Page,
-  TableLoader,
-  Table as TableComponent,
-  RowWindow,
-  BaseTableLoader,
-  useFormFactor,
-} from '@proteinjs/ui';
+import { FormPage, Page, Table as TableComponent, RowWindow, BaseTableLoader, useFormFactor } from '@proteinjs/ui';
 import { getTables, getDbService, Table } from '@proteinjs/db';
 import { recordTableLinkByName } from './RecordTablePage';
 import { adminScrollAffordances } from './adminScrollAffordances';

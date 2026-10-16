@@ -81,7 +81,7 @@ export const transactionTests = (
           return emp1;
         });
         fail('Transaction should have thrown an error');
-      } catch (error) {
+      } catch {
         // Verify the first insert was rolled back
         const result = await db.get(emplyeeTable, { id: insertedId });
         expect(result).toBeFalsy();
