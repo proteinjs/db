@@ -68,6 +68,13 @@ interface HydrationPlan {
 }
 
 export class RecordSerializer<T extends Record> {
+  /**
+   * The table-and-column pairs whose stored cells have failed to deserialize in this process
+   * (`omitCellNotDeserialized`): each is warned once. A legacy cell is read again by every query
+   * that touches its row — a background sweep reads some rows every few seconds — and the warning
+   * is a schema fact, not a per-read event.
+   */
+  private static legacyCellsWarned = new Set<string>();
   private logger = new Logger({ name: this.constructor.name });
   private table: Table<T>;
   private encryptionContext?: RecordEncryptionContext;
@@ -177,13 +184,26 @@ export class RecordSerializer<T extends Record> {
         continue;
       }
 
-      const fieldValue = column.deserialize(storedValue, prepared);
+      let fieldValue: unknown;
+      try {
+        fieldValue = column.deserialize(storedValue, prepared);
+      } catch (error) {
+        this.omitCellNotDeserialized(columnName, prepared, error);
+        continue;
+      }
+
       if (this.isPromise(fieldValue)) {
         record[propertyName] = undefined; // seats the property in column order; the value lands when it settles
         (settling ??= []).push(
-          fieldValue.then((value) => {
-            record[propertyName] = value;
-          })
+          fieldValue.then(
+            (value) => {
+              record[propertyName] = value;
+            },
+            (error) => {
+              delete record[propertyName];
+              this.omitCellNotDeserialized(columnName, prepared, error);
+            }
+          )
         );
         continue;
       }
@@ -215,13 +235,19 @@ export class RecordSerializer<T extends Record> {
   ): void {
     let value: unknown;
     let read = false;
+    const omit = (error: unknown) => this.omitCellNotDeserialized(column.name, record, error);
     Object.defineProperty(record, propertyName, {
       enumerable: true,
       configurable: true,
       get() {
         if (!read) {
-          value = column.deserialize!(storedValue, undefined);
           read = true;
+          try {
+            value = column.deserialize!(storedValue, undefined);
+          } catch (error) {
+            delete record[propertyName];
+            omit(error);
+          }
         }
 
         return value;
@@ -256,6 +282,32 @@ export class RecordSerializer<T extends Record> {
 
     this.plan = { hooks: new EncryptionRecordHooks(), slotsByColumnName };
     return this.plan;
+  }
+
+  /**
+   * A stored cell the column cannot deserialize — a value written past the serializer, the way a
+   * hand-run statement or an older writer leaves it — never takes the row, the result set or the
+   * process with it. The field is omitted from the record (the law the per-row hydration held:
+   * `try { deserialize } catch { omit }`; what a reader of an optional field already takes as
+   * absent), and one warning per table and column per process names the table, the column and the
+   * first row seen — never the stored value, which the parser's own message quotes.
+   */
+  private omitCellNotDeserialized(columnName: string, row: SerializedRecord, error: unknown): void {
+    const cell = `${this.table.name}.${columnName}`;
+    if (RecordSerializer.legacyCellsWarned.has(cell)) {
+      return;
+    }
+
+    RecordSerializer.legacyCellsWarned.add(cell);
+    this.logger.warn({
+      message: `A stored cell could not be deserialized; the field is omitted from the record`,
+      obj: {
+        table: this.table.name,
+        column: columnName,
+        id: row['id'],
+        error: error instanceof Error ? error.name : typeof error,
+      },
+    });
   }
 
   private isPromise<V>(value: V | Promise<V>): value is Promise<V> {
