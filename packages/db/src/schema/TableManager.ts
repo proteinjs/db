@@ -419,6 +419,30 @@ export class TableManager {
     return true;
   }
 
+  /**
+   * The census, at every schema sync of an existing table: the physical columns no declared column
+   * of the table owns — a column a rename retired (`tags` beside the `tag_list` that replaced it),
+   * a column the table dropped from its declaration. Such a column is never read or altered by the
+   * schema sync and never seated by the row reader; it rides every row of the table until a
+   * migration retires it. One WARN per table naming the columns — names only, never a value.
+   */
+  private warnUndeclaredColumns(table: Table<any>, physicalColumnNames: string[]): void {
+    const declared = new Set<string>();
+    for (const columnPropertyName in table.columns) {
+      declared.add(table.columns[columnPropertyName].name);
+    }
+
+    const undeclared = physicalColumnNames.filter((columnName) => !declared.has(columnName));
+    if (undeclared.length === 0) {
+      return;
+    }
+
+    this.logger.warn({
+      message: `Physical columns no declared column owns; a migration retires them`,
+      obj: { table: table.name, columns: undeclared },
+    });
+  }
+
   private async getTableChanges(table: Table<any>) {
     const { indexesToCreate, indexesToDrop } = await this.getIndexOperations(table);
     const tableChanges: TableChanges = {
@@ -440,6 +464,7 @@ export class TableManager {
     const columnMetadata = await this.schemaMetadata.getColumnMetadata(table);
     const uniqueColumns = await this.schemaMetadata.getUniqueColumns(table);
     const foreignKeys = await this.schemaMetadata.getForeignKeys(table);
+    this.warnUndeclaredColumns(table, Object.keys(columnMetadata));
     for (const columnPropertyName in table.columns) {
       const column = table.columns[columnPropertyName];
       if (columnMetadata[column.name]) {

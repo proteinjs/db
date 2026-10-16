@@ -1,0 +1,41 @@
+{
+  "branch": "feat/seat-by-column-name",
+  "packages": [
+    "db",
+    "drivers/spanner",
+    "drivers/knex",
+    "file",
+    "query",
+    "ui",
+    "settings",
+    "spanner-common",
+    "transaction-context",
+    "encryption-drivers/gcp-kms",
+    "file-storage-drivers/google-cloud-storage"
+  ],
+  "suites": [
+    "packages/db/test/StoredValueSeating.test.ts",
+    "packages/db/test/SettleThenFail.test.ts",
+    "packages/db/test/UndeclaredColumnCensus.test.ts",
+    "packages/db/test/LegacyCellHydration.test.ts",
+    "packages/db/test/SyncRowHydration.test.ts",
+    "packages/db/test/DateTimeFieldReadOnFirstRead.test.ts",
+    "packages/db/test/HydrationBenchmark.test.ts",
+    "packages/db/test/SchemaReconcileLines.test.ts",
+    "packages/db/test/SourceRecordSyncRunner.test.ts",
+    "packages/db/test/TableServiceAuth.test.ts",
+    "packages/drivers/spanner/test/StoredValueContract.test.ts",
+    "packages/drivers/spanner/test/ColumnType.test.ts",
+    "packages/drivers/spanner/test/Crud.test.ts",
+    "packages/drivers/spanner/test/DynamicReferenceColumn.test.ts",
+    "packages/drivers/spanner/test/Transaction.test.ts",
+    "packages/drivers/spanner/test/EncryptionLifecycleWalker.test.ts",
+    "packages/drivers/knex/test/StoredValueContract.test.ts",
+    "packages/drivers/knex/test/ColumnType.test.ts",
+    "packages/drivers/knex/test/Crud.test.ts",
+    "packages/drivers/knex/test/Transaction.test.ts",
+    "packages/file/test/FileStorageDeleteFile.test.ts",
+    "packages/ui/test/recordFormFieldRenderers.test.tsx"
+  ],
+  "removes": []
+}

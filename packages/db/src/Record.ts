@@ -25,10 +25,26 @@ const recordColumns: Columns<Record> = {
   }),
 };
 
-class MissingFieldError extends Error {
+/** A record field no declared column owns — the one serialize failure a write omits instead of failing on. */
+export class MissingFieldError extends Error {
   constructor(tableName: string, fieldName: string) {
     super(`Table ${tableName} is missing field: ${fieldName}`);
     this.name = 'MissingFieldError';
+    // ES5 down-leveled `extends Error` loses the subclass prototype — restore it so
+    // `instanceof MissingFieldError` holds for the write-side catch.
+    Object.setPrototypeOf(this, MissingFieldError.prototype);
+  }
+}
+
+/** Two declared columns of one table share a stored name: the second would silently take the first's seat. */
+export class DuplicateColumnNameError extends Error {
+  constructor(tableName: string, columnName: string, propertyNames: [string, string]) {
+    super(
+      `(${tableName}) Columns ${propertyNames[0]} and ${propertyNames[1]} both declare the column name ` +
+        `'${columnName}'; a stored cell can have only one seat`
+    );
+    this.name = 'DuplicateColumnNameError';
+    Object.setPrototypeOf(this, DuplicateColumnNameError.prototype);
   }
 }
 
@@ -102,7 +118,13 @@ export class RecordSerializer<T extends Record> {
       try {
         const { columnName, serializedFieldValue } = await fieldSerializer.serialize(fieldPropertyName, fieldValue);
         serialized[columnName] = serializedFieldValue;
-      } catch (MissingFieldError) {
+      } catch (error) {
+        // Only a field no column owns is omitted; a column that cannot serialize its value fails
+        // the write — nothing is stored for a cell the column could not make, and the caller hears it.
+        if (!(error instanceof MissingFieldError)) {
+          throw error;
+        }
+
         omittedFields.push(fieldPropertyName);
       }
     }
@@ -132,15 +154,43 @@ export class RecordSerializer<T extends Record> {
     const plan = this.hydrationPlan();
     const records: (T | Promise<T>)[] = new Array(serializedRecords.length);
     let settles = false;
-    for (let i = 0; i < serializedRecords.length; i++) {
-      const record = this.hydrate(plan, serializedRecords[i]);
-      if (this.isPromise(record)) {
-        settles = true;
+    try {
+      for (let i = 0; i < serializedRecords.length; i++) {
+        const record = this.hydrate(plan, serializedRecords[i]);
+        if (this.isPromise(record)) {
+          settles = true;
+        }
+        records[i] = record;
       }
-      records[i] = record;
+    } catch (error) {
+      return this.failAfterSettling(records, error);
     }
 
     return settles ? Promise.all(records) : (records as T[]);
+  }
+
+  /**
+   * Settle, then fail: a row (or cell) that threw synchronously fails the set — but never before
+   * every promise an earlier row or cell already created has settled. A promise left behind by a
+   * synchronous throw is observed by nobody: its rejection is an `unhandledRejection` no caller
+   * can catch. So the throw becomes the set's rejection, after the created promises settle.
+   */
+  private failAfterSettling(created: unknown[], error: unknown): Promise<never> {
+    const settling: Promise<void>[] = [];
+    for (const value of created) {
+      if (this.isPromise(value)) {
+        settling.push(
+          value.then(
+            () => undefined,
+            () => undefined
+          )
+        );
+      }
+    }
+
+    return Promise.all(settling).then(() => {
+      throw error;
+    });
   }
 
   /** One row → one record (`deserializeAll` is the door for a result set). */
@@ -164,51 +214,56 @@ export class RecordSerializer<T extends Record> {
     const record: any = {};
     let settling: Promise<void>[] | undefined;
     let omittedFields: string[] | undefined;
-    for (const columnName in prepared) {
-      const slot = plan.slotsByColumnName[columnName];
-      if (!slot) {
-        // a column exists in the db that is no longer defined in Table.columns
-        (omittedFields ??= []).push(columnName);
-        continue;
-      }
+    try {
+      for (const columnName in prepared) {
+        const slot = plan.slotsByColumnName[columnName];
+        if (!slot) {
+          // a column exists in the db that no declared column owns (a column the table no longer
+          // declares, or one a rename left behind under the property's old name)
+          (omittedFields ??= []).push(columnName);
+          continue;
+        }
 
-      const { propertyName, column } = slot;
-      const storedValue = prepared[columnName];
-      if (!column.deserialize) {
-        record[propertyName] = storedValue;
-        continue;
-      }
+        const { propertyName, column } = slot;
+        const storedValue = prepared[columnName];
+        if (!column.deserialize) {
+          record[propertyName] = storedValue;
+          continue;
+        }
 
-      if (column.deserializeOnFirstRead && storedValue !== null && storedValue !== undefined) {
-        this.defineFieldReadOnFirstRead(record, propertyName, column, storedValue);
-        continue;
-      }
+        if (column.deserializeOnFirstRead && storedValue !== null && storedValue !== undefined) {
+          this.defineFieldReadOnFirstRead(record, propertyName, column, storedValue);
+          continue;
+        }
 
-      let fieldValue: unknown;
-      try {
-        fieldValue = column.deserialize(storedValue, prepared);
-      } catch (error) {
-        this.omitCellNotDeserialized(columnName, prepared, error);
-        continue;
-      }
+        let fieldValue: unknown;
+        try {
+          fieldValue = column.deserialize(storedValue, prepared);
+        } catch (error) {
+          this.omitCellNotDeserialized(columnName, prepared, error);
+          continue;
+        }
 
-      if (this.isPromise(fieldValue)) {
-        record[propertyName] = undefined; // seats the property in column order; the value lands when it settles
-        (settling ??= []).push(
-          fieldValue.then(
-            (value) => {
-              record[propertyName] = value;
-            },
-            (error) => {
-              delete record[propertyName];
-              this.omitCellNotDeserialized(columnName, prepared, error);
-            }
-          )
-        );
-        continue;
-      }
+        if (this.isPromise(fieldValue)) {
+          record[propertyName] = undefined; // seats the property in column order; the value lands when it settles
+          (settling ??= []).push(
+            fieldValue.then(
+              (value) => {
+                record[propertyName] = value;
+              },
+              (error) => {
+                delete record[propertyName];
+                this.omitCellNotDeserialized(columnName, prepared, error);
+              }
+            )
+          );
+          continue;
+        }
 
-      record[propertyName] = fieldValue;
+        record[propertyName] = fieldValue;
+      }
+    } catch (error) {
+      return this.failAfterSettling(settling ?? [], error);
     }
 
     if (omittedFields) {
@@ -271,13 +326,18 @@ export class RecordSerializer<T extends Record> {
       require('./encryption/EncryptionRecordHooks') as typeof import('./encryption/EncryptionRecordHooks');
     const slotsByColumnName: HydrationPlan['slotsByColumnName'] = {};
     const columns: { [propertyName: string]: Column<any, any> } = this.table.columns;
-    // Seated by column name, then by property name — a stored key that is a property name
-    // resolves to that property's column first, as it always has.
+    // Seated by the declared COLUMN name alone — the name a stored row carries a cell under (a
+    // driver's rows are keyed by column name, always). A stored key that is only a property's name
+    // — a column a rename retired and left physically present — names no seat: it is omitted like
+    // any other undeclared column and never reaches a declared column's parser.
     for (const propertyName in columns) {
-      slotsByColumnName[columns[propertyName].name] = { propertyName, column: columns[propertyName] };
-    }
-    for (const propertyName in columns) {
-      slotsByColumnName[propertyName] = { propertyName, column: columns[propertyName] };
+      const columnName = columns[propertyName].name;
+      const seated = slotsByColumnName[columnName];
+      if (seated) {
+        throw new DuplicateColumnNameError(this.table.name, columnName, [seated.propertyName, propertyName]);
+      }
+
+      slotsByColumnName[columnName] = { propertyName, column: columns[propertyName] };
     }
 
     this.plan = { hooks: new EncryptionRecordHooks(), slotsByColumnName };
@@ -335,22 +395,21 @@ export class FieldSerializer<T extends Record> {
 
   async deserialize(columnName: string, serializedFieldValue: any, serializedRecord: SerializedRecord) {
     const columns: { [prop: string]: Column<any, any> } = this.table.columns;
-    let fieldPropertyName = columnName;
-    let column = columns[columnName]; // the scenario that the column name is the same as the property name
-    if (!column) {
-      for (const columnPropertyName in columns) {
-        const checkColumn = (this.table.columns as any)[columnPropertyName];
-        if (checkColumn && columnName == checkColumn.name) {
-          fieldPropertyName = columnPropertyName;
-          column = checkColumn;
-          break;
-        }
+    // One seat per stored cell: the declared column whose NAME the cell is stored under (the law
+    // `RecordSerializer` hydrates by) — never a property that merely shares the stored key's name.
+    let fieldPropertyName: string | undefined;
+    let column: Column<any, any> | undefined;
+    for (const columnPropertyName in columns) {
+      if (columnName === columns[columnPropertyName].name) {
+        fieldPropertyName = columnPropertyName;
+        column = columns[columnPropertyName];
+        break;
       }
     }
 
-    if (!column) {
-      // this is the case where a column exists in the db that is no longer defined in Table.columns
-      throw new MissingFieldError(this.table.name, fieldPropertyName);
+    if (!column || !fieldPropertyName) {
+      // this is the case where a column exists in the db that no declared column owns
+      throw new MissingFieldError(this.table.name, columnName);
     }
 
     let fieldValue = serializedFieldValue;

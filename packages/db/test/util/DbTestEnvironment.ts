@@ -6,6 +6,7 @@ import { crudTestTables } from './tables/crudTestTables';
 import { dynamicReferenceTestTables } from './tables/dynamicReferenceColumnTestTables';
 import { recordIteratorTestTables } from './tables/recordIteratorTestTables';
 import { sourceRecordSyncTestTables } from './tables/sourceRecordSyncTestTables';
+import { storedValueContractTestTables } from './tables/storedValueContractTestTables';
 import { tableManagerTestTables } from './tables/tableManagerTestTables';
 import { transactionTestTables } from './tables/transactionTestTables';
 
@@ -16,6 +17,8 @@ const TABLES: Table<any>[] = [
   ...Object.values(dynamicReferenceTestTables),
   ...Object.values(recordIteratorTestTables),
   ...Object.values(sourceRecordSyncTestTables),
+  // The member tables are the stored-value suite's own: it builds each physical column order itself.
+  storedValueContractTestTables.Mixed,
   ...Object.values(tableManagerTestTables),
   ...Object.values(transactionTestTables),
 ];
