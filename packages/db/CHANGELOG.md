@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.54.3](https://github.com/proteinjs/db/compare/@proteinjs/db@1.54.2...@proteinjs/db@1.54.3) (2026-10-16)
+
+
+### Bug Fixes
+
+* **db:** a stored cell a column cannot deserialize never takes the row, the result set or the process with it ([e920974](https://github.com/proteinjs/db/commit/e9209748a054fd30b51f19251fffd6bf2c6da725))
+
+
+
+
+
 ## [1.54.2](https://github.com/proteinjs/db/compare/@proteinjs/db@1.54.1...@proteinjs/db@1.54.2) (2026-10-16)
 
 
