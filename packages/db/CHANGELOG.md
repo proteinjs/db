@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.55.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.54.3...@proteinjs/db@1.55.0) (2026-10-16)
+
+
+### Features
+
+* **db:** a stored cell is seated by its declared column name alone; the set reader settles its promises before it fails; a serialize error fails the write ([842dd5f](https://github.com/proteinjs/db/commit/842dd5f4fd7ef1649ef6982ea43245c15eae107b))
+
+
+
+
+
 ## [1.54.3](https://github.com/proteinjs/db/compare/@proteinjs/db@1.54.2...@proteinjs/db@1.54.3) (2026-10-16)
 
 
