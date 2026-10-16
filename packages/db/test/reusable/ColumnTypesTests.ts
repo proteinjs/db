@@ -1,4 +1,6 @@
-import { Db, DbDriver, Record, Table, DefaultTransactionContextFactory } from '@proteinjs/db';
+import { Db, DbDriver, Record, Table, DefaultTransactionContextFactory, QueryBuilderFactory } from '@proteinjs/db';
+import { StatementFactory } from '@proteinjs/db-query';
+import { StatementConfigFactory } from '../../src/StatementConfigFactory';
 import { DbTestEnvironment } from '../util/DbTestEnvironment';
 import { columnTypesTestTables, TestRecord } from '../util/tables/columnTypesTestTables';
 
@@ -80,8 +82,9 @@ export const columnTypeTests = (
     });
 
     test('A legacy cell the column cannot deserialize never takes the row with it', async () => {
-      // A value written past the serializer — a bare word in a column that stores JSON — the way a
-      // hand-run statement or an older writer leaves it. The row still serves: that field is
+      // A value written past the serializer — a bare word in a column that stores JSON — the way
+      // a hand-run statement or an older writer leaves it: the update statement the db layer
+      // itself emits, handed the cells as stored text. The row still serves: that field is
       // omitted, every other field lands, and a query over the table resolves.
       const testTable: Table<TestRecord> = columnTypesTestTables.Test;
       const legacy = await db.insert(testTable, {
@@ -94,9 +97,18 @@ export const columnTypeTests = (
         objectColumn: { theme: 'light' },
         arrayColumn: ['c'],
       });
-      await driver.runDml(() => ({
-        sql: `UPDATE ${testTable.name} SET object_column = 'legacyword', array_column = 'legacyword' WHERE id = '${legacy.id}'`,
-      }));
+      const statementConfigFactory = new StatementConfigFactory(driver.getDbName());
+      const legacyRow = new QueryBuilderFactory()
+        .getQueryBuilder(testTable)
+        .condition({ field: 'id', operator: '=', value: legacy.id });
+      await driver.runDml((config) =>
+        new StatementFactory<TestRecord>().update(
+          testTable.name,
+          { object_column: 'legacyword', array_column: 'legacyword' } as Partial<TestRecord>,
+          legacyRow,
+          statementConfigFactory.getStatementConfig(config)
+        )
+      );
 
       const fetched = await db.get(testTable, { id: legacy.id });
       expect(fetched).toMatchObject({ id: legacy.id, stringColumn: 'legacy' });
