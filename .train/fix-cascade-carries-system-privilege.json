@@ -1,0 +1,6 @@
+{
+  "branch": "fix/cascade-carries-system-privilege",
+  "packages": ["db", "drivers/spanner"],
+  "suites": ["packages/drivers/spanner/test/CascadeDelete.test.ts"],
+  "removes": []
+}
