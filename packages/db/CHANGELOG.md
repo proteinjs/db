@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.57.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.56.0...@proteinjs/db@1.57.0) (2026-10-19)
+
+
+### Features
+
+* **db:** Db.isSystem() — the public read of a write's mode, carried by the Db a write hands its hooks ([2bd1e45](https://github.com/proteinjs/db/commit/2bd1e45c11805219fcb3a6d500307b519b8311a3))
+
+
+
+
+
 # [1.56.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.55.1...@proteinjs/db@1.56.0) (2026-10-19)
 
 
