@@ -241,7 +241,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
 
     let recordCopy = Object.assign({}, record);
     await addDefaultFieldValues(table, recordCopy, this.runAsSystem);
-    recordCopy = await this.tableWatcherRunner.runBeforeInsertTableWatchers(table, recordCopy);
+    recordCopy = await this.tableWatcherRunner.runBeforeInsertTableWatchers(table, recordCopy, this.newHookDb());
     await this.addColumnInsertHooks(table, recordCopy);
     const encryptionContext = await this.encryptionWriteContext(table, recordCopy);
     const recordSerializer = new RecordSerializer(table, encryptionContext);
@@ -269,7 +269,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
       );
     }
     await this.runColumnAfterInsertHooks(table, recordCopy);
-    await this.tableWatcherRunner.runAfterInsertTableWatchers(table, recordCopy as T);
+    await this.tableWatcherRunner.runAfterInsertTableWatchers(table, recordCopy as T, this.newHookDb());
     return recordCopy as T;
   }
 
@@ -311,7 +311,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     for (const record of records) {
       let recordCopy = Object.assign({}, record);
       await addDefaultFieldValues(table, recordCopy, this.runAsSystem);
-      recordCopy = await this.tableWatcherRunner.runBeforeInsertTableWatchers(table, recordCopy);
+      recordCopy = await this.tableWatcherRunner.runBeforeInsertTableWatchers(table, recordCopy, this.newHookDb());
       await this.addColumnInsertHooks(table, recordCopy);
       const encryptionContext = await this.encryptionWriteContext(table, recordCopy);
       const serializedRecord = await new RecordSerializer(table, encryptionContext).serialize(recordCopy);
@@ -343,7 +343,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
         );
       }
       await this.runColumnAfterInsertHooks(table, recordCopy);
-      await this.tableWatcherRunner.runAfterInsertTableWatchers(table, recordCopy as T);
+      await this.tableWatcherRunner.runAfterInsertTableWatchers(table, recordCopy as T, this.newHookDb());
     }
     return prepared.map((row) => row.recordCopy as T);
   }
@@ -389,7 +389,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
       qb.condition({ field: 'id', operator: '=', value: recordCopy.id as T[keyof T] });
     }
 
-    recordCopy = await this.tableWatcherRunner.runBeforeUpdateTableWatchers(table, recordCopy, qb);
+    recordCopy = await this.tableWatcherRunner.runBeforeUpdateTableWatchers(table, recordCopy, qb, this.newHookDb());
     let recordUpdateCount: number;
     if (await this.updateTouchesEncryptedColumns(table, recordCopy)) {
       recordUpdateCount = await this.updateEncrypted(table, recordCopy, qb, driverOptions);
@@ -412,7 +412,13 @@ export class Db<R extends Record = Record> implements DbService<R> {
         await this.runZeroRowFilteredWriteHooks(table, id, 'write');
       }
     }
-    await this.tableWatcherRunner.runAfterUpdateTableWatchers(table, recordUpdateCount, recordCopy, qb);
+    await this.tableWatcherRunner.runAfterUpdateTableWatchers(
+      table,
+      recordUpdateCount,
+      recordCopy,
+      qb,
+      this.newHookDb()
+    );
     return recordUpdateCount;
   }
 
@@ -542,34 +548,31 @@ export class Db<R extends Record = Record> implements DbService<R> {
     const generateDelete = (config: DbDriverDmlStatementConfig) =>
       new StatementFactory<T>().delete(table.name, deleteQb, this.statementConfigFactory.getStatementConfig(config));
     await this.runColumnBeforeDeletes(table, recordsToDelete);
-    await this.tableWatcherRunner.runBeforeDeleteTableWatchers(table, recordsToDelete, qb, deleteQb);
+    await this.tableWatcherRunner.runBeforeDeleteTableWatchers(table, recordsToDelete, qb, deleteQb, this.newHookDb());
     const recordDeleteCount = await this.dbDriver.runDml(generateDelete, this.transactionForDriver());
     await this.runCascadeDeletions(table, recordsToDelete);
     await this.runColumnReverseCascadeDeletions(table, recordsToDelete);
     await this.deleteEncryptionTokenRows(table, recordsToDeleteIds as string[]);
-    await this.tableWatcherRunner.runAfterDeleteTableWatchers(table, recordDeleteCount, recordsToDelete, qb, deleteQb);
+    await this.tableWatcherRunner.runAfterDeleteTableWatchers(
+      table,
+      recordDeleteCount,
+      recordsToDelete,
+      qb,
+      deleteQb,
+      this.newHookDb()
+    );
     return recordDeleteCount;
   }
 
   /**
-   * A column's `beforeDelete` hook runs with the authority of the write that fired it: the Db it
-   * is handed rides this instance's driver, tables and transaction context AND its system mode.
-   * The hooks cascade a delete through reference columns, and a system delete's cascade must stay
-   * system — handed a default (non-system) Db, the cascade ran as whoever the session held, which
-   * narrowed it to that user's rows inside a request and refused it outright in a background
-   * context, where a scoped table finds no user to scope the query to.
+   * A column's `beforeDelete` hook cascades the delete through reference columns, with the
+   * authority of the write that fired it ({@link newHookDb}).
    */
   private async runColumnBeforeDeletes(table: Table<any>, recordsToDelete: Record[]) {
     for (const columnPropertyName in table.columns) {
       const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
       if (typeof column.beforeDelete !== 'undefined') {
-        await column.beforeDelete(
-          table,
-          columnPropertyName,
-          recordsToDelete,
-          this.getTable,
-          new Db(this.dbDriver, this.getTable, this.transactionContextFactory, this.runAsSystem)
-        );
+        await column.beforeDelete(table, columnPropertyName, recordsToDelete, this.getTable, this.newHookDb());
       }
     }
   }
@@ -1169,6 +1172,22 @@ export class Db<R extends Record = Record> implements DbService<R> {
    */
   private newSystemDb(): Db<any> {
     return new Db<any>(this.dbDriver, this.getTable, this.transactionContextFactory, true);
+  }
+
+  /**
+   * The Db a hook is handed — a column's `beforeDelete`, a table watcher's six hooks: an instance
+   * riding THIS instance's driver, tables and transaction context AND its system mode, so the hook
+   * runs with the authority of the write that fired it. A hook that opened a Db of its own
+   * (`getDb()`, a session-scoped Db) ran as whoever the session held: a system write's follow-on
+   * narrowed to that user's rows inside a request, and refused outright in a background context
+   * (an account purge, a sweep, a deploy gate), where a scoped table finds no user to scope the
+   * query to — the cascade left orphans, the watcher left its rows (a message's topic links, a
+   * media row's file) and either swallowed or raised the "No user in scope context" error.
+   * Transaction state is instance state ({@link newSelfWrapDb}), so the hook rides the ambient
+   * transaction through the shared context and never this instance's own.
+   */
+  private newHookDb(): Db<any> {
+    return new Db<any>(this.dbDriver, this.getTable, this.transactionContextFactory, this.runAsSystem);
   }
 
   /**

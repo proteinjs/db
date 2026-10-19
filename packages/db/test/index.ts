@@ -8,6 +8,7 @@ export * from './reusable/PreloadReferencesTests';
 export * from './reusable/RecordIteratorTests';
 export * from './reusable/SourceRecordSyncTests';
 export * from './reusable/StoredValueContractTests';
+export * from './reusable/TableWatcherAuthorityTests';
 
 export * from './util/testUser';
 
@@ -19,4 +20,5 @@ export * from './util/tables/recordIteratorTestTables';
 export * from './util/tables/sourceRecordSyncTestTables';
 export * from './util/tables/storedValueContractTestTables';
 export * from './util/tables/tableManagerTestTables';
+export * from './util/tables/tableWatcherAuthorityTestTables';
 export * from './util/tables/transactionTestTables';

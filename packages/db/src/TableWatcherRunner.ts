@@ -2,11 +2,19 @@ import { Logger } from '@proteinjs/logger';
 import { TableWatcherMap, getTableWatcherMap } from './TableWatcher';
 import { Record } from './Record';
 import { Table } from './Table';
+import { Db } from './Db';
 import { QueryBuilder } from '@proteinjs/db-query';
 
 const getEnvVar = (key: string): string | undefined =>
   typeof process !== 'undefined' && process.env ? process.env[key] : undefined;
 
+/**
+ * Runs a table's watchers around a write. Every hook is handed `db`, the Db the invoking write
+ * made for its hooks (`Db.newHookDb`): the write's driver, tables and transaction context AND its
+ * system mode, so a watcher's own reads and writes carry the authority of the write that fired
+ * it. A watcher never opens a Db of its own for the write's follow-on — a session-scoped Db ran
+ * as whoever the session held, which refused a system write's follow-on in a background context.
+ */
 export class TableWatcherRunner<R extends Record = Record> {
   private static tableWatcherMap: TableWatcherMap;
   private logger = new Logger({ name: this.constructor.name, logLevel: getEnvVar('DB_LOG_LEVEL') as any });
@@ -19,7 +27,8 @@ export class TableWatcherRunner<R extends Record = Record> {
 
   async runBeforeInsertTableWatchers<T extends R>(
     table: Table<T>,
-    record: Omit<T, keyof R>
+    record: Omit<T, keyof R>,
+    db: Db
   ): Promise<Omit<T, keyof R>> {
     const tableWatcherMap = TableWatcherRunner.tableWatcherMap[table.name];
     if (!tableWatcherMap) {
@@ -35,7 +44,7 @@ export class TableWatcherRunner<R extends Record = Record> {
     let updatedRecord: any = record;
     for (const tableWatcher of tableWatchers) {
       this.logger.info({ message: `(${table.name}) Running ${tableWatcher.name()}.beforeInsert` });
-      updatedRecord = await tableWatcher.beforeInsert(updatedRecord);
+      updatedRecord = await tableWatcher.beforeInsert(updatedRecord, db);
       this.logger.info({ message: `(${table.name}) Finished running ${tableWatcher.name()}.beforeInsert` });
     }
     this.logger.info({ message: `(${table.name}) Finished running before-insert table watchers` });
@@ -43,7 +52,7 @@ export class TableWatcherRunner<R extends Record = Record> {
     return updatedRecord;
   }
 
-  async runAfterInsertTableWatchers<T extends R>(table: Table<T>, record: T): Promise<void> {
+  async runAfterInsertTableWatchers<T extends R>(table: Table<T>, record: T, db: Db): Promise<void> {
     const tableWatcherMap = TableWatcherRunner.tableWatcherMap[table.name];
     if (!tableWatcherMap) {
       return;
@@ -57,7 +66,7 @@ export class TableWatcherRunner<R extends Record = Record> {
     this.logger.info({ message: `(${table.name}) Running after-insert table watchers` });
     for (const tableWatcher of tableWatchers) {
       this.logger.info({ message: `(${table.name}) Running ${tableWatcher.name()}.afterInsert` });
-      await tableWatcher.afterInsert(record);
+      await tableWatcher.afterInsert(record, db);
       this.logger.info({ message: `(${table.name}) Finished running ${tableWatcher.name()}.afterInsert` });
     }
     this.logger.info({ message: `(${table.name}) Finished running after-insert table watchers` });
@@ -66,7 +75,8 @@ export class TableWatcherRunner<R extends Record = Record> {
   async runBeforeUpdateTableWatchers<T extends R>(
     table: Table<T>,
     record: Partial<T>,
-    qb: QueryBuilder<T>
+    qb: QueryBuilder<T>,
+    db: Db
   ): Promise<Partial<T>> {
     const tableWatcherMap = TableWatcherRunner.tableWatcherMap[table.name];
     if (!tableWatcherMap) {
@@ -83,7 +93,7 @@ export class TableWatcherRunner<R extends Record = Record> {
     let updatedRecord: any = record;
     for (const tableWatcher of tableWatchers) {
       this.logger.info({ message: `(${table.name}) Running ${tableWatcher.name()}.beforeUpdate` });
-      updatedRecord = await tableWatcher.beforeUpdate(updatedRecord, qbCopy);
+      updatedRecord = await tableWatcher.beforeUpdate(updatedRecord, qbCopy, db);
       this.logger.info({ message: `(${table.name}) Finished running ${tableWatcher.name()}.beforeUpdate` });
     }
     this.logger.info({ message: `(${table.name}) Finished running before-update table watchers` });
@@ -95,7 +105,8 @@ export class TableWatcherRunner<R extends Record = Record> {
     table: Table<T>,
     recordUpdateCount: number,
     record: Partial<T>,
-    qb: QueryBuilder<T>
+    qb: QueryBuilder<T>,
+    db: Db
   ): Promise<void> {
     const tableWatcherMap = TableWatcherRunner.tableWatcherMap[table.name];
     if (!tableWatcherMap) {
@@ -111,7 +122,7 @@ export class TableWatcherRunner<R extends Record = Record> {
     const qbCopy = QueryBuilder.fromQueryBuilder(qb, table.name);
     for (const tableWatcher of tableWatchers) {
       this.logger.info({ message: `(${table.name}) Running ${tableWatcher.name()}.afterUpdate` });
-      await tableWatcher.afterUpdate(recordUpdateCount, record, qbCopy);
+      await tableWatcher.afterUpdate(recordUpdateCount, record, qbCopy, db);
       this.logger.info({ message: `(${table.name}) Finished running ${tableWatcher.name()}.afterUpdate` });
     }
     this.logger.info({ message: `(${table.name}) Finished running after-update table watchers` });
@@ -121,7 +132,8 @@ export class TableWatcherRunner<R extends Record = Record> {
     table: Table<T>,
     recordsToDelete: T[],
     initialQb: QueryBuilder<T>,
-    deleteQb: QueryBuilder<T>
+    deleteQb: QueryBuilder<T>,
+    db: Db
   ): Promise<void> {
     const tableWatcherMap = TableWatcherRunner.tableWatcherMap[table.name];
     if (!tableWatcherMap) {
@@ -137,7 +149,7 @@ export class TableWatcherRunner<R extends Record = Record> {
     const initialQbCopy = QueryBuilder.fromQueryBuilder(initialQb, table.name);
     for (const tableWatcher of tableWatchers) {
       this.logger.info({ message: `(${table.name}) Running ${tableWatcher.name()}.beforeDelete` });
-      await tableWatcher.beforeDelete(recordsToDelete, initialQbCopy, deleteQb);
+      await tableWatcher.beforeDelete(recordsToDelete, initialQbCopy, deleteQb, db);
       this.logger.info({ message: `(${table.name}) Finished running ${tableWatcher.name()}.beforeDelete` });
     }
     this.logger.info({ message: `(${table.name}) Finished running before-delete table watchers` });
@@ -148,7 +160,8 @@ export class TableWatcherRunner<R extends Record = Record> {
     recordDeleteCount: number,
     deletedRecords: T[],
     initialQb: QueryBuilder<T>,
-    deleteQb: QueryBuilder<T>
+    deleteQb: QueryBuilder<T>,
+    db: Db
   ): Promise<void> {
     const tableWatcherMap = TableWatcherRunner.tableWatcherMap[table.name];
     if (!tableWatcherMap) {
@@ -164,7 +177,7 @@ export class TableWatcherRunner<R extends Record = Record> {
     const initialQbCopy = QueryBuilder.fromQueryBuilder(initialQb, table.name);
     for (const tableWatcher of tableWatchers) {
       this.logger.info({ message: `(${table.name}) Running ${tableWatcher.name()}.afterDelete` });
-      await tableWatcher.afterDelete(recordDeleteCount, deletedRecords, initialQbCopy, deleteQb);
+      await tableWatcher.afterDelete(recordDeleteCount, deletedRecords, initialQbCopy, deleteQb, db);
       this.logger.info({ message: `(${table.name}) Finished running ${tableWatcher.name()}.afterDelete` });
     }
     this.logger.info({ message: `(${table.name}) Finished running after-delete table watchers` });
