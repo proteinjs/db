@@ -76,6 +76,23 @@ export class CursorWindowPager<T extends Record> {
     return { rows, nextAnchor: this.deriveNextAnchor(rows, windowSize) };
   }
 
+  /**
+   * THE ROWS PAST AN ANCHOR, COUNTED: how many rows the windows after `anchor` would serve — under this pager's
+   * own conditions and its lexicographic continuation (the same WHERE the windows read with, never a second
+   * filter), with no sort and no pagination: one COUNT at the database. A null anchor counts the whole data
+   * set. A consumer that sizes room for the rows a reader has not loaded yet (a transcript's rows above its
+   * loaded start, sized before the first paint) reads this beside the window it just loaded and holds an exact
+   * count where a guess would refill or collapse later.
+   */
+  async countPast(anchor: CursorAnchor | null): Promise<number> {
+    const qb = this.createQuery();
+    if (anchor) {
+      qb.or(this.anchorConditions(anchor));
+    }
+    const db = this.options?.db ?? getDb();
+    return await db.getRowCount(this.table, qb);
+  }
+
   static encodeAnchor(anchor: CursorAnchor): string {
     return Serializer.serialize(anchor);
   }

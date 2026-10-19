@@ -23,12 +23,17 @@ type Row = {
 const table = { name: 'pager_test' } as Table<Row & { created: moment.Moment; updated: moment.Moment }>;
 type PagerRow = Row & { created: moment.Moment; updated: moment.Moment };
 
-const staged: { rows: Row[] } = { rows: [] };
+const staged: { rows: Row[]; count: number } = { rows: [], count: 0 };
 const executed: QueryBuilder<PagerRow>[] = [];
+const counted: QueryBuilder<PagerRow>[] = [];
 const stubDb = {
   query: async (_table: unknown, qb: QueryBuilder<PagerRow>) => {
     executed.push(qb);
     return staged.rows;
+  },
+  getRowCount: async (_table: unknown, qb: QueryBuilder<PagerRow>) => {
+    counted.push(qb);
+    return staged.count;
   },
 } as unknown as Db;
 
@@ -181,5 +186,47 @@ describe('loadWindow', () => {
 
   it('rejects a nonsensical window size', async () => {
     await expect(pager().loadWindow(null, 0)).rejects.toThrow(/window size/i);
+  });
+});
+
+describe('countPast — the rows past an anchor, counted under the windows’ own WHERE', () => {
+  beforeEach(() => {
+    counted.length = 0;
+  });
+
+  it('an anchored count carries the lexicographic continuation and nothing else: no sort, no pagination; the db’s COUNT is the answer', async () => {
+    staged.count = 26;
+    const remaining = await pager([{ field: 'seq', desc: true }]).countPast({ values: [40, 'row-4'] });
+    expect(remaining).toBe(26);
+    expect(counted).toHaveLength(1);
+    const qb = counted[0];
+    // The same continuation a window after this anchor reads with: seq < 40 OR (seq = 40 AND id > 'row-4').
+    expect(conditionNodes(qb)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ field: 'seq', operator: '<', value: 40 }),
+        expect.objectContaining({ field: 'seq', operator: '=', value: 40 }),
+        expect.objectContaining({ field: 'id', operator: '>', value: 'row-4' }),
+      ])
+    );
+    expect(conditionNodes(qb)).toHaveLength(3);
+    expect(paginationNode(qb)).toBeUndefined();
+    expect(sortNodes(qb)).toHaveLength(0);
+  });
+
+  it('a null anchor counts the whole data set: no conditions beyond the consumer’s own', async () => {
+    staged.count = 3;
+    expect(await pager([{ field: 'seq', desc: true }]).countPast(null)).toBe(3);
+    expect(counted).toHaveLength(1);
+    expect(conditionNodes(counted[0])).toHaveLength(0);
+    expect(paginationNode(counted[0])).toBeUndefined();
+  });
+
+  it('every count builds on a FRESH query — a window’s cursor conditions never leak into it', async () => {
+    const instance = pager([{ field: 'seq', desc: true }]);
+    staged.rows = [];
+    await instance.loadWindow({ values: [40, 'row-4'] }, 10);
+    staged.count = 0;
+    await instance.countPast(null);
+    expect(conditionNodes(counted[0])).toHaveLength(0);
   });
 });
