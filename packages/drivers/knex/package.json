@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/db-driver-knex",
-  "version": "1.16.8",
+  "version": "1.16.9",
   "main": "./dist/generated/index.js",
   "types": "./dist/generated/index.d.ts",
   "exports": {
@@ -41,9 +41,9 @@
     "test": "jest --runInBand --passWithNoTests"
   },
   "dependencies": {
-    "@proteinjs/db": "^1.57.0",
+    "@proteinjs/db": "^1.58.0",
     "@proteinjs/db-query": "^1.11.1",
-    "@proteinjs/db-transaction-context": "^0.5.52",
+    "@proteinjs/db-transaction-context": "^0.5.53",
     "@proteinjs/logger": "^1.2.0",
     "@proteinjs/reflection": "^1.2.0",
     "@proteinjs/util": "^1.6.1",

@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.58.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.57.0...@proteinjs/db@1.58.0) (2026-10-19)
+
+
+### Features
+
+* **db:** CursorWindowPager.countPast — the rows past an anchor, counted under the windows' own conditions and continuation ([5f1406d](https://github.com/proteinjs/db/commit/5f1406d9d50f1d7531b4d879a86d4e3861cc6b81))
+
+
+
+
+
 # [1.57.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.56.0...@proteinjs/db@1.57.0) (2026-10-19)
 
 
