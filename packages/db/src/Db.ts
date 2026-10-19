@@ -167,6 +167,16 @@ export class Db<R extends Record = Record> implements DbService<R> {
       : this.getDefaultTransactionContextFactory();
   }
 
+  /**
+   * Whether this Db writes as the SYSTEM (`getDbAsSystem()`: no table-auth gate, no scope) rather
+   * than as the session's user. The Db a write hands its hooks ({@link newHookDb}) answers for the
+   * invoking write, so a watcher that must tell a user's write from a system one (archive on a
+   * user's delete; stand aside on a purge) reads the write's mode here instead of the session.
+   */
+  isSystem(): boolean {
+    return this.runAsSystem;
+  }
+
   static getDefaultDbDriver(): DbDriver {
     if (!getGlobal()[DEFAULT_DB_DRIVER_GLOBAL_KEY]) {
       const defaultDbDriverFactory = SourceRepository.get().object<DefaultDbDriverFactory>(
