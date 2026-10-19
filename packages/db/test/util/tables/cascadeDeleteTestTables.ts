@@ -80,6 +80,28 @@ export interface Mission extends Record {
   assigneeRef?: Reference<Pilot | Robot> | null;
 }
 
+// --- Cascade under the write's authority: a guarded child (GuardedHolder* -> GuardedMember)
+// The child's table refuses every non-system query, the shape of a scoped table (its column adds
+// the caller's scope to each query and throws when the context carries no user). A holder deleted
+// AS SYSTEM must take its children with it: the cascade runs with the authority of the write that
+// fired it, never as whoever happens to be in the session.
+export interface GuardedMember extends Record {
+  name: string;
+}
+export interface GuardedHolderRef extends Record {
+  holderName: string;
+  memberRef?: Reference<GuardedMember> | null;
+}
+export interface GuardedHolderArr extends Record {
+  holderName: string;
+  memberRefs?: ReferenceArray<GuardedMember> | null;
+}
+export interface GuardedHolderDyn extends Record {
+  holderName: string;
+  memberDynTableName?: string | null;
+  memberDynRef?: Reference<GuardedMember> | null;
+}
+
 /**
  * ---------- Table Names ----------
  */
@@ -111,6 +133,15 @@ const TASK_TABLE = 'db_test_cd_tasks';
 const PILOT_TABLE = 'db_test_cd_pilots';
 const ROBOT_TABLE = 'db_test_cd_robots';
 const MISSION_TABLE = 'db_test_cd_missions';
+
+// Cascade under the write's authority (guarded child)
+const GUARDED_MEMBER_TABLE = 'db_test_cd_guarded_members';
+const GUARDED_HOLDER_REF_TABLE = 'db_test_cd_guarded_holders_ref';
+const GUARDED_HOLDER_ARR_TABLE = 'db_test_cd_guarded_holders_arr';
+const GUARDED_HOLDER_DYN_TABLE = 'db_test_cd_guarded_holders_dyn';
+
+/** The guarded table's refusal of a non-system query — the words a suite asserts on. */
+export const GUARDED_QUERY_REFUSAL = 'no user in scope';
 
 /**
  * ---------- Table Classes ----------
@@ -261,6 +292,56 @@ export class MissionTable extends Table<Mission> {
   });
 }
 
+// Cascade under the write's authority: the guarded child and its three holders
+export class GuardedMemberTable extends Table<GuardedMember> {
+  name = GUARDED_MEMBER_TABLE;
+  columns: Table<GuardedMember>['columns'] = withRecordColumns<GuardedMember>({
+    name: new StringColumn('name', {
+      // The scoped-table contract without a dependency on it: a non-system query of this table
+      // would need the context's user to scope it to, and there is none — refuse it by name.
+      addToQuery: async (qb, runAsSystem) => {
+        if (!runAsSystem) {
+          throw new Error(GUARDED_QUERY_REFUSAL);
+        }
+      },
+    }),
+  });
+}
+export class GuardedHolderRefTable extends Table<GuardedHolderRef> {
+  name = GUARDED_HOLDER_REF_TABLE;
+  columns: Table<GuardedHolderRef>['columns'] = withRecordColumns<GuardedHolderRef>({
+    holderName: new StringColumn('holder_name'),
+    memberRef: new ReferenceColumn<GuardedMember>(
+      'member_id',
+      GUARDED_MEMBER_TABLE,
+      true // cascade: deleting the holder deletes the referenced GuardedMember
+    ),
+  });
+}
+export class GuardedHolderArrTable extends Table<GuardedHolderArr> {
+  name = GUARDED_HOLDER_ARR_TABLE;
+  columns: Table<GuardedHolderArr>['columns'] = withRecordColumns<GuardedHolderArr>({
+    holderName: new StringColumn('holder_name'),
+    memberRefs: new ReferenceArrayColumn<GuardedMember>(
+      'member_ids',
+      GUARDED_MEMBER_TABLE,
+      true // cascade: deleting the holder deletes every referenced GuardedMember
+    ),
+  });
+}
+export class GuardedHolderDynTable extends Table<GuardedHolderDyn> {
+  name = GUARDED_HOLDER_DYN_TABLE;
+  columns: Table<GuardedHolderDyn>['columns'] = withRecordColumns<GuardedHolderDyn>({
+    holderName: new StringColumn('holder_name'),
+    memberDynTableName: new DynamicReferenceTableNameColumn('member_dyn_table_name', 'member_dyn_ref'),
+    memberDynRef: new DynamicReferenceColumn<GuardedMember>(
+      'member_dyn_ref',
+      'member_dyn_table_name',
+      true // cascade: deleting the holder deletes the dynamically referenced GuardedMember
+    ),
+  });
+}
+
 export const cascadeDeleteTestTables = {
   MemberRef: new MemberRefTable() as Table<MemberRef>,
   GroupRef: new GroupRefTable() as Table<GroupRef>,
@@ -277,4 +358,8 @@ export const cascadeDeleteTestTables = {
   Pilot: new PilotTable() as Table<Pilot>,
   Robot: new RobotTable() as Table<Robot>,
   Mission: new MissionTable() as Table<Mission>,
+  GuardedMember: new GuardedMemberTable() as Table<GuardedMember>,
+  GuardedHolderRef: new GuardedHolderRefTable() as Table<GuardedHolderRef>,
+  GuardedHolderArr: new GuardedHolderArrTable() as Table<GuardedHolderArr>,
+  GuardedHolderDyn: new GuardedHolderDynTable() as Table<GuardedHolderDyn>,
 };

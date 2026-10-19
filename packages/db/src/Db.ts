@@ -551,6 +551,14 @@ export class Db<R extends Record = Record> implements DbService<R> {
     return recordDeleteCount;
   }
 
+  /**
+   * A column's `beforeDelete` hook runs with the authority of the write that fired it: the Db it
+   * is handed rides this instance's driver, tables and transaction context AND its system mode.
+   * The hooks cascade a delete through reference columns, and a system delete's cascade must stay
+   * system — handed a default (non-system) Db, the cascade ran as whoever the session held, which
+   * narrowed it to that user's rows inside a request and refused it outright in a background
+   * context, where a scoped table finds no user to scope the query to.
+   */
   private async runColumnBeforeDeletes(table: Table<any>, recordsToDelete: Record[]) {
     for (const columnPropertyName in table.columns) {
       const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
@@ -560,7 +568,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
           columnPropertyName,
           recordsToDelete,
           this.getTable,
-          new Db(this.dbDriver, this.getTable, this.transactionContextFactory)
+          new Db(this.dbDriver, this.getTable, this.transactionContextFactory, this.runAsSystem)
         );
       }
     }

@@ -1,6 +1,6 @@
 import moment from 'moment';
 import { v1 as uuidv1 } from 'uuid';
-import { Column, ColumnOptions, getColumnPropertyName, Table, tableByName } from './Table';
+import { Column, ColumnOptions, getColumnPropertyName, Table } from './Table';
 import { Record } from './Record';
 import { ReferenceArray } from './reference/ReferenceArray';
 import { Db } from './Db';
@@ -263,17 +263,29 @@ export class ReferenceArrayColumn<T extends Record> extends ObjectColumn<Referen
     return new ReferenceArray(this.referenceTable, ids);
   }
 
-  async beforeDelete(table: Table<any>, columnPropertyName: string, records: any[]) {
+  /**
+   * Cascade: the referenced records go with the holder. Runs through the Db the firing write
+   * hands it — its driver, its transaction context, its authority — and off the ids the column
+   * stores; nothing here opens a Db of its own or re-reads the referenced rows, either of which
+   * would run as the session's user rather than as the write (a system delete's cascade must stay
+   * system: in a background context there is no session user at all).
+   */
+  async beforeDelete(
+    table: Table<any>,
+    columnPropertyName: string,
+    records: any[],
+    getTable?: (tableName: string) => Table<any>,
+    db?: Db
+  ): Promise<void> {
     if (!this.cascadeDelete) {
       return;
     }
 
     const recordIdsToDelete: string[] = [];
     for (const record of records) {
-      const referenceArray = record[columnPropertyName] as ReferenceArray<Record>;
-      const referenceRecords = await referenceArray.get();
-      for (const referenceRecord of referenceRecords) {
-        recordIdsToDelete.push(referenceRecord.id);
+      const referenceArray = record[columnPropertyName] as ReferenceArray<Record> | null | undefined;
+      if (referenceArray) {
+        recordIdsToDelete.push(...referenceArray._ids);
       }
     }
 
@@ -281,11 +293,12 @@ export class ReferenceArrayColumn<T extends Record> extends ObjectColumn<Referen
       return;
     }
 
-    const referenceTable = tableByName(this.referenceTable);
+    // Optional in the hook contract for implementers that need neither; the Db hands both to every hook.
+    const referenceTable = getTable!(this.referenceTable);
     const qb = new QueryBuilderFactory()
       .getQueryBuilder(referenceTable)
       .condition({ field: 'id', operator: 'IN', value: recordIdsToDelete });
-    await new Db().delete(referenceTable, qb);
+    await db!.delete(referenceTable, qb);
   }
 }
 
@@ -331,7 +344,18 @@ export class ReferenceColumn<T extends Record> extends StringColumn<Reference<T>
     return reference as Reference<T>;
   }
 
-  async beforeDelete(table: Table<any>, columnPropertyName: string, records: any[]) {
+  /**
+   * Cascade: the referenced record goes with the holder. Runs through the Db the firing write
+   * hands it (its driver, transaction context and authority) off the stored id — see
+   * `ReferenceArrayColumn.beforeDelete` for why the hook never opens a Db of its own.
+   */
+  async beforeDelete(
+    table: Table<any>,
+    columnPropertyName: string,
+    records: any[],
+    getTable?: (tableName: string) => Table<any>,
+    db?: Db
+  ): Promise<void> {
     if (!this.cascadeDelete) {
       return;
     }
@@ -348,11 +372,12 @@ export class ReferenceColumn<T extends Record> extends StringColumn<Reference<T>
       return;
     }
 
-    const referenceTable = tableByName(this.referenceTable);
+    // Optional in the hook contract for implementers that need neither; the Db hands both to every hook.
+    const referenceTable = getTable!(this.referenceTable);
     const qb = new QueryBuilderFactory()
       .getQueryBuilder(referenceTable)
       .condition({ field: 'id', operator: 'IN', value: recordIdsToDelete });
-    await new Db().delete(referenceTable, qb);
+    await db!.delete(referenceTable, qb);
   }
 }
 
@@ -508,6 +533,12 @@ export class DynamicReferenceColumn<T extends Record> extends StringColumn<Refer
     return new Reference<T>(tableName, serializedFieldValue);
   }
 
+  /**
+   * Cascade: the referenced record goes with the holder, whichever table the row names. Runs
+   * through the Db the firing write hands it (its driver, transaction context and authority) off
+   * the stored ids — see `ReferenceArrayColumn.beforeDelete` for why the hook never opens a Db of
+   * its own.
+   */
   async beforeDelete(
     table: Table<any>,
     columnPropertyName: string,
@@ -519,12 +550,8 @@ export class DynamicReferenceColumn<T extends Record> extends StringColumn<Refer
       return;
     }
 
-    const getTableFn = getTable ? getTable : tableByName;
-    const dbInstance = db ? db : new Db();
-
-    // Get all referenced record IDs grouped by table
+    // The referenced ids, grouped by the table each row names
     const recordsToDelete = new Map<string, string[]>();
-
     for (const record of records) {
       const reference = record[columnPropertyName] as Reference<Record>;
       if (!reference?._id || !reference._table) {
@@ -537,17 +564,13 @@ export class DynamicReferenceColumn<T extends Record> extends StringColumn<Refer
       recordsToDelete.get(reference._table)!.push(reference._id);
     }
 
-    // Delete records from each referenced table using Promise.all to properly await all deletions
-    const entries = Array.from(recordsToDelete.entries());
-    console.log(`entries to delete: ${JSON.stringify(entries)}`);
-    for (const [tableName, ids] of entries) {
-      if (ids.length > 0) {
-        const referenceTable = getTableFn(tableName);
-        const qb = new QueryBuilderFactory()
-          .getQueryBuilder(referenceTable)
-          .condition({ field: 'id', operator: 'IN', value: ids });
-        await dbInstance.delete(referenceTable, qb);
-      }
+    // Optional in the hook contract for implementers that need neither; the Db hands both to every hook.
+    for (const [tableName, ids] of Array.from(recordsToDelete.entries())) {
+      const referenceTable = getTable!(tableName);
+      const qb = new QueryBuilderFactory()
+        .getQueryBuilder(referenceTable)
+        .condition({ field: 'id', operator: 'IN', value: ids });
+      await db!.delete(referenceTable, qb);
     }
   }
 }

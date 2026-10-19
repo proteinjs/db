@@ -6,6 +6,10 @@ import {
   GroupArr,
   GroupDyn,
   GroupRef,
+  GuardedHolderArr,
+  GuardedHolderDyn,
+  GuardedHolderRef,
+  GuardedMember,
   MemberArr,
   MemberArrRev,
   MemberDyn,
@@ -222,6 +226,92 @@ export const cascadeDeleteTests = (
 
         const missionsAfterPilot = await db.query(missionTable, {});
         expect(missionsAfterPilot.length).toBe(0);
+      });
+    });
+
+    /**
+     * -------------------- Cascade Delete as system (holder → guarded referenced) --------------------
+     * A system delete's cascade runs with the authority of the write that fired it. The children's
+     * table refuses every non-system query (a scoped table's shape), and the delete runs in a fresh
+     * async context with no session — a background sweep's shape. Before the fix the cascade hooks
+     * ran as a non-system Db, and every case below failed with the guarded table's refusal.
+     */
+    describe('Cascade Delete as system', () => {
+      const systemDb = new Db(driver, undefined, transactionContextFactory, true);
+      const memberTable = cascadeDeleteTestTables.GuardedMember;
+
+      /** A fresh async context with nothing inherited from the test's own — a background sweep's shape. */
+      const inFreshContext = <T>(fn: () => Promise<T>): Promise<T> =>
+        new Promise<T>((resolve, reject) => {
+          setImmediate(() => {
+            fn().then(resolve, reject);
+          });
+        });
+
+      test('ReferenceColumn: a system delete of the holder deletes the guarded referenced record', async () => {
+        const holderTable = cascadeDeleteTestTables.GuardedHolderRef;
+
+        const m = await systemDb.insert(memberTable, { name: 'Gail' });
+        const h = await systemDb.insert(holderTable, {
+          holderName: 'H-Ref',
+          memberRef: new Reference<GuardedMember>(memberTable.name, m.id),
+        });
+
+        const delQb = new QueryBuilder<GuardedHolderRef>(holderTable.name).condition({
+          field: 'id',
+          operator: '=',
+          value: h.id,
+        });
+        const deleted = await inFreshContext(() => systemDb.delete(holderTable, delQb));
+        expect(deleted).toBe(1);
+
+        expect(await systemDb.query(memberTable, { id: m.id })).toHaveLength(0);
+      });
+
+      test('ReferenceArrayColumn: a system delete of the holder deletes every guarded referenced record', async () => {
+        const holderTable = cascadeDeleteTestTables.GuardedHolderArr;
+
+        const m1 = await systemDb.insert(memberTable, { name: 'Gus' });
+        const m2 = await systemDb.insert(memberTable, { name: 'Greta' });
+        const m3 = await systemDb.insert(memberTable, { name: 'Glen' });
+        const h = await systemDb.insert(holderTable, {
+          holderName: 'H-Arr',
+          memberRefs: new ReferenceArray<GuardedMember>(memberTable.name, [m1.id, m2.id]),
+        });
+
+        const delQb = new QueryBuilder<GuardedHolderArr>(holderTable.name).condition({
+          field: 'id',
+          operator: '=',
+          value: h.id,
+        });
+        const deleted = await inFreshContext(() => systemDb.delete(holderTable, delQb));
+        expect(deleted).toBe(1);
+
+        expect(await systemDb.query(memberTable, { id: m1.id })).toHaveLength(0);
+        expect(await systemDb.query(memberTable, { id: m2.id })).toHaveLength(0);
+        // The unreferenced member stands: the cascade is the stored ids, nothing wider.
+        expect(await systemDb.query(memberTable, { id: m3.id })).toHaveLength(1);
+      });
+
+      test('DynamicReferenceColumn: a system delete of the holder deletes the guarded dynamically referenced record', async () => {
+        const holderTable = cascadeDeleteTestTables.GuardedHolderDyn;
+
+        const m = await systemDb.insert(memberTable, { name: 'Gwen' });
+        const h = await systemDb.insert(holderTable, {
+          holderName: 'H-Dyn',
+          memberDynTableName: memberTable.name,
+          memberDynRef: new Reference<GuardedMember>(memberTable.name, m.id),
+        });
+
+        const delQb = new QueryBuilder<GuardedHolderDyn>(holderTable.name).condition({
+          field: 'id',
+          operator: '=',
+          value: h.id,
+        });
+        const deleted = await inFreshContext(() => systemDb.delete(holderTable, delQb));
+        expect(deleted).toBe(1);
+
+        expect(await systemDb.query(memberTable, { id: m.id })).toHaveLength(0);
       });
     });
   };
