@@ -1,6 +1,0 @@
-{
-  "branch": "feat/db-public-mode-read",
-  "packages": ["db"],
-  "suites": ["packages/db/test/DbIsSystem.test.ts"],
-  "removes": []
-}
