@@ -1,0 +1,6 @@
+{
+  "branch": "feat/cursor-window-count-past",
+  "packages": ["db"],
+  "suites": ["packages/db/test/CursorWindowPager.test.ts"],
+  "removes": []
+}
