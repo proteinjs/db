@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.56.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.55.1...@proteinjs/db@1.56.0) (2026-10-19)
+
+
+### Features
+
+* **db:** a table watcher's hooks run with the authority of the write that fired them ([5ff3a9f](https://github.com/proteinjs/db/commit/5ff3a9f6a81e5f1a97cccbb4c0d5c6a7d66763b9))
+
+
+
+
+
 ## [1.55.1](https://github.com/proteinjs/db/compare/@proteinjs/db@1.55.0...@proteinjs/db@1.55.1) (2026-10-19)
 
 
