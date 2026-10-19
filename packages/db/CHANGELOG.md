@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.55.1](https://github.com/proteinjs/db/compare/@proteinjs/db@1.55.0...@proteinjs/db@1.55.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* **db:** a column's delete cascade runs with the authority of the write that fired it ([653ca0d](https://github.com/proteinjs/db/commit/653ca0dd3858f5ce9d78ff590ad087cfe215f6d3))
+
+
+
+
+
 # [1.55.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.54.3...@proteinjs/db@1.55.0) (2026-10-16)
 
 
