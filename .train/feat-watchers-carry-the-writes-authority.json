@@ -1,9 +1,0 @@
-{
-  "branch": "feat/watchers-carry-the-writes-authority",
-  "packages": ["db", "drivers/spanner"],
-  "suites": [
-    "packages/drivers/spanner/test/TableWatcherAuthority.test.ts",
-    "packages/drivers/spanner/test/CascadeDelete.test.ts"
-  ],
-  "removes": []
-}
