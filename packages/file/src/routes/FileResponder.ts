@@ -14,6 +14,13 @@ export type FileResponse = {
 };
 
 /**
+ * How long a client may keep a bytes-door answer, and the redirect to a signed URL, in its OWN cache
+ * (`private` — the bytes are per caller: the owner's original, a recipient's copy — so never a shared
+ * cache). One number for both shapes.
+ */
+export const FILE_RESPONSE_CLIENT_CACHE_MAX_AGE_S = 300;
+
+/**
  * THE ONE SERVING PATH for a file's bytes — `GET /file/:id` and `GET /file/:id/variant/:kind`
  * answer through it, so a variant is served exactly as any File is. Two shapes:
  *
@@ -27,6 +34,13 @@ export type FileResponse = {
  *   is honored (206/416 via {@link resolveByteRange}) so a `<video>` can SEEK against a
  *   proxy-served blob — streaming parity with the signed-URL path instead of download-then-watch.
  *
+ * THE BYTES DOOR ({@link serveBytes} — `GET /file/:id/bytes` and `GET /file/:id/variant/:kind/bytes`):
+ * the same-origin answer a page can READ (a `fetch` whose body it may keep — a redirect to another
+ * origin's signed URL is one it cannot read across origins, and whose URL it cannot keep past the
+ * signature's life). It is the proxy shape, chosen: the signed URL is never minted, the bytes leave
+ * through the same row read and the same egress decision as every other door, and the answer says
+ * the browser may keep it privately (never a shared cache).
+ *
  * WHICH bytes is `FileStorage`'s decision (`getSignedUrl` / `getFileData` substitute the copy
  * for others for anyone but the owner); the headers are the row's (its name and type). The
  * route decided existence and access before calling here (`FileStorage.getFile`).
@@ -38,28 +52,26 @@ export class FileResponder {
     try {
       const signedUrl = await fileStorage.getSignedUrl(file.id);
       if (signedUrl) {
-        response.setHeader('Cache-Control', 'private, max-age=300');
+        response.setHeader('Cache-Control', `private, max-age=${FILE_RESPONSE_CLIENT_CACHE_MAX_AGE_S}`);
         response.redirect(302, signedUrl);
         return;
       }
 
-      const bytes = Buffer.from(await fileStorage.getFileData(file.id), 'base64');
-      const safeFilename = encodeURIComponent(file.name);
-      response.setHeader('Content-Disposition', `inline; filename="${safeFilename}"`);
-      response.setHeader('Content-Type', file.type);
-      response.setHeader('Accept-Ranges', 'bytes');
-      const range = resolveByteRange(request.headers?.range, bytes.length);
-      if (range === 'unsatisfiable') {
-        response.setHeader('Content-Range', `bytes */${bytes.length}`);
-        response.status(416).send('Range Not Satisfiable');
-        return;
-      }
-      if (range) {
-        response.setHeader('Content-Range', `bytes ${range.start}-${range.end}/${bytes.length}`);
-        response.status(206).send(bytes.subarray(range.start, range.end + 1));
-        return;
-      }
-      response.send(bytes);
+      await FileResponder.proxy(file, fileStorage, request, response);
+    } catch (error) {
+      FileResponder.fail(file.id, error, response);
+    }
+  }
+
+  /**
+   * Serve `file`'s BYTES to `response` whatever the driver's URL space — never a redirect (the bytes
+   * door, the class doc): the same egress as {@link serve}'s proxy shape, the answer marked keepable by
+   * the client's own private cache.
+   */
+  static async serveBytes(file: File, request: FileRequest, response: FileResponse): Promise<void> {
+    try {
+      response.setHeader('Cache-Control', `private, max-age=${FILE_RESPONSE_CLIENT_CACHE_MAX_AGE_S}`);
+      await FileResponder.proxy(file, new FileStorage(), request, response);
     } catch (error) {
       FileResponder.fail(file.id, error, response);
     }
@@ -81,5 +93,37 @@ export class FileResponder {
     }
     console.error(`Error fetching file (${fileId}):`, error);
     response.status(500).send('Internal Server Error');
+  }
+
+  // ── Leaf helpers ─────────────────────────────────────────────────────────
+
+  /**
+   * The proxy shape: the bytes THIS caller is served (`getFileData` — the owner's original, the copy for
+   * others otherwise), decoded to their true bytes, with the row's headers and HTTP Range honored.
+   * Throws the storage's own failures for the public doors to map.
+   */
+  private static async proxy(
+    file: File,
+    fileStorage: FileStorage,
+    request: FileRequest,
+    response: FileResponse
+  ): Promise<void> {
+    const bytes = Buffer.from(await fileStorage.getFileData(file.id), 'base64');
+    const safeFilename = encodeURIComponent(file.name);
+    response.setHeader('Content-Disposition', `inline; filename="${safeFilename}"`);
+    response.setHeader('Content-Type', file.type);
+    response.setHeader('Accept-Ranges', 'bytes');
+    const range = resolveByteRange(request.headers?.range, bytes.length);
+    if (range === 'unsatisfiable') {
+      response.setHeader('Content-Range', `bytes */${bytes.length}`);
+      response.status(416).send('Range Not Satisfiable');
+      return;
+    }
+    if (range) {
+      response.setHeader('Content-Range', `bytes ${range.start}-${range.end}/${bytes.length}`);
+      response.status(206).send(bytes.subarray(range.start, range.end + 1));
+      return;
+    }
+    response.send(bytes);
   }
 }
