@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.11.0](https://github.com/proteinjs/db/compare/@proteinjs/db-file@1.10.17...@proteinjs/db-file@1.11.0) (2026-10-21)
+
+
+### Features
+
+* **file:** the same-origin bytes doors — GET /file/:id/bytes and GET /file/:id/variant/:kind/bytes serve the bytes themselves, never a redirect ([aab7086](https://github.com/proteinjs/db/commit/aab7086732136eb517da87c77fcf9a3f5dc08d22))
+
+
+
+
+
 ## [1.10.17](https://github.com/proteinjs/db/compare/@proteinjs/db-file@1.10.16...@proteinjs/db-file@1.10.17) (2026-10-19)
 
 **Note:** Version bump only for package @proteinjs/db-file
