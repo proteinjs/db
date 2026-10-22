@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.58.1](https://github.com/proteinjs/db/compare/@proteinjs/db@1.58.0...@proteinjs/db@1.58.1) (2026-10-22)
+
+
+### Bug Fixes
+
+* **db:** the browser index never reaches a Node builtin — the source-record sync behind the @proteinjs/db/source subpath ([da27e27](https://github.com/proteinjs/db/commit/da27e277c42c3be336ea706674891b382cb42d48))
+
+
+
+
+
 # [1.58.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.57.0...@proteinjs/db@1.58.0) (2026-10-19)
 
 
