@@ -1,0 +1,11 @@
+{
+  "branch": "fix/browser-index-no-node-builtins",
+  "packages": ["db"],
+  "suites": [
+    "packages/db/test/BrowserIndexNoNodeBuiltins.test.ts",
+    "packages/db/test/SourceRecordSyncSeam.test.ts",
+    "packages/db/test/SourceRecordSyncRunner.test.ts",
+    "packages/db/test/SourceRecordLoaderQualifiedName.test.ts"
+  ],
+  "removes": ["SourceRecordSyncRunner"]
+}
