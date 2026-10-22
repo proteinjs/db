@@ -13,7 +13,7 @@ import {
   withSourceRecordColumns,
 } from '@proteinjs/db';
 import type { DefaultTransactionContextFactory } from '@proteinjs/db';
-import { SourceRecordSyncRunner } from '../../src/source/SourceRecordSyncRunner';
+import { SourceRecordSyncRunner } from '../../source/SourceRecordSyncRunner';
 import { TableWatcherRunner } from '../../src/TableWatcherRunner';
 import { DbTestEnvironment } from '../util/DbTestEnvironment';
 import {

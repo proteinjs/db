@@ -20,8 +20,9 @@
     "paths": {
       "@proteinjs/db": ["index.ts"],
       "@proteinjs/db/*": ["src/*"],
-      "@proteinjs/db/test": ["test/index.ts"]
+      "@proteinjs/db/test": ["test/index.ts"],
+      "@proteinjs/db/source": ["source/index.ts"]
     }
   },
-  "exclude": ["node_modules", "dist", "test.js", "test.d.ts"]
+  "exclude": ["node_modules", "dist", "test.js", "test.d.ts", "source.js", "source.d.ts"]
 }

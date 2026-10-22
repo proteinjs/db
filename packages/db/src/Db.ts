@@ -12,7 +12,7 @@ import {
 import { ReverseCascadeEdgeIndex } from './ReverseCascadeEdgeIndex';
 import { Record, RecordSerializer, SerializedRecord } from './Record';
 import { Logger } from '@proteinjs/logger';
-import { SourceRecordSyncRunner } from './source/SourceRecordSyncRunner';
+import { getSourceRecordSync } from './source/SourceRecordSync';
 import { ParameterizationConfig, ParamType, QueryBuilder, Statement, StatementFactory } from '@proteinjs/db-query';
 import { QueryBuilderFactory } from './QueryBuilderFactory';
 import { StatementConfigFactory } from './StatementConfigFactory';
@@ -211,7 +211,9 @@ export class Db<R extends Record = Record> implements DbService<R> {
    *    backfill, which fails loudly over violating data); an immediate no-op unless a migration
    *    declares {@link Migration.preSchemaSync};
    * 3. schema sync — create/alter every registered table (the DDL);
-   * 4. source-record sync.
+   * 4. source-record sync — through {@link getSourceRecordSync}: the runner is server-only code
+   *    behind the `@proteinjs/db/source` subpath (the browser index never carries it), registered
+   *    by the server's one import of that subpath; a boot without it fails here, loudly.
    */
   async init(): Promise<void> {
     await this.dbDriver.createDbIfNotExists();
@@ -225,7 +227,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     const { MigrationRunner } = await import('./MigrationRunner');
     await new MigrationRunner().runPreSchemaSyncMigrations(this.dbDriver.getTableManager());
     await this.dbDriver.getTableManager().loadTables();
-    await new SourceRecordSyncRunner().load();
+    await getSourceRecordSync().load();
   }
 
   async tableExists<T extends R>(table: Table<T>): Promise<boolean> {

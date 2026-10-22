@@ -1,4 +1,4 @@
-import { SourceRecordSyncRunner } from '../src/source/SourceRecordSyncRunner';
+import { SourceRecordSyncRunner } from '../source/SourceRecordSyncRunner';
 
 /**
  * Covers the two helpers that drive SourceRecordSyncRunner's change-detection:

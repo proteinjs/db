@@ -1,10 +1,13 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { Logger } from '@proteinjs/logger';
 import { QueryBuilder } from '@proteinjs/db-query';
-import { getSourceRecordLoaders, SourceRecord, getSourceRecordTables } from './SourceRecord';
-import { Table } from '../Table';
-import { Db, getDbAsSystem } from '../Db';
-import { SourceRecordRepo } from './SourceRecordRepo';
-import { RecordSerializer } from '../Record';
+import { getSourceRecordLoaders, SourceRecord, getSourceRecordTables } from '../src/source/SourceRecord';
+import { Table } from '../src/Table';
+import { Db, getDbAsSystem } from '../src/Db';
+import { SourceRecordRepo } from '../src/source/SourceRecordRepo';
+import { RecordSerializer } from '../src/Record';
+import { SourceRecordLoadSummary, SourceRecordSync } from '../src/source/SourceRecordSync';
 
 type DeclaredRecord = {
   /** The owning package (the declaring loader's package) — the grain the sync prunes within. */
@@ -19,29 +22,12 @@ type SourceRecordsMap = {
   [tableName: string]: { table: Table<any>; records: DeclaredRecord[] };
 };
 
-/** What one boot of the sync did to one source-record table. */
-export type SourceRecordTableLoadSummary = {
-  inserts: number;
-  updates: number;
-  unchanged: number;
-  adopted: number;
-  /**
-   * Declarations whose natural key is held by a row the sync does not own (written at runtime —
-   * a person's own row, say): refused for this boot, that row left exactly as it is (see
-   * {@link SourceRecordOptions.naturalKey}).
-   */
-  refused: number;
-  deletes: number;
-  removedUpdates: number;
-  /** Rows stamped by a newer version of their declaring package — left exactly as they are. */
-  skippedNewer: number;
-  /** Source-loaded rows with no owner stamp that no declaration in this build claims. */
-  unowned: number;
-};
-
-export type SourceRecordLoadSummary = { [tableName: string]: SourceRecordTableLoadSummary };
-
-export class SourceRecordSyncRunner {
+/**
+ * The one {@link SourceRecordSync}: server-only code (it reads package.json files off the booting
+ * process) behind the `@proteinjs/db/source` subpath — a server's boot imports that subpath once,
+ * and reflection hands this runner to `Db.init` through `getSourceRecordSync`.
+ */
+export class SourceRecordSyncRunner implements SourceRecordSync {
   private logger = new Logger({ name: this.constructor.name });
 
   /** Memo of resolved package versions — one resolution (and at most one warning) per source. */
@@ -627,44 +613,39 @@ export class SourceRecordSyncRunner {
    *    `<pkg>/package.json` is usually not requireable), then the nearest package.json whose
    *    `name` matches is read walking up from it.
    *
-   * Returns undefined where neither road resolves — no Node `require` (browser bundles), or a
-   * package not resolvable from cwd. The sync then has no place in the version order for that
-   * package: it never touches its version-stamped rows, and what it writes is unversioned
-   * (see {@link isNewerStamp}). Logged once per boot so a misconfigured cwd is visible.
+   * Returns undefined where neither road resolves — a package not resolvable from cwd. The sync
+   * then has no place in the version order for that package: it never touches its
+   * version-stamped rows, and what it writes is unversioned (see {@link isNewerStamp}). Logged
+   * once per boot so a misconfigured cwd is visible.
+   *
+   * Plain Node here — `fs`, `path` and the CJS `require.resolve` — because this module is
+   * server-only code behind the `@proteinjs/db/source` subpath: the package's browser index never
+   * imports it (test/BrowserIndexNoNodeBuiltins.test.ts holds that line), so nothing here hides
+   * from a bundler.
    */
   private resolveSourceVersion(source: string): string | undefined {
-    // The ambient CJS `require` — the only require carrying `.resolve` (module.require does
-    // not). Every use below goes through the variable, so bundlers never see a statically
-    // analyzable `require(...)` call; in a browser bundle the runtime attempts throw into
-    // their catches and the method degrades to undefined.
-    const nodeRequire: NodeRequire | undefined =
-      typeof require === 'function' && typeof require.resolve === 'function' ? require : undefined;
-    const cwd = typeof process !== 'undefined' && typeof process.cwd === 'function' ? process.cwd() : undefined;
-    if (nodeRequire && cwd) {
-      try {
-        const path = nodeRequire('path');
-        const fs = nodeRequire('fs');
-        const ownVersion = this.packageVersionAt(fs, path.join(cwd, 'package.json'), source);
-        if (ownVersion) {
-          return ownVersion;
-        }
-
-        const entryPath = nodeRequire.resolve(source, { paths: [cwd] });
-        // Walk up from the entry file to the package's own package.json (the name check skips
-        // nested stubs like a dist/package.json); stop at the filesystem root.
-        for (let directory = path.dirname(entryPath); ; directory = path.dirname(directory)) {
-          const version = this.packageVersionAt(fs, path.join(directory, 'package.json'), source);
-          if (version) {
-            return version;
-          }
-
-          if (path.dirname(directory) === directory) {
-            break;
-          }
-        }
-      } catch {
-        // Unresolvable from cwd — reported below.
+    const cwd = process.cwd();
+    try {
+      const ownVersion = this.packageVersionAt(path.join(cwd, 'package.json'), source);
+      if (ownVersion) {
+        return ownVersion;
       }
+
+      const entryPath = require.resolve(source, { paths: [cwd] });
+      // Walk up from the entry file to the package's own package.json (the name check skips
+      // nested stubs like a dist/package.json); stop at the filesystem root.
+      for (let directory = path.dirname(entryPath); ; directory = path.dirname(directory)) {
+        const version = this.packageVersionAt(path.join(directory, 'package.json'), source);
+        if (version) {
+          return version;
+        }
+
+        if (path.dirname(directory) === directory) {
+          break;
+        }
+      }
+    } catch {
+      // Unresolvable from cwd — reported below.
     }
 
     this.logger.warn({
@@ -674,7 +655,7 @@ export class SourceRecordSyncRunner {
   }
 
   /** The `version` of the package.json at `packageJsonPath` when it exists and names `source`. */
-  private packageVersionAt(fs: typeof import('fs'), packageJsonPath: string, source: string): string | undefined {
+  private packageVersionAt(packageJsonPath: string, source: string): string | undefined {
     if (!fs.existsSync(packageJsonPath)) {
       return undefined;
     }

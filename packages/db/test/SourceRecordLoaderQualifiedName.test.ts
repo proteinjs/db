@@ -10,11 +10,12 @@ import { graphSerializer } from '@proteinjs/util';
  * name, so a second declaration of the name anywhere in the package's reflected sources leaves
  * which one the artifact records to the build's file order — and the loser disappears without
  * a trace. These tests read the artifacts the build wrote (`generated/index.ts` for the package
- * entry, `generated/test/index.ts` for the `./test` subpath, both built from `src/`) and assert
- * the name holds the declaration interface, not some other declaration that shares it.
+ * entry, `generated/test/index.ts` for the `./test` subpath, `generated/source/index.ts` for the
+ * `./source` subpath — each built over `src/`) and assert the name holds the declaration
+ * interface, not some other declaration that shares it.
  */
 const QUALIFIED_NAME = '@proteinjs/db/SourceRecordLoader';
-const ARTIFACTS = ['generated/index.ts', 'generated/test/index.ts'];
+const ARTIFACTS = ['generated/index.ts', 'generated/test/index.ts', 'generated/source/index.ts'];
 
 /** The fields of an emitted node value these tests read. */
 type EmittedDeclaration = { packageName: string; name: string; qualifiedName: string; sourceType: SourceType };

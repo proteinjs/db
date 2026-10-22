@@ -17,9 +17,11 @@ export * from './src/RecordIterator';
 export * from './src/CursorWindowPager';
 export * from './src/source/SourceRecord';
 export * from './src/source/SourceRecordRepo';
-// The sync runner behind Db.init's source-record leg. Public so consumer test harnesses can run
-// one boot of the sync directly (the exports map blocks deep dist imports).
-export { SourceRecordSyncRunner } from './src/source/SourceRecordSyncRunner';
+// The source-record sync's seam: its summary types and `getSourceRecordSync`. The runner itself is
+// server-only code (it reads package.json files off the booting process) behind the
+// `@proteinjs/db/source` subpath, which a server's boot imports once; a consumer test harness that
+// runs one boot of the sync directly imports it from there too.
+export * from './src/source/SourceRecordSync';
 export * from './src/MigrationRunner';
 export * from './src/QueryBuilderFactory';
 export * from './src/TableWatcher';

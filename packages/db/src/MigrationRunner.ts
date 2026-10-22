@@ -2,7 +2,7 @@ import { Moment, moment } from './opt/moment';
 import { Db, getDb, getDbAsSystem } from './Db';
 import { Table } from './Table';
 import { SourceRecordRepo } from './source/SourceRecordRepo';
-import { SourceRecordSyncRunner } from './source/SourceRecordSyncRunner';
+import { getSourceRecordSync } from './source/SourceRecordSync';
 import { getSourceRecordLoaders } from './source/SourceRecord';
 import { MigrationRunnerService, getMigrationRunnerService } from './services/MigrationRunnerService';
 import { Migration, MigrationEstimate, MigrationTable } from './tables/MigrationTable';
@@ -195,7 +195,7 @@ export class MigrationRunner implements MigrationRunnerService {
     }
 
     await tableManager.loadTable(migrationTable);
-    await new SourceRecordSyncRunner().load(migrationTable);
+    await getSourceRecordSync().load(migrationTable);
     this.logger.info({
       message: `Running ${flagged.length} pre-schema-sync migration${flagged.length === 1 ? '' : 's'} before schema sync`,
       obj: { ids: flagged.map((migration) => migration.id) },
