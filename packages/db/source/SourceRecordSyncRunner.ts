@@ -89,7 +89,11 @@ export class SourceRecordSyncRunner implements SourceRecordSync {
    *   A row the product edited whose declaration ALSO moved, to something else, is a two-sided
    *   divergence: counted `diverged` apart from `kept`, the row untouched, one warning naming the
    *   key and both digests, never a failed boot — the consumer's own reconcile settles it.
-   *   Runtime-owned columns a declaration never covers never move a row's authorship.
+   *   Runtime-owned columns a declaration never covers never move a row's authorship. A kept
+   *   row a declaration re-claims by its id under a changed key (a soft-removing table, see
+   *   {@link softRemovedRecordHoldingDeclaredId}) meets the same precedence: as the sync left
+   *   it, adopted and reactivated; edited by the product since, a divergence — never inserted
+   *   over, which would fail the boot on the row's primary key.
    * - Declarations come from code (`SourceRecordLoader`) and from declaration FILES
    *   (`SourceRecordDeclarationFile` — a document `source-records pull` wrote, every row declared
    *   by the file's package). A load that would remove more than the table's
@@ -217,20 +221,9 @@ export class SourceRecordSyncRunner implements SourceRecordSync {
               message: `(${table.name}) Adopting existing record into source ownership`,
               obj: { ...this.keyQuery(syncKey, sourceRecord), id: existingRecord.id },
             });
-          } else if (reclaimedSoftRemoved) {
-            // A soft-removed row re-claimed by its declaration under a changed natural key:
-            // adopted in place and reactivated from the declaration by the update below.
-            adoptedCount += 1;
-            this.logger.info({
-              message: `(${table.name}) Adopting soft-removed record re-declared under a changed ${syncKey.key}`,
-              obj: {
-                id: existingRecord.id,
-                [`removed_${syncKey.key}`]: (existingRecord as any)[syncKey.key],
-                ...this.keyQuery(syncKey, sourceRecord),
-              },
-            });
           } else {
-            // THE PRECEDENCE on a row the sync owns (see load's ownership model).
+            // THE PRECEDENCE on a row the sync owns (see load's ownership model) — the row the key
+            // matched, or the soft-removed row the declaration re-claims by its id.
             const authorship = await this.authorship(table, sourceRecord, existingRecord);
             if (authorship.verdict === 'kept') {
               keptCount += 1;
@@ -238,9 +231,15 @@ export class SourceRecordSyncRunner implements SourceRecordSync {
               continue;
             }
             if (authorship.verdict === 'diverged') {
+              // A re-claimed row diverges by construction on its key (the declaration moved to a new
+              // one) and on the product's edit: left under its old key, the declaration not loaded
+              // — never inserted over, which would collide with the row's primary key.
               divergedCount += 1;
+              const rowWords = reclaimedSoftRemoved
+                ? `the row holding the declared id '${existingRecord.id}' under ${this.keyWords(syncKey, existingRecord)} was edited by the product and its declaration '${name}' moved as well, to ${this.keyWords(syncKey, sourceRecord)}`
+                : `the row holding ${this.keyWords(syncKey, sourceRecord)} was edited by the product and its declaration '${name}' moved as well`;
               this.logger.warn({
-                message: `(${table.name}) Diverged on both sides since the last sync: the row holding ${this.keyWords(syncKey, sourceRecord)} was edited by the product and its declaration '${name}' moved as well — the row is left untouched (row digest ${authorship.rowDigest}, declaration digest ${authorship.declarationDigest})`,
+                message: `(${table.name}) Diverged on both sides since the last sync: ${rowWords} — the row is left untouched (row digest ${authorship.rowDigest}, declaration digest ${authorship.declarationDigest})`,
                 obj: {
                   declaration: qualifiedName,
                   ...this.keyQuery(syncKey, sourceRecord),
@@ -259,6 +258,19 @@ export class SourceRecordSyncRunner implements SourceRecordSync {
               this.logger.info({
                 message: `(${table.name}) Re-adopting a product-edited record whose declaration now equals it`,
                 obj: { ...this.keyQuery(syncKey, sourceRecord), id: existingRecord.id },
+              });
+            } else if (reclaimedSoftRemoved) {
+              // A soft-removed row re-claimed by its declaration under a changed natural key, still
+              // as the sync left it: adopted in place and reactivated from the declaration by the
+              // update below.
+              adoptedCount += 1;
+              this.logger.info({
+                message: `(${table.name}) Adopting soft-removed record re-declared under a changed ${syncKey.key}`,
+                obj: {
+                  id: existingRecord.id,
+                  [`removed_${syncKey.key}`]: (existingRecord as any)[syncKey.key],
+                  ...this.keyQuery(syncKey, sourceRecord),
+                },
               });
             }
           }
@@ -447,17 +459,21 @@ export class SourceRecordSyncRunner implements SourceRecordSync {
    *   absent id is no claim, never a query on `id = undefined`);
    * - a row holds the DECLARED id;
    * - that row is source-owned (`is_loaded_from_source = true`) by THIS declaration's package
-   *   (never adopt a human/runtime row, or another package's row, by id), and still as the sync
-   *   left it (a kept row the product edited since is the product's — see {@link load});
+   *   (never adopt a human/runtime row, or another package's row, by id);
    * - no declaration in this build claims the row by natural key (it is a removed row, not a
    *   duplicate-id declaration — that case still fails the boot loudly at insert).
    *
-   * The caller then reactivates the row by re-deriving every declared field from the current
-   * declaration (natural key included) through the normal drift-reversion update — declaration
-   * is the source of truth, so nothing removed-era (grants, status, natural key) survives
-   * re-adoption; runtime-owned fields the declaration never emits are untouched. The version
-   * guard is the caller's existing stamped-newer branch, which applies to the returned row
-   * verbatim (same package by construction).
+   * The caller applies the authorship precedence to the returned row as to any row it owns
+   * (see {@link load}). Still as the sync left it, the row is reactivated by re-deriving every
+   * declared field from the current declaration (natural key included) through the normal
+   * update — declaration is the source of truth, so nothing removed-era (grants, status,
+   * natural key) survives re-adoption; runtime-owned fields the declaration never emits are
+   * untouched. Edited by the product on a declared column since, the row is the product's and
+   * the declaration (moved, its key at the least) a two-sided divergence: warned, the row left
+   * under its old key, the declaration not loaded — and never inserted over, since the insert
+   * leg would collide with the row's primary key and fail the boot. The version guard is the
+   * caller's existing stamped-newer branch, which applies to the returned row verbatim (same
+   * package by construction).
    *
    * This is the one-off form of a future generic `softRemoval` hook (adopt-including-removed +
    * reactivate-from-declaration): graduating it means lifting this method behind a table-level
@@ -482,8 +498,7 @@ export class SourceRecordSyncRunner implements SourceRecordSync {
       !holder ||
       holder.isLoadedFromSource !== true ||
       holder.sourcePackage !== source ||
-      declaredKeys.has(this.keyText(syncKey, holder)) ||
-      (await this.rowMoved(table, holder))
+      declaredKeys.has(this.keyText(syncKey, holder))
     ) {
       return undefined;
     }

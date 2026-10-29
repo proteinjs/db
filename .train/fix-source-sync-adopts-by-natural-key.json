@@ -1,0 +1,9 @@
+{
+  "branch": "fix/source-sync-adopts-by-natural-key",
+  "packages": ["db", "drivers/spanner"],
+  "suites": [
+    "packages/db/test/SourceRecordSyncRunner.test.ts",
+    "packages/drivers/spanner/test/SourceRecordSync.test.ts"
+  ],
+  "removes": []
+}

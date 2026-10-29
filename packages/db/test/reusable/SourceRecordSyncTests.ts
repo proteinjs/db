@@ -544,6 +544,58 @@ export const sourceRecordSyncTests = (
       expect((await db.get(machineTable, { id: 'machine-rn' })).updated.valueOf()).toBe(stampBefore);
     });
 
+    test('a row the product edited on a declared column, re-declared under a renamed natural key: a two-sided divergence — warned, the row untouched under its old key, the declaration not loaded, never a collision on its id; the declaration coming to equal the row re-adopts it', async () => {
+      const db = getDbAsSystem();
+      const keeper = machineDeclaration({ id: 'machine-keep', email: 'keeper@test.local' });
+      await boot([machineDeclaration({ id: 'machine-dv', email: 'dv-old@test.local', displayName: 'Ops' }), keeper]);
+      // The product edits a DECLARED column: the row is the product's from here.
+      await db.update(machineTable, { id: 'machine-dv', displayName: 'Renamed by the product' });
+      const edited = await db.get(machineTable, { id: 'machine-dv' });
+
+      // Re-declared under a NEW email: the natural-key match misses, and the row holding the
+      // declared id is the product's — so it is not adopted. Pre-fix the sync then fell through
+      // to the insert leg and the boot failed on the row's primary key.
+      RecordingMachineAccountWatcher.updates = [];
+      const summary = await boot([
+        machineDeclaration({ id: 'machine-dv', email: 'dv-new@test.local', displayName: 'Ops' }),
+        keeper,
+      ]);
+      // The removed-reconcile met the row under its old key and kept it; the stamp leg met the
+      // declaration's claim by id and found the divergence. Nothing inserted, nothing patched.
+      expect(summary[machineTable.name]).toMatchObject({
+        diverged: 1,
+        kept: 1,
+        inserts: 0,
+        adopted: 0,
+        updates: 0,
+        removedUpdates: 0,
+      });
+      const untouched = await db.get(machineTable, { id: 'machine-dv' });
+      expect(untouched).toMatchObject({
+        email: 'dv-old@test.local',
+        displayName: 'Renamed by the product',
+        status: 'active',
+        isLoadedFromSource: true,
+      });
+      expect(untouched.updated.valueOf()).toBe(edited.updated.valueOf());
+      expect(await db.get(machineTable, { email: 'dv-new@test.local' })).toBeUndefined();
+      expect(await machineRows()).toHaveLength(2);
+      expect(RecordingMachineAccountWatcher.updates).toHaveLength(0);
+
+      // The declaration comes to equal the row, its key included: re-adopted — the stamp written,
+      // nothing else.
+      const readopted = await boot([
+        machineDeclaration({ id: 'machine-dv', email: 'dv-old@test.local', displayName: 'Renamed by the product' }),
+        keeper,
+      ]);
+      expect(readopted[machineTable.name]).toMatchObject({ adopted: 1, diverged: 0, kept: 0, inserts: 0 });
+      expect(await db.get(machineTable, { id: 'machine-dv' })).toMatchObject({
+        email: 'dv-old@test.local',
+        displayName: 'Renamed by the product',
+        status: 'active',
+      });
+    });
+
     test(`onSourceRemoved default: removed source rows are deleted; human rows survive`, async () => {
       const db = getDbAsSystem();
       const human = await db.insert(defaultPolicyTable, { email: 'human@test.local' });

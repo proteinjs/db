@@ -31,7 +31,10 @@ export type SourceRecordTableLoadSummary = {
    * them AND whose declaration moved since as well, to something else. Counted apart from
    * `kept`, the row untouched, one warning per row naming the key and both digests (the row's
    * and the declaration's), never a failed boot — what settles it is the consumer's own
-   * reconcile; the next boot after the declaration equals the row re-adopts it.
+   * reconcile; the next boot after the declaration equals the row re-adopts it. A row a
+   * declaration re-claims by its id under a changed natural key (a soft-removing table) counts
+   * here AND in `kept`: the removed-reconcile met it under its old key and kept it, the stamp
+   * leg met the declaration's claim and found the divergence — each leg reports what it met.
    */
   diverged: number;
 };
