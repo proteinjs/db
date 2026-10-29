@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.59.2](https://github.com/proteinjs/db/compare/@proteinjs/db@1.59.1...@proteinjs/db@1.59.2) (2026-10-29)
+
+
+### Bug Fixes
+
+* **db:** a soft-removed row re-claimed by its declared id meets the authorship precedence — as the sync left it, adopted and reactivated; edited by the product on a declared column since, a two-sided divergence (warned with both digests, the row left under its old key, the declaration not loaded) and never inserted over, where the insert leg collided with the row's primary key and failed the boot; the summary says the re-claimed divergence counts in kept and diverged alike (each leg reports what it met); the reusable sync suite pins the road; the branch manifest ([6466d00](https://github.com/proteinjs/db/commit/6466d00bd636ff54ef65e0c02cc65b19a48f22c6))
+
+
+
+
+
 ## [1.59.1](https://github.com/proteinjs/db/compare/@proteinjs/db@1.59.0...@proteinjs/db@1.59.1) (2026-10-29)
 
 
