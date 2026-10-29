@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.59.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.58.1...@proteinjs/db@1.59.0) (2026-10-29)
+
+
+### Features
+
+* **db:** the source-record full loop, re-cut over the 1.58.1 subpath — the authorship precedence on the sync (the stamp tells the declaration's rows from the product's: a product-edited row is kept while its declaration stands still, re-adopted when the declaration comes to equal it, and a two-sided divergence is counted apart and warned once with both digests, never a failed boot), the removal guard, declaration files as a source, the export door and the pull command, a scoped natural key (the pair, matched, reconciled and refused as one), a row filter on what a declaration covers, and external columns as sibling files beside the document ([cca1a64](https://github.com/proteinjs/db/commit/cca1a64a0542bb21cecc4ac9ba524d9dfcbec157))
+
+
+
+
+
 ## [1.58.1](https://github.com/proteinjs/db/compare/@proteinjs/db@1.58.0...@proteinjs/db@1.58.1) (2026-10-22)
 
 
