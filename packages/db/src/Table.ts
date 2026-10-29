@@ -494,8 +494,10 @@ export type SourceRecordOptions<T = any> = {
    * When set, the sync keys records on this column instead of `id` — matching and the removed
    * reconcile both use it. A row the sync already owns (`is_loaded_from_source = true`) matched
    * by natural key keeps its id (the declared id is used only for fresh inserts — an
-   * environment's own ids may be referenced from other tables) and has its declared fields
-   * reverted to source. Drift comparison excludes `id`, so the id difference converges.
+   * environment's own ids may be referenced from other tables) and, while it is still as the
+   * sync left it, has its declared fields brought to the declaration (see the authorship
+   * precedence on `SourceRecord.declarationStamp`). Drift comparison excludes `id`, so the id
+   * difference converges.
    *
    * A row the sync does NOT own that holds the key is never taken over: a natural key is an
    * identity the world shares (an email a person registered, say), unlike a declared id, which
@@ -506,10 +508,56 @@ export type SourceRecordOptions<T = any> = {
    *
    * Preconditions, validated at boot by the loader (loud failures):
    * - the column is declared unique (`ColumnOptions.unique` or a single-column unique index in
-   *   {@link Table.indexes});
-   * - every declaration provides the natural key, and no two declarations share a value.
+   *   {@link Table.indexes}) — or, with {@link naturalKeyScope}, a unique index over exactly the
+   *   scope column and this one;
+   * - every declaration provides the natural key, and no two declarations share a value (within
+   *   one scope value, when scoped).
    */
   naturalKey?: keyof T & string;
+  /**
+   * The column that SCOPES the natural key: the key is unique within one value of this column,
+   * not across the table (a scoped table's rows keyed `(scope, name)` — a unique index over
+   * exactly `[scope, naturalKey]` in {@link Table.indexes}). Two declarations may then share the
+   * natural key under different scope values, and every declaration provides both. The sync
+   * matches, refuses and reconciles on the pair; a declaration document carries the scope column
+   * on every row (`SourceRecordDeclaration.scope` names it). Requires {@link naturalKey}.
+   */
+  naturalKeyScope?: keyof T & string;
+  /**
+   * The columns a DECLARATION of this table covers — what the export door renders and what a
+   * declaration file may carry (the sync key, and its scope, are always among them; `id` only
+   * when it is the key). A column not listed is never exported (a secret stays in the database)
+   * and is refused in a declaration file. Undeclared = the table cannot be exported and accepts
+   * no declaration file; code-declared records are unaffected.
+   */
+  declarationColumns?: (keyof T & string)[];
+  /**
+   * The ROWS a declaration of this table covers, as an equality filter over declaration columns
+   * (`{ scope: '<the one scope whose rows are source>' }`, say): the export door renders only the
+   * rows that match every listed value, and a declaration file may carry only such rows — a row
+   * outside the filter is refused by name at load, since it could never have been exported.
+   * Every filter column must be a declaration column (or the key, or its scope). Unset = every
+   * row of the table.
+   */
+  declarationFilter?: Partial<T>;
+  /**
+   * Declaration columns whose value lives in a SIBLING FILE beside the declaration document
+   * rather than inside it — a long text column (an instruction in markdown, say) whose change a
+   * reviewer reads as prose, never as a one-line escaped JSON diff. In the document the row
+   * carries the sibling's path relative to the document (`<key>/<column>.md`, the scope value
+   * before the key when scoped, each value url-encoded) or null; the export door returns each sibling's
+   * text beside the document (`SourceRecordExportResult.files`), the pull command writes them,
+   * and the loader reads them back byte-for-byte. String-valued columns only; every one must be
+   * a declaration column.
+   */
+  externalColumns?: (keyof T & string)[];
+  /**
+   * The removal guard against a wrong or empty declaration: one load refuses (loudly, touching
+   * nothing on the table) when the rows it would remove exceed this fraction of the
+   * declaration-authored rows the build owns on the table — and more than one row, since a
+   * single removal is never a wrong-file signal. Default 0.5 (more than half); 1 disables it.
+   */
+  maxRemovedFraction?: number;
   ui?: {
     hideColumns?: boolean;
   };

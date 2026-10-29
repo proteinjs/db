@@ -6,8 +6,15 @@ import { getSourceRecordLoaders, SourceRecord, getSourceRecordTables } from '../
 import { Table } from '../src/Table';
 import { Db, getDbAsSystem } from '../src/Db';
 import { SourceRecordRepo } from '../src/source/SourceRecordRepo';
-import { RecordSerializer } from '../src/Record';
-import { SourceRecordLoadSummary, SourceRecordSync } from '../src/source/SourceRecordSync';
+import { RecordSerializer, SerializedRecord } from '../src/Record';
+import {
+  SourceRecordLoadSummary,
+  SourceRecordRemovalRefusedError,
+  SourceRecordSync,
+} from '../src/source/SourceRecordSync';
+import { SourceRecordDeclarationDocument } from '../src/source/SourceRecordDeclaration';
+import { getSourceRecordDeclarationFiles } from '../src/source/SourceRecordDeclarationFile';
+import { SourceRecordStamp } from './SourceRecordStamp';
 
 type DeclaredRecord = {
   /** The owning package (the declaring loader's package) — the grain the sync prunes within. */
@@ -21,6 +28,21 @@ type DeclaredRecord = {
 type SourceRecordsMap = {
   [tableName: string]: { table: Table<any>; records: DeclaredRecord[] };
 };
+
+/** The property the sync keys a table on (`id` or the natural key) and the property that scopes it, when any. */
+type SyncKey = { key: string; scope?: string };
+
+/**
+ * Whose row an existing, owned row is — from the sync's stamp — and what the boot does with it.
+ * - `declaration`: the row still digests to its stamp (or predates stamps): the sync's to write.
+ * - `readopted`: the row moved since the sync wrote it and the declaration now EQUALS it on every
+ *   declared column: stamped as the declaration's again, nothing else written.
+ * - `kept`: the row moved and the declaration did not: the product's, left as it is.
+ * - `diverged`: both moved, to different values: the product's, left as it is, warned with both digests.
+ */
+type Authorship =
+  | { verdict: 'declaration' | 'readopted' | 'kept' }
+  | { verdict: 'diverged'; rowDigest: string; declarationDigest: string };
 
 /**
  * The one {@link SourceRecordSync}: server-only code (it reads package.json files off the booting
@@ -56,7 +78,22 @@ export class SourceRecordSyncRunner implements SourceRecordSync {
    *   may be anyone's — that declaration is REFUSED for the boot (the row untouched, the boot
    *   continuing, one warning naming the declaration, counted `refused`). A declared id, minted
    *   by the declaration itself, still claims a runtime row holding it (see
-   *   {@link SourceRecordOptions.naturalKey}).
+   *   {@link SourceRecordOptions.naturalKey}). A scoped natural key is the pair (scope, key)
+   *   everywhere the key is read ({@link SourceRecordOptions.naturalKeyScope}).
+   * - THE AUTHORSHIP PRECEDENCE on the rows the sync owns: every row it writes carries a stamp of
+   *   the declared columns as written ({@link SourceRecordStamp}). A row still digesting to its
+   *   stamp is the declaration's — updated to a changed declaration, removed when the declaration
+   *   is gone. A row the product edited on a declared column since is the PRODUCT's: never
+   *   written or removed, whatever the declaration says (counted `kept`), until the declaration
+   *   equals it again — then it is re-adopted (stamped, nothing else written, counted `adopted`).
+   *   A row the product edited whose declaration ALSO moved, to something else, is a two-sided
+   *   divergence: counted `diverged` apart from `kept`, the row untouched, one warning naming the
+   *   key and both digests, never a failed boot — the consumer's own reconcile settles it.
+   *   Runtime-owned columns a declaration never covers never move a row's authorship.
+   * - Declarations come from code (`SourceRecordLoader`) and from declaration FILES
+   *   (`SourceRecordDeclarationFile` — a document `source-records pull` wrote, every row declared
+   *   by the file's package). A load that would remove more than the table's
+   *   `maxRemovedFraction` of the rows the build owns refuses before touching anything.
    * - The version stamp records the version that last WROTE the row (its insert or its last
    *   redefinition). A newer version whose declaration is unchanged writes nothing — it neither
    *   re-stamps the version nor bumps `updated` — so a release that touches no declaration
@@ -83,22 +120,25 @@ export class SourceRecordSyncRunner implements SourceRecordSync {
       }
       const { table, records } = tables[tableName];
       // 'id' unless the table declares a natural key (validated: unique-indexed, present and
-      // unambiguous across declarations).
-      const keyProperty = this.validateSyncKey(
+      // unambiguous across declarations — as a (scope, key) pair when the key is scoped).
+      const syncKey = this.validateSyncKey(
         table,
         records.map(({ record }) => record)
       );
       // The exclusion set is the UNION of every key the build declares for the table: a key
       // declared by ANY package in this build is re-owned by the stamp leg, never pruned (a
       // declaration moving between packages within one build must not transit a delete+re-insert).
-      const allDeclaredKeys = records.map(({ record }) => (record as any)[keyProperty]);
-      const removed = await this.reconcileRemoved(db, table, keyProperty, buildSources, allDeclaredKeys);
+      const declaredKeyValues = records.map(({ record }) => (record as any)[syncKey.key]);
+      const declaredKeys = new Set(records.map(({ record }) => this.keyText(syncKey, record)));
+      const removed = await this.reconcileRemoved(db, table, syncKey, buildSources, declaredKeyValues, declaredKeys);
 
       let insertCount = 0;
       let updateCount = 0;
       let unchangedCount = 0;
       let adoptedCount = 0;
       let refusedCount = 0;
+      let keptCount = removed.keptCount;
+      let divergedCount = 0;
       let skippedNewer = removed.skippedNewer;
       for (const { source, qualifiedName, name, record } of records) {
         let sourceRecord = record;
@@ -119,30 +159,31 @@ export class SourceRecordSyncRunner implements SourceRecordSync {
         if (sourceVersion !== undefined) {
           sourceRecord.sourcePackageVersion = sourceVersion;
         }
-        let existingRecord = await db.get(table, { [keyProperty]: (sourceRecord as any)[keyProperty] });
+        const declaredColumns = SourceRecordStamp.declaredColumnNames(table, sourceRecord);
+        let existingRecord = await db.get(table, this.keyQuery(syncKey, sourceRecord));
         let reclaimedSoftRemoved = false;
         if (!existingRecord) {
           existingRecord = await this.softRemovedRecordHoldingDeclaredId(
             db,
             table,
-            keyProperty,
+            syncKey,
             sourceRecord.id,
             source,
-            allDeclaredKeys
+            declaredKeys
           );
           reclaimedSoftRemoved = existingRecord !== undefined;
         }
 
         if (existingRecord) {
-          if (existingRecord.isLoadedFromSource !== true && keyProperty !== 'id') {
+          if (existingRecord.isLoadedFromSource !== true && syncKey.key !== 'id') {
             // A natural key held by a row the sync does not own: never taken over (see load's
             // ownership model). The row stays exactly as it is and the boot goes on.
             refusedCount += 1;
             this.logger.warn({
-              message: `(${table.name}) Refused declaration '${name}': a row the sync does not own holds ${keyProperty} '${(sourceRecord as any)[keyProperty]}' — the row is left untouched and the declaration does not load while it stands`,
+              message: `(${table.name}) Refused declaration '${name}': a row the sync does not own holds ${this.keyWords(syncKey, sourceRecord)} — the row is left untouched and the declaration does not load while it stands`,
               obj: {
                 declaration: qualifiedName,
-                [keyProperty]: (sourceRecord as any)[keyProperty],
+                ...this.keyQuery(syncKey, sourceRecord),
                 id: existingRecord.id,
               },
             });
@@ -174,22 +215,55 @@ export class SourceRecordSyncRunner implements SourceRecordSync {
             adoptedCount += 1;
             this.logger.info({
               message: `(${table.name}) Adopting existing record into source ownership`,
-              obj: { [keyProperty]: (sourceRecord as any)[keyProperty], id: existingRecord.id },
+              obj: { ...this.keyQuery(syncKey, sourceRecord), id: existingRecord.id },
             });
           } else if (reclaimedSoftRemoved) {
             // A soft-removed row re-claimed by its declaration under a changed natural key:
             // adopted in place and reactivated from the declaration by the update below.
             adoptedCount += 1;
             this.logger.info({
-              message: `(${table.name}) Adopting soft-removed record re-declared under a changed ${keyProperty}`,
+              message: `(${table.name}) Adopting soft-removed record re-declared under a changed ${syncKey.key}`,
               obj: {
                 id: existingRecord.id,
-                [`removed_${keyProperty}`]: (existingRecord as any)[keyProperty],
-                [keyProperty]: (sourceRecord as any)[keyProperty],
+                [`removed_${syncKey.key}`]: (existingRecord as any)[syncKey.key],
+                ...this.keyQuery(syncKey, sourceRecord),
               },
             });
+          } else {
+            // THE PRECEDENCE on a row the sync owns (see load's ownership model).
+            const authorship = await this.authorship(table, sourceRecord, existingRecord);
+            if (authorship.verdict === 'kept') {
+              keptCount += 1;
+              new SourceRecordRepo().loadSourceRecord(table.name, existingRecord);
+              continue;
+            }
+            if (authorship.verdict === 'diverged') {
+              divergedCount += 1;
+              this.logger.warn({
+                message: `(${table.name}) Diverged on both sides since the last sync: the row holding ${this.keyWords(syncKey, sourceRecord)} was edited by the product and its declaration '${name}' moved as well — the row is left untouched (row digest ${authorship.rowDigest}, declaration digest ${authorship.declarationDigest})`,
+                obj: {
+                  declaration: qualifiedName,
+                  ...this.keyQuery(syncKey, sourceRecord),
+                  id: existingRecord.id,
+                  rowDigest: authorship.rowDigest,
+                  declarationDigest: authorship.declarationDigest,
+                },
+              });
+              new SourceRecordRepo().loadSourceRecord(table.name, existingRecord);
+              continue;
+            }
+            if (authorship.verdict === 'readopted') {
+              // The declaration caught up with the product's edit: the row is the declaration's
+              // again — stamped, nothing else written (every declared column already equals).
+              adoptedCount += 1;
+              this.logger.info({
+                message: `(${table.name}) Re-adopting a product-edited record whose declaration now equals it`,
+                obj: { ...this.keyQuery(syncKey, sourceRecord), id: existingRecord.id },
+              });
+            }
           }
 
+          sourceRecord.declarationStamp = await this.stampFor(table, sourceRecord, declaredColumns);
           if (await this.hasChanges(table, sourceRecord, existingRecord)) {
             await db.update(table, sourceRecord);
             updateCount += 1;
@@ -197,6 +271,7 @@ export class SourceRecordSyncRunner implements SourceRecordSync {
             unchangedCount += 1;
           }
         } else {
+          sourceRecord.declarationStamp = await this.stampFor(table, sourceRecord, declaredColumns);
           const dbSourceRecord = await db.insert(table, sourceRecord);
           sourceRecord = { ...sourceRecord, ...dbSourceRecord };
           insertCount += 1;
@@ -206,7 +281,7 @@ export class SourceRecordSyncRunner implements SourceRecordSync {
         new SourceRecordRepo().loadSourceRecord(table.name, sourceRecord as any);
       }
 
-      const unowned = await this.countUnowned(db, table, keyProperty);
+      const unowned = await this.countUnowned(db, table, syncKey);
       summary[table.name] = {
         inserts: insertCount,
         updates: updateCount,
@@ -217,6 +292,8 @@ export class SourceRecordSyncRunner implements SourceRecordSync {
         removedUpdates: removed.removedUpdateCount,
         skippedNewer,
         unowned,
+        kept: keptCount,
+        diverged: divergedCount,
       };
       this.logger.info({
         message: `(${table.name}) Loaded ${records.length} ${records.length == 1 ? 'record' : 'records'} from source`,
@@ -231,69 +308,128 @@ export class SourceRecordSyncRunner implements SourceRecordSync {
    * The removed-reconcile leg: rows owned by a package this build carries, at that package's
    * version or older, that NO package in this build still declares
    * (`is_loaded_from_source = true AND source_package IN <build's packages> AND <key> NOT IN
-   * <build's declared keys for the table>`, minus rows stamped by a newer version of their
-   * package) are handled per the table's `onSourceRemoved` policy — delete (default), keep, or
-   * update with a patch. The update leg applies the patch only to rows whose fields actually
-   * differ (idempotent boots), through `Db.update` so table watchers observe each write.
-   * See {@link load} for the ownership model.
+   * <build's declared keys for the table>` — the pair, in memory, when the key is scoped —
+   * minus rows stamped by a newer version of their package, minus PRODUCT-AUTHORED rows: edited
+   * by the product since the sync wrote them, kept whatever the declaration says) are handled
+   * per the table's `onSourceRemoved` policy — delete (default), keep, or update with a patch.
+   * The update leg applies the patch only to rows whose fields actually differ (idempotent
+   * boots), through `Db.update` so table watchers observe each write, and re-stamps the row as
+   * the sync's own write. The removal guard (`sourceRecordOptions.maxRemovedFraction`) refuses
+   * the whole load of the table before anything is removed. See {@link load} for the ownership
+   * model.
    */
   private async reconcileRemoved(
     db: Db,
     table: Table<any>,
-    keyProperty: string,
+    syncKey: SyncKey,
     buildSources: Set<string>,
-    allDeclaredKeys: unknown[]
-  ): Promise<{ deleteCount: number; removedUpdateCount: number; skippedNewer: number }> {
+    declaredKeyValues: unknown[],
+    declaredKeys: Set<string>
+  ): Promise<{ deleteCount: number; removedUpdateCount: number; skippedNewer: number; keptCount: number }> {
+    const none = { deleteCount: 0, removedUpdateCount: 0, skippedNewer: 0, keptCount: 0 };
     const policy = table.sourceRecordOptions.onSourceRemoved ?? 'delete';
     if (policy === 'keep' || buildSources.size == 0) {
-      return { deleteCount: 0, removedUpdateCount: 0, skippedNewer: 0 };
+      return none;
     }
 
     const qb = QueryBuilder.fromObject<SourceRecord>({ isLoadedFromSource: true }, table.name);
     qb.condition({ field: 'sourcePackage', operator: 'IN', value: Array.from(buildSources) as any });
-    if (allDeclaredKeys.length > 0) {
-      qb.condition({ field: keyProperty as any, operator: 'NOT IN', value: allDeclaredKeys as any });
+    if (syncKey.scope === undefined && declaredKeyValues.length > 0) {
+      qb.condition({ field: syncKey.key as any, operator: 'NOT IN', value: declaredKeyValues as any });
     }
 
-    const candidates: SourceRecord[] = await db.query(table, qb);
+    let candidates: SourceRecord[] = await db.query(table, qb);
+    if (syncKey.scope !== undefined) {
+      // A scoped key is a pair: the exclusion is by (scope, key), which no single NOT IN says.
+      candidates = candidates.filter((candidate) => !declaredKeys.has(this.keyText(syncKey, candidate)));
+    }
     const stampedNewer = (candidate: SourceRecord) =>
       this.isNewerStamp(candidate.sourcePackageVersion, this.sourceVersion(candidate.sourcePackage as string));
-    const removedRecords = candidates.filter((candidate) => !stampedNewer(candidate));
-    const skippedNewer = candidates.length - removedRecords.length;
+    const reconcilable = candidates.filter((candidate) => !stampedNewer(candidate));
+    const skippedNewer = candidates.length - reconcilable.length;
     if (skippedNewer > 0) {
       this.logger.info({
         message: `(${table.name}) Left ${skippedNewer} record${skippedNewer == 1 ? '' : 's'} stamped by a newer version of ${skippedNewer == 1 ? 'its' : 'their'} package — not treated as removed`,
-        obj: { [keyProperty]: candidates.filter(stampedNewer).map((candidate) => (candidate as any)[keyProperty]) },
+        obj: { keys: candidates.filter(stampedNewer).map((candidate) => this.keyText(syncKey, candidate)) },
       });
     }
 
-    if (removedRecords.length == 0) {
-      return { deleteCount: 0, removedUpdateCount: 0, skippedNewer };
-    }
-
-    if (policy === 'delete') {
-      const deleteQb = QueryBuilder.fromObject<SourceRecord>({ isLoadedFromSource: true }, table.name);
-      deleteQb.condition({ field: 'id', operator: 'IN', value: removedRecords.map((record) => record.id) });
-      return { deleteCount: await db.delete(table, deleteQb), removedUpdateCount: 0, skippedNewer };
-    }
-
-    let removedUpdateCount = 0;
-    for (const removedRecord of removedRecords) {
-      if (await this.hasChanges(table, policy.update, removedRecord)) {
-        await db.update(table, { id: removedRecord.id, ...policy.update });
-        removedUpdateCount += 1;
-        this.logger.info({
-          message: `(${table.name}) Applied onSourceRemoved update to record removed from source`,
-          obj: {
-            id: removedRecord.id,
-            [keyProperty]: (removedRecord as any)[keyProperty],
-            source: removedRecord.sourcePackage,
-          },
-        });
+    const removedRecords: SourceRecord[] = [];
+    let keptCount = 0;
+    for (const candidate of reconcilable) {
+      if (await this.rowMoved(table, candidate)) {
+        keptCount += 1;
+      } else {
+        removedRecords.push(candidate);
       }
     }
 
-    return { deleteCount: 0, removedUpdateCount, skippedNewer };
+    if (removedRecords.length == 0) {
+      return { ...none, skippedNewer, keptCount };
+    }
+
+    if (policy === 'delete') {
+      await this.guardRemoval(db, table, buildSources, removedRecords.length);
+      const deleteQb = QueryBuilder.fromObject<SourceRecord>({ isLoadedFromSource: true }, table.name);
+      deleteQb.condition({ field: 'id', operator: 'IN', value: removedRecords.map((record) => record.id) });
+      return { deleteCount: await db.delete(table, deleteQb), removedUpdateCount: 0, skippedNewer, keptCount };
+    }
+
+    // A soft-removed row stays on the table (still loaded from source, still the sync's), so it
+    // is a candidate on every later boot. What this boot REMOVES is only what the patch would
+    // still change: the guard counts those, never the rows an earlier boot already patched —
+    // else the second single removal on a table would read as "2 of 3" and refuse every boot.
+    const unpatched: SourceRecord[] = [];
+    for (const removedRecord of removedRecords) {
+      if (await this.hasChanges(table, policy.update, removedRecord)) {
+        unpatched.push(removedRecord);
+      }
+    }
+    await this.guardRemoval(db, table, buildSources, unpatched.length);
+
+    let removedUpdateCount = 0;
+    for (const removedRecord of unpatched) {
+      // The patch is the sync's own write: the stamp follows it, over the columns the row was
+      // stamped with plus the patch's, so the row stays declaration-authored.
+      const patched = { ...removedRecord, ...policy.update };
+      const stampedColumns = removedRecord.declarationStamp
+        ? SourceRecordStamp.columnsOf(removedRecord.declarationStamp) ?? []
+        : [];
+      const columns = [...stampedColumns, ...SourceRecordStamp.declaredColumnNames(table, policy.update)];
+      const declarationStamp = await this.stampFor(table, patched, columns);
+      await db.update(table, { id: removedRecord.id, ...policy.update, declarationStamp });
+      removedUpdateCount += 1;
+      this.logger.info({
+        message: `(${table.name}) Applied onSourceRemoved update to record removed from source`,
+        obj: {
+          id: removedRecord.id,
+          ...this.keyQuery(syncKey, removedRecord),
+          source: removedRecord.sourcePackage,
+        },
+      });
+    }
+
+    return { deleteCount: 0, removedUpdateCount, skippedNewer, keptCount };
+  }
+
+  /**
+   * The removal guard: refuse before anything is removed when the removal would take more than
+   * the table's named fraction of the declaration-authored rows this build owns on it (the
+   * rows this reconcile speaks for: `is_loaded_from_source = true AND source_package IN
+   * <build's packages>`, whatever they hold) — and more than one row.
+   */
+  private async guardRemoval(db: Db, table: Table<any>, buildSources: Set<string>, removing: number): Promise<void> {
+    const maxRemovedFraction = table.sourceRecordOptions.maxRemovedFraction ?? 0.5;
+    if (removing <= 1 || maxRemovedFraction >= 1) {
+      return;
+    }
+
+    const ownedQb = QueryBuilder.fromObject<SourceRecord>({ isLoadedFromSource: true }, table.name);
+    ownedQb.condition({ field: 'sourcePackage', operator: 'IN', value: Array.from(buildSources) as any });
+    const owned = await db.getRowCount(table, ownedQb);
+    if (removing > maxRemovedFraction * owned) {
+      throw new SourceRecordRemovalRefusedError(table.name, removing, owned, maxRemovedFraction);
+    }
   }
 
   /**
@@ -306,9 +442,13 @@ export class SourceRecordSyncRunner implements SourceRecordSync {
    * Returns the soft-removed row the declaration re-claims, or undefined. The match is
    * deliberately strict — all of:
    * - the table keeps removed rows (`onSourceRemoved` is an update patch — soft removal);
+   * - the declaration CARRIES an id (a declaration file's rows never do — its key is the
+   *   natural key, and a row it lists again is matched by that key alone; claiming by an
+   *   absent id is no claim, never a query on `id = undefined`);
    * - a row holds the DECLARED id;
    * - that row is source-owned (`is_loaded_from_source = true`) by THIS declaration's package
-   *   (never adopt a human/runtime row, or another package's row, by id);
+   *   (never adopt a human/runtime row, or another package's row, by id), and still as the sync
+   *   left it (a kept row the product edited since is the product's — see {@link load});
    * - no declaration in this build claims the row by natural key (it is a removed row, not a
    *   duplicate-id declaration — that case still fails the boot loudly at insert).
    *
@@ -327,13 +467,13 @@ export class SourceRecordSyncRunner implements SourceRecordSync {
   private async softRemovedRecordHoldingDeclaredId(
     db: Db,
     table: Table<any>,
-    keyProperty: string,
-    declaredId: string,
+    syncKey: SyncKey,
+    declaredId: string | undefined,
     source: string,
-    allDeclaredKeys: unknown[]
+    declaredKeys: Set<string>
   ): Promise<SourceRecord | undefined> {
     const policy = table.sourceRecordOptions.onSourceRemoved;
-    if (typeof policy !== 'object') {
+    if (typeof policy !== 'object' || declaredId === undefined) {
       return undefined;
     }
 
@@ -342,7 +482,8 @@ export class SourceRecordSyncRunner implements SourceRecordSync {
       !holder ||
       holder.isLoadedFromSource !== true ||
       holder.sourcePackage !== source ||
-      allDeclaredKeys.includes((holder as any)[keyProperty])
+      declaredKeys.has(this.keyText(syncKey, holder)) ||
+      (await this.rowMoved(table, holder))
     ) {
       return undefined;
     }
@@ -357,7 +498,7 @@ export class SourceRecordSyncRunner implements SourceRecordSync {
    * on. Tables that keep removed rows (`onSourceRemoved: 'keep'`) opted out of removal
    * semantics altogether, so there is nothing to explain there.
    */
-  private async countUnowned(db: Db, table: Table<any>, keyProperty: string): Promise<number> {
+  private async countUnowned(db: Db, table: Table<any>, syncKey: SyncKey): Promise<number> {
     if ((table.sourceRecordOptions.onSourceRemoved ?? 'delete') === 'keep') {
       return 0;
     }
@@ -368,7 +509,7 @@ export class SourceRecordSyncRunner implements SourceRecordSync {
     if (unowned.length > 0) {
       this.logger.warn({
         message: `(${table.name}) ${unowned.length} source-loaded ${unowned.length == 1 ? 'record has' : 'records have'} no owning package and no declaration in this build — left untouched`,
-        obj: { [keyProperty]: unowned.map((record) => (record as any)[keyProperty]) },
+        obj: { keys: unowned.map((record) => this.keyText(syncKey, record)) },
       });
     }
 
@@ -378,13 +519,19 @@ export class SourceRecordSyncRunner implements SourceRecordSync {
   /**
    * Resolve and validate the property the sync keys on: `id` unless the table declares
    * `sourceRecordOptions.naturalKey`. A natural key must be schema-unique (a `ColumnOptions.unique`
-   * column or a single-column unique index in `Table.indexes`), present on every declaration, and
-   * unambiguous across declarations — each violation fails boot loudly by name.
+   * column or a single-column unique index in `Table.indexes` — or, when
+   * `sourceRecordOptions.naturalKeyScope` scopes it, a unique index over exactly the scope column
+   * and the key), present on every declaration (the scope too), and unambiguous across
+   * declarations (within one scope value, when scoped) — each violation fails boot loudly by name.
    */
-  private validateSyncKey(table: Table<any>, records: Omit<SourceRecord, 'created' | 'updated'>[]): string {
+  private validateSyncKey(table: Table<any>, records: Omit<SourceRecord, 'created' | 'updated'>[]): SyncKey {
     const naturalKey = table.sourceRecordOptions.naturalKey;
+    const scope = table.sourceRecordOptions.naturalKeyScope;
     if (!naturalKey) {
-      return 'id';
+      if (scope) {
+        throw new Error(`(${table.name}) sourceRecordOptions.naturalKeyScope '${scope}' needs a naturalKey to scope`);
+      }
+      return { key: 'id' };
     }
 
     const column = (table.columns as any)[naturalKey];
@@ -393,39 +540,59 @@ export class SourceRecordSyncRunner implements SourceRecordSync {
         `(${table.name}) sourceRecordOptions.naturalKey '${naturalKey}' is not a column property on the table`
       );
     }
-
-    const uniqueByColumn = column.options?.unique?.unique === true;
-    const uniqueByIndex = (table.indexes ?? []).some(
-      (index) => index.unique === true && index.columns.length === 1 && String(index.columns[0]) === naturalKey
-    );
-    if (!uniqueByColumn && !uniqueByIndex) {
+    if (scope !== undefined && !(table.columns as any)[scope]) {
       throw new Error(
-        `(${table.name}) sourceRecordOptions.naturalKey '${naturalKey}' requires the column to be unique — ` +
-          `declare ColumnOptions.unique on it (or a single-column unique index in Table.indexes) so ` +
-          `natural-key adoption cannot match ambiguously`
+        `(${table.name}) sourceRecordOptions.naturalKeyScope '${scope}' is not a column property on the table`
       );
     }
 
-    const seen = new Map<unknown, true>();
-    for (const record of records) {
-      const value = (record as any)[naturalKey];
-      if (value === undefined || value === null) {
+    const indexOver = (columns: string[]) =>
+      (table.indexes ?? []).some(
+        (index) =>
+          index.unique === true &&
+          index.columns.length === columns.length &&
+          [...index.columns.map(String)].sort().join(',') === [...columns].sort().join(',')
+      );
+    if (scope === undefined) {
+      const uniqueByColumn = column.options?.unique?.unique === true;
+      if (!uniqueByColumn && !indexOver([naturalKey])) {
         throw new Error(
-          `(${table.name}) A source record declaration is missing its natural key '${naturalKey}' (declared id: '${record.id}')`
+          `(${table.name}) sourceRecordOptions.naturalKey '${naturalKey}' requires the column to be unique — ` +
+            `declare ColumnOptions.unique on it (or a single-column unique index in Table.indexes) so ` +
+            `natural-key adoption cannot match ambiguously`
         );
       }
-
-      if (seen.has(value)) {
-        throw new Error(
-          `(${table.name}) Two source record declarations share the natural key '${naturalKey}' = '${value}' — ` +
-            `declarations must be unique by natural key`
-        );
-      }
-
-      seen.set(value, true);
+    } else if (!indexOver([scope, naturalKey])) {
+      throw new Error(
+        `(${table.name}) sourceRecordOptions.naturalKey '${naturalKey}' scoped by '${scope}' requires a unique index ` +
+          `over exactly [${scope}, ${naturalKey}] in Table.indexes so the scoped key cannot match ambiguously`
+      );
     }
 
-    return naturalKey;
+    const syncKey: SyncKey = scope === undefined ? { key: naturalKey } : { key: naturalKey, scope };
+    const seen = new Map<string, true>();
+    for (const record of records) {
+      for (const property of scope === undefined ? [naturalKey] : [scope, naturalKey]) {
+        const value = (record as any)[property];
+        if (value === undefined || value === null) {
+          throw new Error(
+            `(${table.name}) A source record declaration is missing its ${property === scope ? 'natural key scope' : 'natural key'} '${property}' (declared id: '${record.id}')`
+          );
+        }
+      }
+
+      const text = this.keyText(syncKey, record);
+      if (seen.has(text)) {
+        throw new Error(
+          `(${table.name}) Two source record declarations share the natural key ${this.keyWords(syncKey, record)} — ` +
+            `declarations must be unique by natural key${scope === undefined ? '' : ' within a scope'}`
+        );
+      }
+
+      seen.set(text, true);
+    }
+
+    return syncKey;
   }
 
   /**
@@ -473,8 +640,9 @@ export class SourceRecordSyncRunner implements SourceRecordSync {
   }
 
   /**
-   * Every source-record table in this build with the records declared for it, plus the set of
-   * packages that declare ANY source record in this build — the packages this boot speaks for.
+   * Every source-record table in this build with the records declared for it — from code and
+   * from declaration files — plus the set of packages that declare ANY source record in this
+   * build — the packages this boot speaks for.
    */
   private async getDeclarations(): Promise<{ tables: SourceRecordsMap; buildSources: Set<string> }> {
     const tables: SourceRecordsMap = {};
@@ -492,7 +660,112 @@ export class SourceRecordSyncRunner implements SourceRecordSync {
       tables[loader.table.name].records.push({ source, qualifiedName, name, record: loader.record });
     }
 
+    // Declaration FILES — the other declaration source: every row of the document is a record
+    // declared by the file's package, under the file's own name (what `source-records pull`
+    // wrote; see SourceRecordDeclarationDocument for the format and its validation). An
+    // external column's sibling files are read relative to the document.
+    for (const { source, qualifiedName, name, declarationFile } of getSourceRecordDeclarationFiles()) {
+      buildSources.add(source);
+      const { table } = declarationFile;
+      if (!tables[table.name]) {
+        tables[table.name] = { table, records: [] };
+      }
+
+      const document = SourceRecordDeclarationDocument.parse(
+        fs.readFileSync(declarationFile.path, 'utf8'),
+        declarationFile.path
+      );
+      const directory = path.dirname(declarationFile.path);
+      const records = await SourceRecordDeclarationDocument.toRecords(table, document, (relativePath) =>
+        fs.readFileSync(path.join(directory, relativePath), 'utf8')
+      );
+      for (const record of records) {
+        tables[table.name].records.push({ source, qualifiedName, name, record });
+      }
+    }
+
     return { tables, buildSources };
+  }
+
+  /**
+   * Whose row an existing, owned row is — the sync's stamp against the row as it stands and
+   * against the declaration as it stands (see {@link Authorship} and load's ownership model). A
+   * row with no stamp predates stamps: the sync owned it then and still does.
+   */
+  private async authorship(table: Table<any>, declaredRecord: any, existingRecord: SourceRecord): Promise<Authorship> {
+    const stamp = existingRecord.declarationStamp;
+    if (stamp == null) {
+      return { verdict: 'declaration' };
+    }
+
+    const serializer = new RecordSerializer(table);
+    const row = await serializer.serialize(this.withoutStamps(existingRecord));
+    if (SourceRecordStamp.matches(stamp, row)) {
+      return { verdict: 'declaration' };
+    }
+
+    // The row moved since the sync wrote it. The declaration caught up with it → re-adopted.
+    if (!(await this.hasChanges(table, this.withoutStamps(declaredRecord), existingRecord))) {
+      return { verdict: 'readopted' };
+    }
+
+    // The declaration did not move → the product's, one-sided. Both moved → diverged.
+    const declaration = await serializer.serialize(this.withoutStamps(declaredRecord));
+    if (SourceRecordStamp.matches(stamp, declaration)) {
+      return { verdict: 'kept' };
+    }
+
+    return {
+      verdict: 'diverged',
+      rowDigest: SourceRecordStamp.digestOver(stamp, row) as string,
+      declarationDigest: SourceRecordStamp.digestOver(stamp, declaration) as string,
+    };
+  }
+
+  /** Whether an owned row's declared columns moved since the sync wrote it (its stamp no longer matches). */
+  private async rowMoved(table: Table<any>, existingRecord: SourceRecord): Promise<boolean> {
+    if (existingRecord.isLoadedFromSource !== true || existingRecord.declarationStamp == null) {
+      return false;
+    }
+
+    const serialized = await new RecordSerializer(table).serialize(this.withoutStamps(existingRecord));
+    return !SourceRecordStamp.matches(existingRecord.declarationStamp, serialized);
+  }
+
+  /** The stamp for a record as the sync is about to write it, over the given column names. */
+  private async stampFor(table: Table<any>, record: any, columnNames: string[]): Promise<string> {
+    const serialized: SerializedRecord = await new RecordSerializer(table).serialize(this.withoutStamps(record));
+    return SourceRecordStamp.render(serialized, columnNames);
+  }
+
+  /** The record minus the sync's own stamps — what a declaration and a row are compared on. */
+  private withoutStamps<T extends object>(record: T): T {
+    const copy: any = { ...record };
+    delete copy.isLoadedFromSource;
+    delete copy.sourcePackage;
+    delete copy.sourcePackageVersion;
+    delete copy.declarationStamp;
+    return copy;
+  }
+
+  /** The query that matches a record's row by the sync key — the (scope, key) pair when scoped. */
+  private keyQuery(syncKey: SyncKey, record: any): { [property: string]: unknown } {
+    return syncKey.scope === undefined
+      ? { [syncKey.key]: record[syncKey.key] }
+      : { [syncKey.scope]: record[syncKey.scope], [syncKey.key]: record[syncKey.key] };
+  }
+
+  /** One text per key value (the pair when scoped) — for membership and for log lines. */
+  private keyText(syncKey: SyncKey, record: any): string {
+    return JSON.stringify(
+      syncKey.scope === undefined ? [record[syncKey.key]] : [record[syncKey.scope], record[syncKey.key]]
+    );
+  }
+
+  /** The key named for a message: `'email' = 'x'`, or `'scope' = 'a', 'skillId' = 'x'` when scoped. */
+  private keyWords(syncKey: SyncKey, record: any): string {
+    const word = (property: string) => `'${property}' = '${record[property]}'`;
+    return syncKey.scope === undefined ? word(syncKey.key) : `${word(syncKey.scope)}, ${word(syncKey.key)}`;
   }
 
   /**
@@ -573,6 +846,12 @@ export class SourceRecordSyncRunner implements SourceRecordSync {
    */
   private canonicalStringify(value: unknown): string {
     if (value === null || typeof value !== 'object') {
+      return JSON.stringify(value);
+    }
+    // Mirror JSON.stringify: a Date is its ISO text — never an object with no own keys, which
+    // would read every two dates as equal (a serialized DateTimeColumn value IS a Date; the
+    // stamp's digest reads dates the same way, `SourceRecordStamp.canonical`).
+    if (value instanceof Date) {
       return JSON.stringify(value);
     }
     if (Array.isArray(value)) {

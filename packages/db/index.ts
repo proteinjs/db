@@ -22,6 +22,15 @@ export * from './src/source/SourceRecordRepo';
 // `@proteinjs/db/source` subpath, which a server's boot imports once; a consumer test harness that
 // runs one boot of the sync directly imports it from there too.
 export * from './src/source/SourceRecordSync';
+// The declaration half of the source-record loop — the document a table's rows render to and load
+// from, the declaration-file loadable, the export door and its config, and the pull command's
+// class. Browser-safe (no Node builtin): the stamp the runner writes and the file reads stay behind
+// the `@proteinjs/db/source` subpath with the runner.
+export * from './src/source/SourceRecordDeclaration';
+export * from './src/source/SourceRecordDeclarationFile';
+export * from './src/source/SourceRecordExportConfig';
+export * from './src/source/SourceRecordExport';
+export * from './src/cli/SourceRecordsCli';
 export * from './src/MigrationRunner';
 export * from './src/QueryBuilderFactory';
 export * from './src/TableWatcher';
@@ -55,6 +64,7 @@ export * from './src/tables/MigrationTable';
 
 export * from './src/services/DbService';
 export * from './src/services/MigrationRunnerService';
+export * from './src/services/SourceRecordExportService';
 export * from './src/services/TransactionRunnerService';
 
 export * from '@proteinjs/db-query';

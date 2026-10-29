@@ -19,9 +19,45 @@ export type SourceRecordTableLoadSummary = {
   skippedNewer: number;
   /** Source-loaded rows with no owner stamp that no declaration in this build claims. */
   unowned: number;
+  /**
+   * PRODUCT-AUTHORED rows this boot met and left exactly as they were — rows the sync wrote
+   * that the product edited on a declared column since (their `declarationStamp` no longer
+   * matches), whose declaration did not move, or that no declaration names any more. The
+   * precedence: the product's rows are never touched, whatever the declaration says.
+   */
+  kept: number;
+  /**
+   * TWO-SIDED divergences: rows the product edited on a declared column since the sync wrote
+   * them AND whose declaration moved since as well, to something else. Counted apart from
+   * `kept`, the row untouched, one warning per row naming the key and both digests (the row's
+   * and the declaration's), never a failed boot — what settles it is the consumer's own
+   * reconcile; the next boot after the declaration equals the row re-adopts it.
+   */
+  diverged: number;
 };
 
 export type SourceRecordLoadSummary = { [tableName: string]: SourceRecordTableLoadSummary };
+
+/**
+ * The removal guard's refusal (`SourceRecordOptions.maxRemovedFraction`): a boot that would
+ * remove more than the table's named fraction of the rows this build owns on it. Thrown before
+ * anything on the table is removed.
+ */
+export class SourceRecordRemovalRefusedError extends Error {
+  constructor(
+    public tableName: string,
+    public removing: number,
+    public owned: number,
+    public maxRemovedFraction: number
+  ) {
+    super(
+      `(${tableName}) Refusing to remove ${removing} of the ${owned} rows this build owns — more than the table's ` +
+        `maxRemovedFraction ${maxRemovedFraction}. A wrong or empty declaration? Nothing on the table was changed.`
+    );
+    this.name = 'SourceRecordRemovalRefusedError';
+    Object.setPrototypeOf(this, SourceRecordRemovalRefusedError.prototype);
+  }
+}
 
 /**
  * The source-record sync a boot runs — the seam `Db.init` (and the pre-schema-sync migration

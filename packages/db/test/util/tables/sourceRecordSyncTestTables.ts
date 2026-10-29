@@ -1,4 +1,8 @@
+import type { Moment } from 'moment';
 import {
+  BooleanColumn,
+  DateTimeColumn,
+  IntegerColumn,
   Record as DbRecord,
   SourceRecord,
   StringColumn,
@@ -10,8 +14,10 @@ import {
 /**
  * Fixtures for the source-record sync suites ({@link sourceRecordSyncTests}): a machine-account-
  * shaped mixed table (natural-key sync + flag-on-removed), a default-policy table (removed =
- * deleted), a misdeclared natural-key table (non-unique column), and the two-generation table
- * pair driving the unique-index duplicate preflight.
+ * deleted), a misdeclared natural-key table (non-unique column), the two-generation table
+ * pair driving the unique-index duplicate preflight, and the full-loop fixtures (a widgets table
+ * keyed by sku, its soft-removing sibling, and a scoped entries table with a row filter and an
+ * external text column).
  *
  * The `sourceRecordOptions` literals are `as`-cast to the table's options type (not inferred):
  * the cast also compiles against PRE-change `@proteinjs/db`, so the suites can run red-before-
@@ -121,7 +127,112 @@ export class SyncDerivedNameTable extends Table<SyncDerivedNameRecord> {
   } as Table<SyncDerivedNameRecord>['sourceRecordOptions'];
 }
 
+export interface SyncWidget extends SourceRecord {
+  /** The natural key a declaration file keys on. */
+  sku: string;
+  name: string;
+  price?: number | null;
+  /** A date-valued declared column — the one typed exception of the declaration file format. */
+  releasedAt?: Moment | null;
+  /** NEVER a declaration column: a secret the export must leave behind, whatever a row holds. */
+  apiKey?: string | null;
+  /** Runtime-owned: never declared, never exported, never flips a row's authorship. */
+  stockNote?: string | null;
+}
+
+/**
+ * The full-loop fixture (a generic "widgets" table): keyed by `sku`, four declaration columns,
+ * a secret column the export never renders, a runtime-owned column.
+ */
+export class SyncWidgetTable extends Table<SyncWidget> {
+  name = 'db_test_sync_widget';
+  columns: Table<SyncWidget>['columns'] = withSourceRecordColumns<SyncWidget>({
+    sku: new StringColumn('sku', { unique: { unique: true, indexName: 'db_test_sync_widget_sku_unique' } }),
+    name: new StringColumn('name'),
+    price: new IntegerColumn('price'),
+    releasedAt: new DateTimeColumn('released_at'),
+    apiKey: new StringColumn('api_key'),
+    stockNote: new StringColumn('stock_note'),
+  });
+  sourceRecordOptions = {
+    naturalKey: 'sku',
+    declarationColumns: ['sku', 'name', 'price', 'releasedAt'],
+  } as Table<SyncWidget>['sourceRecordOptions'];
+}
+
+export interface SyncSoftRemovedWidget extends SourceRecord {
+  sku: string;
+  name: string;
+  price?: number | null;
+  /** Declared false by the file; patched true by onSourceRemoved when the file drops the row. */
+  retired: boolean;
+}
+
+/**
+ * The full-loop fixture that SOFT-removes (a catalog-shaped table): keyed by `sku`, loaded from a
+ * declaration FILE — whose rows carry no id — and patched, never deleted, when the file drops a
+ * row. The soft-removal widening (a re-declaration claiming a kept row by its declared id) has
+ * nothing to claim here: a file declares no id.
+ */
+export class SyncSoftRemovedWidgetTable extends Table<SyncSoftRemovedWidget> {
+  name = 'db_test_sync_soft_removed_widget';
+  columns: Table<SyncSoftRemovedWidget>['columns'] = withSourceRecordColumns<SyncSoftRemovedWidget>({
+    sku: new StringColumn('sku', {
+      unique: { unique: true, indexName: 'db_test_sync_soft_removed_widget_sku_unique' },
+    }),
+    name: new StringColumn('name'),
+    price: new IntegerColumn('price'),
+    retired: new BooleanColumn('retired'),
+  });
+  sourceRecordOptions = {
+    naturalKey: 'sku',
+    declarationColumns: ['sku', 'name', 'price', 'retired'],
+    onSourceRemoved: { update: { retired: true } },
+  } as Table<SyncSoftRemovedWidget>['sourceRecordOptions'];
+}
+
+export interface SyncScopedEntry extends SourceRecord {
+  /** The column that scopes the natural key: `slug` is unique within one scope, not across the table. */
+  scope: string;
+  slug: string;
+  title: string;
+  /** A long text column declared EXTERNAL: its value lives in a sibling file beside the document. */
+  body?: string | null;
+}
+
+/**
+ * The full-loop fixture for a SCOPED key (a per-scope registry — two scopes may each hold a
+ * row named `welcome`), with a row filter (only the house scope's rows are source) and an
+ * external text column. The unique index is the pair — the precondition of a scoped key.
+ */
+export class SyncScopedEntryTable extends Table<SyncScopedEntry> {
+  name = 'db_test_sync_scoped_entry';
+  columns: Table<SyncScopedEntry>['columns'] = withSourceRecordColumns<SyncScopedEntry>({
+    scope: new StringColumn('scope'),
+    slug: new StringColumn('slug'),
+    title: new StringColumn('title'),
+    body: new StringColumn('body', undefined, 'MAX'),
+  });
+  indexes = [
+    {
+      columns: ['scope', 'slug'] as (keyof SyncScopedEntry)[],
+      name: 'db_test_sync_scoped_entry_scope_slug_unique',
+      unique: true,
+    },
+  ];
+  sourceRecordOptions = {
+    naturalKey: 'slug',
+    naturalKeyScope: 'scope',
+    declarationColumns: ['scope', 'slug', 'title', 'body'],
+    declarationFilter: { scope: 'house' },
+    externalColumns: ['body'],
+  } as Table<SyncScopedEntry>['sourceRecordOptions'];
+}
+
 export const sourceRecordSyncTestTables = {
+  SyncWidget: new SyncWidgetTable() as Table<SyncWidget>,
+  SyncSoftRemovedWidget: new SyncSoftRemovedWidgetTable() as Table<SyncSoftRemovedWidget>,
+  SyncScopedEntry: new SyncScopedEntryTable() as Table<SyncScopedEntry>,
   SyncMachineAccount: new SyncMachineAccountTable() as Table<SyncMachineAccount>,
   SyncDefaultPolicy: new SyncDefaultPolicyTable() as Table<SyncDefaultPolicyRecord>,
   InheritedStamp: new InheritedStampTable() as Table<InheritedStampRecord>,

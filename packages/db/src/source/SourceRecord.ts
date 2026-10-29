@@ -76,6 +76,18 @@ export interface SourceRecord extends DbRecord {
    * version could not be resolved) carries no ordering and keeps the last-writer-wins semantics.
    */
   sourcePackageVersion?: string;
+  /**
+   * The sync's own stamp on a row it wrote — the declared columns and a digest of their values
+   * as written (`SourceRecordStamp`, behind the `@proteinjs/db/source` subpath). It is how a
+   * later boot tells a DECLARATION-AUTHORED row (still as the sync left it: the sync may update
+   * or remove it) from a PRODUCT-AUTHORED one (edited on a declared column since: the sync never
+   * touches it, whatever the declaration says, until the declaration equals it again — then it
+   * is re-adopted; a declaration that moved as well is a two-sided divergence, counted and
+   * warned, the row untouched). NULL on rows the sync never wrote, and on rows written before the
+   * stamp existed — those `isLoadedFromSource` rows are the declaration's (the sync owned them
+   * before stamps) and are stamped on their next boot.
+   */
+  declarationStamp?: string | null;
 }
 
 const getSourceRecordColumns = (hideFromUi = true) => {
@@ -83,6 +95,7 @@ const getSourceRecordColumns = (hideFromUi = true) => {
     isLoadedFromSource: new BooleanColumn('is_loaded_from_source', { ui: { hidden: hideFromUi } }),
     sourcePackage: new StringColumn('source_package', { ui: { hidden: hideFromUi } }),
     sourcePackageVersion: new StringColumn('source_package_version', { ui: { hidden: hideFromUi } }),
+    declarationStamp: new StringColumn('declaration_stamp', { ui: { hidden: hideFromUi } }, 'MAX'),
   };
 };
 
