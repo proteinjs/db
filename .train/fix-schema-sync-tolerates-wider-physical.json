@@ -1,0 +1,18 @@
+{
+  "branch": "fix/schema-sync-tolerates-wider-physical",
+  "packages": ["db", "drivers/spanner", "drivers/knex"],
+  "suites": [
+    "packages/db/test/ColumnDifferenceClassification.test.ts",
+    "packages/db/test/SchemaReconcileLines.test.ts",
+    "packages/db/test/UndeclaredColumnCensus.test.ts",
+    "packages/db/test/TableManagerCreateOrder.test.ts",
+    "packages/drivers/spanner/test/SchemaMovesOnlyForward.test.ts",
+    "packages/drivers/spanner/test/StringWidening.test.ts",
+    "packages/drivers/spanner/test/ReferenceColumnAdoptWidth.test.ts",
+    "packages/drivers/spanner/test/ConcurrentSchemaReconcile.test.ts",
+    "packages/drivers/spanner/test/TableManager.test.ts",
+    "packages/drivers/spanner/test/BatchedDdl.test.ts",
+    "packages/drivers/knex/test/TableManager.test.ts"
+  ],
+  "removes": []
+}
