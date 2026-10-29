@@ -1,0 +1,15 @@
+{
+  "branch": "feat/source-records-full-loop-rebased",
+  "packages": ["db", "drivers/spanner"],
+  "suites": [
+    "packages/db/test/SourceRecordStamp.test.ts",
+    "packages/db/test/SourceRecordDeclaration.test.ts",
+    "packages/db/test/SourceRecordsCli.test.ts",
+    "packages/db/test/SourceRecordSyncRunner.test.ts",
+    "packages/db/test/SourceRecordSyncSeam.test.ts",
+    "packages/db/test/SourceRecordLoaderQualifiedName.test.ts",
+    "packages/db/test/BrowserIndexNoNodeBuiltins.test.ts",
+    "packages/drivers/spanner/test/SourceRecordSync.test.ts"
+  ],
+  "removes": []
+}
