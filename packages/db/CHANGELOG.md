@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.59.1](https://github.com/proteinjs/db/compare/@proteinjs/db@1.59.0...@proteinjs/db@1.59.1) (2026-10-29)
+
+
+### Bug Fixes
+
+* **db:** the schema sync only moves forward — a live column wider or more permissive than declared is left as it stands, never narrowed back and never a boot failure ([6241304](https://github.com/proteinjs/db/commit/624130496ef9e2335059cc376217a00606ccec00))
+
+
+
+
+
 # [1.59.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.58.1...@proteinjs/db@1.59.0) (2026-10-29)
 
 
