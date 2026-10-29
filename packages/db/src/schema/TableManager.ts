@@ -227,6 +227,7 @@ export class TableManager {
 
   private async alterTableIfChanged(table: Table<any>): Promise<void> {
     const tableChanges = await this.getTableChanges(table);
+    this.noteToleratedDifferences(table, tableChanges);
     if (this.shouldAlterTable(tableChanges)) {
       await this.preflightUniqueIndexAdditions(table, tableChanges);
       this.logger.info({ message: `Altering table: ${table.name}` });
@@ -450,7 +451,7 @@ export class TableManager {
       columnsToRename: [],
       columnsToAlter: [],
       columnTypeChanges: [],
-      columnNullableChanges: [],
+      toleratedColumnDifferences: [],
       columnsWithForeignKeysToCreate: [],
       foreignKeysToCreate: [],
       columnsWithForeignKeysToDrop: [],
@@ -467,23 +468,32 @@ export class TableManager {
     this.warnUndeclaredColumns(table, Object.keys(columnMetadata));
     for (const columnPropertyName in table.columns) {
       const column = table.columns[columnPropertyName];
-      if (columnMetadata[column.name]) {
+      const physical = columnMetadata[column.name];
+      if (physical) {
         let alter = false;
-        const columnType = this.columnTypeFactory.getType(column);
-        const existingColumnType = columnMetadata[column.name].type;
-        if (columnType != existingColumnType) {
-          // console.log(`columnType != existingColumnType`);
-          tableChanges.columnTypeChanges.push({ name: column.name, newType: columnType, oldType: existingColumnType });
+        const declaredType = this.columnTypeFactory.getType(column);
+        const relation = TableManager.physicalTypeRelation(declaredType, physical.type);
+        if (relation === 'wider') {
+          tableChanges.toleratedColumnDifferences.push({
+            name: column.name,
+            difference: 'wider-type',
+            declaredType,
+            physicalType: physical.type,
+          });
+        } else if (relation !== 'same') {
+          tableChanges.columnTypeChanges.push({
+            name: column.name,
+            newType: declaredType,
+            oldType: physical.type,
+            nullable: physical.isNullable,
+          });
           alter = true;
         }
 
-        if (
-          (column.options?.nullable && !columnMetadata[column.name].isNullable) ||
-          (column.options?.nullable === false && columnMetadata[column.name].isNullable)
-        ) {
-          // console.log(`column.options?.nullable`)
-          tableChanges.columnNullableChanges.push({ name: column.name, nullable: column.options.nullable === true });
-          alter = true;
+        if (column.options?.nullable === false && physical.isNullable) {
+          tableChanges.toleratedColumnDifferences.push({ name: column.name, difference: 'nullable' });
+        } else if (column.options?.nullable && !physical.isNullable) {
+          tableChanges.toleratedColumnDifferences.push({ name: column.name, difference: 'not-null' });
         }
 
         if (column.options?.unique?.unique === false && uniqueColumns.includes(column.name)) {
@@ -652,5 +662,87 @@ export class TableManager {
     if (duplicates.length > 0) {
       throw new DuplicateValuesForUniqueIndexError(table.name, columnNames, duplicates);
     }
+  }
+
+  /**
+   * Name, once per sync, every difference the sync leaves as it stands
+   * ({@link ToleratedColumnDifference}): the schema only moves forward, so a live column wider or
+   * more permissive than declared is noted at info, and a live NOT NULL where NULLABLE is declared
+   * — the one a later write can trip on — at warn. Names and types only, never a value.
+   */
+  private noteToleratedDifferences(table: Table<any>, tableChanges: TableChanges): void {
+    for (const difference of tableChanges.toleratedColumnDifferences) {
+      const column = `[${table.name}.${difference.name}]`;
+      switch (difference.difference) {
+        case 'wider-type':
+          this.logger.info({
+            message: `${column} Live column is wider than declared: ${difference.physicalType} where ${difference.declaredType} is declared; left as it stands (the schema only moves forward)`,
+            obj: {
+              table: table.name,
+              column: difference.name,
+              declaredType: difference.declaredType,
+              physicalType: difference.physicalType,
+            },
+          });
+          break;
+        case 'nullable':
+          this.logger.info({
+            message: `${column} Live column is NULLABLE where NOT NULL is declared; left as it stands (the schema only moves forward)`,
+            obj: { table: table.name, column: difference.name },
+          });
+          break;
+        case 'not-null':
+          this.logger.warn({
+            message: `${column} Live column is NOT NULL where NULLABLE is declared; left as it stands (the schema only moves forward) — a null written to it fails at that write until a migration relaxes it`,
+            obj: { table: table.name, column: difference.name },
+          });
+          break;
+      }
+    }
+  }
+
+  /**
+   * How the live type relates to the declared one. One width grammar is read, the one bounded
+   * types share: `BASE(n)` / `BASE(MAX)` names a family (STRING(500), STRING(MAX), BYTES(16)) whose
+   * widths order, MAX the widest — a live STRING(MAX) is wider than a declared STRING(500), a live
+   * STRING(200) narrower. Type strings of any other form (INT64, TIMESTAMP, a bare `varchar`)
+   * relate by equality alone: unequal is a different type.
+   */
+  private static physicalTypeRelation(
+    declaredType: string,
+    physicalType: string
+  ): 'same' | 'wider' | 'narrower' | 'different' {
+    if (declaredType === physicalType) {
+      return 'same';
+    }
+
+    const declared = TableManager.parseBoundedType(declaredType);
+    const physical = TableManager.parseBoundedType(physicalType);
+    if (!declared || !physical || declared.family !== physical.family) {
+      return 'different';
+    }
+
+    if (declared.width === physical.width) {
+      return 'same';
+    }
+
+    if (physical.width === 'MAX') {
+      return 'wider';
+    }
+
+    if (declared.width === 'MAX') {
+      return 'narrower';
+    }
+
+    return physical.width > declared.width ? 'wider' : 'narrower';
+  }
+
+  private static parseBoundedType(type: string): { family: string; width: number | 'MAX' } | undefined {
+    const match = /^([A-Za-z0-9_]+)\((\d+|MAX)\)$/.exec(type);
+    if (!match) {
+      return undefined;
+    }
+
+    return { family: match[1], width: match[2] === 'MAX' ? 'MAX' : Number(match[2]) };
   }
 }

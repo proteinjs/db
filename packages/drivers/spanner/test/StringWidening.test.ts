@@ -77,12 +77,4 @@ describe('Spanner STRING widening', () => {
     expect(rows[0].title).toBe(longTitle);
     expect(rows[0].label).toBe('keep');
   }, 60000);
-
-  test('non-widening type changes still throw', async () => {
-    const widened = wideningTable('MAX');
-    await tableManager.loadTable(widened);
-
-    const narrowed = wideningTable(255);
-    await expect(tableManager.loadTable(narrowed)).rejects.toThrow(/Unable to change column types in Spanner/);
-  }, 60000);
 });

@@ -29,7 +29,6 @@ export const tableManagerTests = (
   excludedTests?: {
     alterColumnName?: boolean;
     alterColumnTypes?: boolean;
-    alterNullableConstraint?: boolean;
   }
 ) => {
   return () => {
@@ -353,127 +352,54 @@ export const tableManagerTests = (
       expect(uniqueColumns.includes(columnTypesTable.columns.uuid.name)).toBeFalsy();
     });
 
-    test('alter column nullable constraint', async () => {
-      if (excludedTests?.alterNullableConstraint) {
-        return;
-      }
-
-      const userTable = new UserTestTable();
+    test('a nullability change in the declaration is left as it stands: the schema only moves forward', async () => {
       const columnTypesTable = new ColumnTypesTable();
-      await tableManager.loadTable(userTable);
-      columnTypesTable.columns.text.options = { defaultValue: async () => 'asdf' };
-      (columnTypesTable as Table<any>).columns['string2'] = new StringColumn('string2', {
-        references: { table: userTable.name },
-      });
+      await tableManager.loadTable(new UserTestTable());
       await tableManager.loadTable(columnTypesTable);
-      expect(await tableManager.tableExists(userTable)).toBeTruthy();
-      expect(await tableManager.tableExists(columnTypesTable)).toBeTruthy();
       let columnMetadata = await tableManager.schemaMetadata.getColumnMetadata(columnTypesTable);
-      expect(columnMetadata[columnTypesTable.columns.integer.name].type).toBe(
-        getColumnType(columnTypesTable.columns.integer)
-      );
-      expect(columnMetadata[columnTypesTable.columns.bigInteger.name].type).toBe(
-        getColumnType(columnTypesTable.columns.bigInteger)
-      );
-      expect(columnMetadata[columnTypesTable.columns.text.name].type).toBe(
-        getColumnType(columnTypesTable.columns.text)
-      );
-      expect(columnMetadata[columnTypesTable.columns.string.name].type).toBe(
-        getColumnType(columnTypesTable.columns.string)
-      );
-      expect(columnMetadata[columnTypesTable.columns.float.name].type).toBe(
-        getColumnType(columnTypesTable.columns.float)
-      );
-      expect(columnMetadata[columnTypesTable.columns.decimal.name].type).toBe(
-        getColumnType(columnTypesTable.columns.decimal)
-      );
-      expect(columnMetadata[columnTypesTable.columns.boolean.name].type).toBe(
-        getColumnType(columnTypesTable.columns.boolean)
-      );
-      expect(columnMetadata[columnTypesTable.columns.date.name].type).toBe(
-        getColumnType(columnTypesTable.columns.date)
-      );
-      expect(columnMetadata[columnTypesTable.columns.dateTime.name].type).toBe(
-        getColumnType(columnTypesTable.columns.dateTime)
-      );
-      expect(columnMetadata[columnTypesTable.columns.binary.name].type).toBe(
-        getColumnType(columnTypesTable.columns.binary)
-      );
-      expect(columnMetadata[columnTypesTable.columns.object.name].type).toBe(
-        getColumnType(columnTypesTable.columns.object)
-      );
-      expect(columnMetadata[columnTypesTable.columns.uuid.name].type).toBe(
-        getColumnType(columnTypesTable.columns.uuid)
-      );
-      expect(columnMetadata[(columnTypesTable as Table<any>).columns.string2.name].type).toBe(
-        getColumnType((columnTypesTable as Table<any>).columns.string2)
-      );
-      const foreignKeys = await tableManager.schemaMetadata.getForeignKeys(columnTypesTable);
-      const uniqueColumns = await tableManager.schemaMetadata.getUniqueColumns(columnTypesTable);
       expect(columnMetadata[columnTypesTable.columns.integer.name].isNullable).toBeTruthy();
       expect(columnMetadata[columnTypesTable.columns.bigInteger.name].isNullable).toBeFalsy();
-      // expect(parseFloat(columnMetadata[TestColumnTypesTable.columns.float.name]['COLUMN_DEFAULT'])).toBe(0.5);
-      expect(foreignKeys[columnTypesTable.columns.string.name].referencedTableName).toBe(userTable.name);
-      expect(foreignKeys[columnTypesTable.columns.string.name].referencedColumnName).toBe('id');
-      expect(uniqueColumns.includes(columnTypesTable.columns.uuid.name)).toBeTruthy();
+
+      // NOT NULL declared over the live NULLABLE `integer` (a build that writes values never trips
+      // on it — noted at info); NULLABLE declared over the live NOT NULL `big_integer` (a null
+      // written to it fails at that write — noted at warn). Neither is the sync's to apply: the
+      // sync completes, and the live columns stand, with their types, as they were.
       columnTypesTable.columns.integer = new IntegerColumn('integer', { nullable: false });
       columnTypesTable.columns.bigInteger = new IntegerColumn('big_integer', { nullable: true }, true);
-      // columnTypesTable.columns.text = new TextColumn('text', { references: { table: userTable.name, column: 'id' } });
-      delete columnTypesTable.columns.string.options?.references;
-      // ((columnTypesTable as Table<any>).columns.string2.options as any).references = { table: userTable.name, column: 'name' };
-      columnTypesTable.columns.float = new FloatColumn('float', { defaultValue: async () => 1.5 });
-      columnTypesTable.columns.decimal = new DecimalColumn('decimal', { defaultValue: async () => 0 });
-      await tableManager.loadTable(columnTypesTable);
+      const logger = (
+        tableManager as unknown as {
+          logger: { info(line: { message?: string }): void; warn(line: { message?: string }): void };
+        }
+      ).logger;
+      const info = jest.spyOn(logger, 'info');
+      const warn = jest.spyOn(logger, 'warn');
+      let infoLines: string[];
+      let warnLines: string[];
+      try {
+        await tableManager.loadTable(columnTypesTable);
+        const leftAsItStands = (calls: { message?: string }[][]) =>
+          calls.map(([line]) => line.message ?? '').filter((message) => /left as it stands/.test(message));
+        infoLines = leftAsItStands(info.mock.calls);
+        warnLines = leftAsItStands(warn.mock.calls);
+      } finally {
+        info.mockRestore();
+        warn.mockRestore();
+      }
       columnMetadata = await tableManager.schemaMetadata.getColumnMetadata(columnTypesTable);
+      expect(columnMetadata[columnTypesTable.columns.integer.name].isNullable).toBeTruthy();
+      expect(columnMetadata[columnTypesTable.columns.bigInteger.name].isNullable).toBeFalsy();
       expect(columnMetadata[columnTypesTable.columns.integer.name].type).toBe(
         getColumnType(columnTypesTable.columns.integer)
       );
       expect(columnMetadata[columnTypesTable.columns.bigInteger.name].type).toBe(
         getColumnType(columnTypesTable.columns.bigInteger)
       );
-      expect(columnMetadata[columnTypesTable.columns.text.name].type).toBe(
-        getColumnType(columnTypesTable.columns.text)
-      );
-      expect(columnMetadata[columnTypesTable.columns.string.name].type).toBe(
-        getColumnType(columnTypesTable.columns.string)
-      );
-      expect(columnMetadata[columnTypesTable.columns.float.name].type).toBe(
-        getColumnType(columnTypesTable.columns.float)
-      );
-      expect(columnMetadata[columnTypesTable.columns.decimal.name].type).toBe(
-        getColumnType(columnTypesTable.columns.decimal)
-      );
-      expect(columnMetadata[columnTypesTable.columns.boolean.name].type).toBe(
-        getColumnType(columnTypesTable.columns.boolean)
-      );
-      expect(columnMetadata[columnTypesTable.columns.date.name].type).toBe(
-        getColumnType(columnTypesTable.columns.date)
-      );
-      expect(columnMetadata[columnTypesTable.columns.dateTime.name].type).toBe(
-        getColumnType(columnTypesTable.columns.dateTime)
-      );
-      expect(columnMetadata[columnTypesTable.columns.binary.name].type).toBe(
-        getColumnType(columnTypesTable.columns.binary)
-      );
-      expect(columnMetadata[columnTypesTable.columns.object.name].type).toBe(
-        getColumnType(columnTypesTable.columns.object)
-      );
-      expect(columnMetadata[columnTypesTable.columns.uuid.name].type).toBe(
-        getColumnType(columnTypesTable.columns.uuid)
-      );
-      expect(columnMetadata[(columnTypesTable as Table<any>).columns.string2.name].type).toBe(
-        getColumnType((columnTypesTable as Table<any>).columns.string2)
-      );
-      expect(columnMetadata[columnTypesTable.columns.integer.name].isNullable).toBeFalsy();
-      expect(columnMetadata[columnTypesTable.columns.bigInteger.name].isNullable).toBeTruthy();
-      // expect(parseFloat(columnMetadata[TestColumnTypesTable.columns.float.name]['COLUMN_DEFAULT'])).toBe(1.5);
-      // expect(parseFloat(columnMetadata[TestColumnTypesTable.columns.decimal.name]['COLUMN_DEFAULT'])).toBe(0);
-      // foreignKeys = await tableManager.schemaMetadata.getForeignKeys(columnTypesTable);
-      // expect(foreignKeys[TestColumnTypesTable.columns.string.name]).toBeFalsy();
-      // expect(foreignKeys[TestColumnTypesTable.columns.string2.name]['REFERENCED_TABLE_NAME']).toBe('user');
-      // expect(foreignKeys[TestColumnTypesTable.columns.string2.name]['REFERENCED_COLUMN_NAME']).toBe('name');
-      // expect(foreignKeys[TestColumnTypesTable.columns.text.name]['REFERENCED_TABLE_NAME']).toBe('user');
-      // expect(foreignKeys[TestColumnTypesTable.columns.text.name]['REFERENCED_COLUMN_NAME']).toBe('id');
+      expect(infoLines).toEqual([
+        expect.stringContaining(`[${columnTypesTable.name}.integer] Live column is NULLABLE`),
+      ]);
+      expect(warnLines).toEqual([
+        expect.stringContaining(`[${columnTypesTable.name}.big_integer] Live column is NOT NULL`),
+      ]);
     });
 
     test('creates index with different column name mapping', async () => {

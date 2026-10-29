@@ -15,6 +15,5 @@ describe(
   tableManagerTests(spannerDriver, getDropTestTable(spannerDriver), new SpannerColumnTypeFactory().getType, {
     alterColumnName: true,
     alterColumnTypes: true,
-    alterNullableConstraint: true,
   })
 );

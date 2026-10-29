@@ -3,6 +3,7 @@ import {
   Table,
   SchemaOperations,
   TableChanges,
+  ColumnTypeChange,
   StatementFactory,
   AlterTableParams,
   StatementUtil,
@@ -37,8 +38,8 @@ export class SpannerSchemaOperations implements SchemaOperations {
    *   unrelated code-9 errors out, so it is deliberately specific (e.g. "already in progress" does
    *   NOT contain "already exists" and is not matched).
    *
-   * The reconcile layer's own errors (unsupported type change, nullable drift, column rename) are
-   * plain Errors with no `code` and never match.
+   * The reconcile layer's own errors (unsupported type change, column rename) are plain Errors
+   * with no `code` and never match.
    */
   isAlreadyExistsError(error: unknown): boolean {
     const code = (error as { code?: number } | undefined)?.code;
@@ -132,12 +133,6 @@ export class SpannerSchemaOperations implements SchemaOperations {
       wideningStatements.push(wideningStatement);
     }
 
-    for (const columnNullableChange of tableChanges.columnNullableChanges) {
-      const errorMessage = `[${table.name}.${columnNullableChange.name}] Unable to update nullable constraint on existing column in Spanner. Attempted to update nullable constraint to: ${columnNullableChange.nullable === true}`;
-      this.logger.error({ message: errorMessage });
-      throw new Error(errorMessage);
-    }
-
     for (const columnPropertyName of tableChanges.columnsToRename) {
       const column = table.columns[columnPropertyName];
       const errorMessage = `[${table.name}.${column.oldName}] Unable to rename columns in Spanner. Attempted to perform rename: ${column.oldName} -> ${column.name}`;
@@ -223,14 +218,12 @@ export class SpannerSchemaOperations implements SchemaOperations {
   /**
    * Spanner supports exactly one in-place column type change: widening a `STRING(n)` to a larger
    * `STRING(m)` or `STRING(MAX)`. Returns the `ALTER COLUMN` statement when `change` is such a
-   * widening, or `null` for any other type change. Nullability is restated from the declared
-   * column (Spanner's `ALTER COLUMN` replaces the full column definition); nullability DRIFT is
-   * rejected separately before this runs, so the declared value matches the live schema here.
+   * widening, or `null` for any other type change. Spanner's `ALTER COLUMN` replaces the full
+   * column definition, so nullability is restated from the LIVE column (`change.nullable`), never
+   * the declared one: a nullability the declaration differs on is left as it stands by the sync,
+   * and a widening must not tighten or relax it on the side.
    */
-  private stringWideningStatement(
-    table: Table<any>,
-    change: { name: string; newType: string; oldType: string }
-  ): string | null {
+  private stringWideningStatement(table: Table<any>, change: ColumnTypeChange): string | null {
     const parseStringLength = (type: string): number | 'MAX' | null => {
       const match = /^STRING\((\d+|MAX)\)$/.exec(type);
       if (!match) {
@@ -246,8 +239,7 @@ export class SpannerSchemaOperations implements SchemaOperations {
       return null;
     }
 
-    const column = Object.values(table.columns).find((tableColumn) => tableColumn.name === change.name);
-    const notNull = column?.options?.nullable === false ? ' NOT NULL' : '';
+    const notNull = change.nullable ? '' : ' NOT NULL';
     return `ALTER TABLE \`${table.name}\` ALTER COLUMN \`${change.name}\` ${change.newType}${notNull}`;
   }
 }

@@ -16,14 +16,16 @@ import '../generated/test/index';
  * column can be retyped to a reference IN PLACE — same storage type, same bytes, zero DDL.
  *
  * The default reference width is STRING(36), but a column that predates the reference type was
- * created at StringColumn's default STRING(255); Spanner cannot narrow a STRING in place, so
- * without adopting the existing width the schema sync doesn't just emit DDL — it throws and
- * bricks boot. Contracts, as outcomes against the live emulator schema:
+ * created at StringColumn's default STRING(255). The schema only moves forward: the sync never
+ * narrows a STRING, so without adopting the existing width the live 255 is left as it stands and
+ * the declared 36 never becomes the storage width — the option is what makes the declaration and
+ * the storage agree. Contracts, as outcomes against the live emulator schema:
  *  1. Adopting the existing width means the sync sees NO changes for the retype (no DDL at all).
  *  2. Storage is byte-identical both directions: rows written by the string era read back as
  *     references to the same id, and reference writes store the raw id string.
- *  3. The stock (36) shape against a 255-width column is a narrowing: reported as a type change
- *     and refused by the alter pass — the documented reason the adoption option must be passed.
+ *  3. The stock (36) shape against a 255-width column is a live column wider than declared: never
+ *     a type change, left as it stands by a sync that completes — the documented reason the
+ *     adoption option must be passed for the declaration to match the storage.
  */
 
 const spannerDriver = new SpannerDriver({
@@ -68,6 +70,7 @@ type TableManagerInternals = {
     columnsToCreate: string[];
     columnsToAlter: string[];
     columnTypeChanges: { name: string; newType: string; oldType: string }[];
+    toleratedColumnDifferences: { name: string; difference: string; declaredType?: string; physicalType?: string }[];
   }>;
   shouldAlterTable(tableChanges: unknown): boolean;
 };
@@ -144,12 +147,18 @@ describe('ReferenceColumn width adoption (string uuid column retyped in place)',
     expect(rows[0].invited_by).toBe(REFERENCE_ERA_UUID);
   }, 60000);
 
-  test('the stock 36 width against a 255 column is a narrowing: reported as a type change and refused', async () => {
+  test('the stock 36 width against a 255 column is a live column wider than declared: left as it stands, never a type change', async () => {
     const stock = stockWidthTable();
     const tableChanges = await tableManagerInternals.getTableChanges(stock);
-    expect(tableChanges.columnTypeChanges).toEqual([
-      { name: 'invited_by', oldType: 'STRING(255)', newType: 'STRING(36)' },
+    expect(tableChanges.columnTypeChanges).toEqual([]);
+    expect(tableChanges.columnsToAlter).toEqual([]);
+    expect(tableChanges.toleratedColumnDifferences).toEqual([
+      { name: 'invited_by', difference: 'wider-type', declaredType: 'STRING(36)', physicalType: 'STRING(255)' },
     ]);
-    await expect(tableManager.loadTable(stock)).rejects.toThrow(/Unable to change column types in Spanner/);
+    expect(tableManagerInternals.shouldAlterTable(tableChanges)).toBe(false);
+
+    // The schema only moves forward: the sync completes and the live width stands.
+    await tableManager.loadTable(stock);
+    expect((await tableManager.schemaMetadata.getColumnMetadata(stock))['invited_by'].type).toBe('STRING(255)');
   }, 60000);
 });
