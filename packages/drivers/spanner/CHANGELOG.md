@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.37.0](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.36.6...@proteinjs/db-driver-spanner@1.37.0) (2026-11-01)
+
+
+### Features
+
+* **db:** a table declares its retired indexes; the schema sync drops one wherever it finds it, at every boot ([d02b907](https://github.com/proteinjs/db/commit/d02b90789c0bec04a47a83afd76f743288cb3fde))
+
+
+
+
+
 ## [1.36.6](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.36.5...@proteinjs/db-driver-spanner@1.36.6) (2026-10-29)
 
 **Note:** Version bump only for package @proteinjs/db-driver-spanner
