@@ -56,6 +56,29 @@ export class SpannerSchemaOperations implements SchemaOperations {
   }
 
   /**
+   * Classify a schema-update error as Spanner's "index not found" class — the loser's outcome when
+   * two actors concurrently drop the same index (one its table declares retired) and the backend
+   * serializes the DDL so it leaves exactly once. The drop-side twin of
+   * {@link isAlreadyExistsError}, under its rules — matched on gRPC status CODE and a specific
+   * MESSAGE class, never a loose substring:
+   * - code = NOT_FOUND (5): the status a DROP of a missing object answers with (verified against
+   *   the emulator image, 2026-11).
+   * - message names a missing INDEX ("Index not found: <name>"). A missing table or column under
+   *   the same code is never ours to tolerate — the sync drops neither — and stays out.
+   *
+   * The reconcile layer's own errors are plain Errors with no `code` and never match.
+   */
+  isAlreadyAbsentError(error: unknown): boolean {
+    const code = (error as { code?: number } | undefined)?.code;
+    if (code !== 5) {
+      return false;
+    }
+
+    const message = String((error as { message?: unknown } | undefined)?.message ?? '');
+    return /Index not found/i.test(message);
+  }
+
+  /**
    * Create every table in `tables` — each table's `CREATE TABLE` plus all of its `CREATE INDEX`
    * statements, concatenated across tables in the given order — as ONE schema-update operation.
    * `UpdateDatabaseDdl` applies the batch in order, so a table whose foreign keys reference an

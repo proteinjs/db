@@ -1,5 +1,5 @@
 import { Logger } from '@proteinjs/logger';
-import { QueryBuilder } from '@proteinjs/db-query';
+import { QueryBuilder, StatementUtil } from '@proteinjs/db-query';
 import { Column, Table, getColumnPropertyName, getTables } from '../Table';
 import { SchemaOperations, TableChanges } from './SchemaOperations';
 import { SchemaMetadata } from './SchemaMetadata';
@@ -83,6 +83,7 @@ export class TableManager {
     const existingTables: Table<any>[] = [];
     for (const table of tables) {
       this.validateDynamicReferenceColumns(table);
+      this.validateRetiredIndexes(table);
       if (await this.tableExists(table)) {
         existingTables.push(table);
       } else {
@@ -114,6 +115,7 @@ export class TableManager {
 
   private async loadSingleTable(table: Table<any>): Promise<void> {
     this.validateDynamicReferenceColumns(table);
+    this.validateRetiredIndexes(table);
 
     if (await this.tableExists(table)) {
       await this.alterTableIfChanged(table);
@@ -228,6 +230,7 @@ export class TableManager {
   private async alterTableIfChanged(table: Table<any>): Promise<void> {
     const tableChanges = await this.getTableChanges(table);
     this.noteToleratedDifferences(table, tableChanges);
+    this.noteRetiredIndexDrops(table, tableChanges);
     if (this.shouldAlterTable(tableChanges)) {
       await this.preflightUniqueIndexAdditions(table, tableChanges);
       this.logger.info({ message: `Altering table: ${table.name}` });
@@ -251,13 +254,15 @@ export class TableManager {
    * the loser's operation fails with an already-exists / duplicate-name error. Before this
    * reconcile that error propagated out of Db.init — a booting pod with no unhandledRejection
    * handler exited (CrashLoopBackOff) and the migration Job exited 1 (a spurious migration-gate
-   * failure).
+   * failure). The drop side is the same race mirrored: two actors both observe an index the table
+   * declares retired and both issue the DROP; the loser's fails with the backend's not-found error.
    *
    * This is NOT a blanket swallow (that would mask real schema failures). Two independent gates
    * must BOTH pass before a failure is treated as success:
    *  1. CLASS — the driver's schema layer, which owns the backend's error codes/messages, must
-   *     classify the error as the already-exists class ({@link SchemaOperations.isAlreadyExistsError}).
-   *     A driver that does not implement the classifier always rethrows here.
+   *     classify the error as the already-exists class ({@link SchemaOperations.isAlreadyExistsError})
+   *     or, for a drop, the already-absent class ({@link SchemaOperations.isAlreadyAbsentError}).
+   *     A driver that does not implement a classifier always rethrows here.
    *  2. INTENDED DEFINITION — a re-read of the live schema (the same metadata-backed detection
    *     getTableChanges uses) must confirm every table now exists AND has no remaining changes of
    *     the kind we attempted. A concurrent actor applying our EXACT change satisfies this; a
@@ -279,20 +284,38 @@ export class TableManager {
    * marked to print as a status and a sentence (`LogLineErrors`).
    */
   private async reconcileConcurrentSchemaChange(tables: Table<any>[], error: unknown): Promise<void> {
-    if (!this.schemaOperations.isAlreadyExistsError?.(error)) {
+    const errorClass = this.concurrentErrorClass(error);
+    if (!errorClass) {
       throw error;
     }
 
     const tableNames = tables.map((table) => table.name).join(', ');
 
     for (const table of tables) {
-      await this.verifyIntendedDefinition(table, tableNames, error);
+      await this.verifyIntendedDefinition(table, tableNames, error, errorClass);
     }
 
     this.logger.warn({
-      message: `[schema reconcile] tolerated concurrent ALREADY_EXISTS for table(s) '${tableNames}' — re-read verified the object present with the intended definition, treating as applied (a concurrent actor won the race).`,
+      message: `[schema reconcile] tolerated concurrent ${errorClass} for table(s) '${tableNames}' — re-read verified the object present with the intended definition, treating as applied (a concurrent actor won the race).`,
       obj: { error },
     });
+  }
+
+  /**
+   * The concurrent-race class a driver puts `error` in, named as the backend names it: ALREADY_EXISTS
+   * for the loser of a concurrent create or add, NOT_FOUND for the loser of a concurrent drop;
+   * undefined for any other error (or a driver with no classifier), which propagates unchanged.
+   */
+  private concurrentErrorClass(error: unknown): 'ALREADY_EXISTS' | 'NOT_FOUND' | undefined {
+    if (this.schemaOperations.isAlreadyExistsError?.(error)) {
+      return 'ALREADY_EXISTS';
+    }
+
+    if (this.schemaOperations.isAlreadyAbsentError?.(error)) {
+      return 'NOT_FOUND';
+    }
+
+    return undefined;
   }
 
   /**
@@ -307,7 +330,12 @@ export class TableManager {
    * success; only a definition still absent or mismatched after every attempt is a genuine
    * conflict — logged at WARN, then the ORIGINAL error re-throws.
    */
-  private async verifyIntendedDefinition(table: Table<any>, tableNames: string, error: unknown): Promise<void> {
+  private async verifyIntendedDefinition(
+    table: Table<any>,
+    tableNames: string,
+    error: unknown,
+    errorClass: 'ALREADY_EXISTS' | 'NOT_FOUND'
+  ): Promise<void> {
     let remainingChanges: TableChanges | undefined;
     for (let attempt = 1; attempt <= TableManager.RECONCILE_VERIFY_ATTEMPTS; attempt++) {
       if (attempt > 1) {
@@ -329,7 +357,7 @@ export class TableManager {
       // Still absent after every re-read — not the concurrent-winner case; surface the original
       // error rather than masking it.
       this.logger.warn({
-        message: `[schema reconcile] caught ALREADY_EXISTS for table(s) '${tableNames}' but '${table.name}' is still absent after ${TableManager.RECONCILE_VERIFY_ATTEMPTS} re-reads — NOT a concurrent apply; re-throwing.`,
+        message: `[schema reconcile] caught ${errorClass} for table(s) '${tableNames}' but '${table.name}' is still absent after ${TableManager.RECONCILE_VERIFY_ATTEMPTS} re-reads — NOT a concurrent apply; re-throwing.`,
         obj: { error },
       });
       throw error;
@@ -338,7 +366,7 @@ export class TableManager {
     // The object exists but the live schema still differs from the intended definition, so a
     // concurrent actor did NOT apply our exact change (a genuine conflict). Propagate.
     this.logger.warn({
-      message: `[schema reconcile] caught ALREADY_EXISTS for table '${table.name}' but the live schema does NOT match the intended definition after ${TableManager.RECONCILE_VERIFY_ATTEMPTS} re-reads (genuine conflict) — re-throwing.`,
+      message: `[schema reconcile] caught ${errorClass} for table '${table.name}' but the live schema does NOT match the intended definition after ${TableManager.RECONCILE_VERIFY_ATTEMPTS} re-reads (genuine conflict) — re-throwing.`,
       obj: { remainingChanges, error },
     });
     throw error;
@@ -346,6 +374,49 @@ export class TableManager {
 
   private delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * A name declared both as an index of the table and as one it retired is a contradiction the
+   * sync could only resolve by dropping what it just created, every boot — refused by name before
+   * any schema is read. The declared names are read as the drivers spell them: a declared `name`,
+   * else the derived one, for the table's indexes and for each column's unique index.
+   */
+  private validateRetiredIndexes(table: Table<any>): void {
+    const declaredNames = this.declaredIndexNames(table);
+    const contradictions = table.retiredIndexes.filter((name) => declaredNames.has(name));
+    if (contradictions.length === 0) {
+      return;
+    }
+
+    throw new Error(
+      `(${table.name}) An index cannot be both declared and retired: ${contradictions.join(', ')}. Remove it from ` +
+        `\`indexes\` to retire it, or from \`retiredIndexes\` to keep it`
+    );
+  }
+
+  /** Every index name the table's declaration makes, spelled as the drivers spell it. */
+  private declaredIndexNames(table: Table<any>): Set<string> {
+    const names = new Set<string>();
+    for (const index of table.indexes) {
+      const columns = index.columns.map((propertyName) => table.columns[propertyName as string]!.name);
+      names.add(StatementUtil.getIndexName(table.name, { name: index.name, columns, unique: index.unique }));
+    }
+
+    for (const columnPropertyName in table.columns) {
+      const column = table.columns[columnPropertyName];
+      if (column.options?.unique?.unique) {
+        names.add(
+          StatementUtil.getIndexName(table.name, {
+            name: column.options.unique.indexName,
+            columns: [column.name],
+            unique: true,
+          })
+        );
+      }
+    }
+
+    return names;
   }
 
   private validateDynamicReferenceColumns(table: Table<any>): void {
@@ -576,8 +647,16 @@ export class TableManager {
       }
     }
 
+    // An index the table declares RETIRED is dropped by its name wherever it stands — unique or
+    // not, whatever its suffix; the suffix rules below keep only what the table never claimed.
+    const retiredIndexNames = new Set(table.retiredIndexes);
     for (const keyName in existingIndexes) {
       const existingIndex = existingIndexes[keyName];
+      if (retiredIndexNames.has(keyName)) {
+        indexesToDrop.push({ name: keyName, columns: existingIndex });
+        continue;
+      }
+
       const serializedColumns = JSON.stringify(existingIndex);
       if (
         !currentIndexMap[serializedColumns] &&
@@ -698,6 +777,25 @@ export class TableManager {
           });
           break;
       }
+    }
+  }
+
+  /**
+   * Name, once per drop, every index the sync drops because the table declares it retired — the
+   * line an operator reads to know the sync removed it, not a hand. Names only.
+   */
+  private noteRetiredIndexDrops(table: Table<any>, tableChanges: TableChanges): void {
+    const retiredIndexNames = new Set(table.retiredIndexes);
+    for (const index of tableChanges.indexesToDrop) {
+      if (!index.name || !retiredIndexNames.has(index.name)) {
+        continue;
+      }
+
+      const columns = typeof index.columns === 'string' ? [index.columns] : index.columns;
+      this.logger.info({
+        message: `[${table.name}] Dropping retired index: ${index.name} (${columns.join(', ')}) — the table declares it retired`,
+        obj: { table: table.name, index: index.name, columns },
+      });
     }
   }
 

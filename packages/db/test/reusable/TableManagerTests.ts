@@ -10,6 +10,7 @@ import {
   DbDriver,
   Column,
   Table,
+  TableChanges,
   withRecordColumns,
 } from '@proteinjs/db';
 import { SourceRepository } from '@proteinjs/reflection';
@@ -466,6 +467,130 @@ export const tableManagerTests = (
       expect(JSON.stringify(indexes['db_test_user_email_index'])).toBe(JSON.stringify(['email']));
       expect(JSON.stringify(indexes['db_test_user_active_name_index'])).toBe(JSON.stringify(['active', 'name']));
       expect(JSON.stringify(indexes['db_test_user_active_email_index'])).toBeFalsy();
+    });
+
+    /**
+     * An index a table declares RETIRED is dropped by the sync wherever it finds one — unique or
+     * not — while every other index the table does not own is kept, and a name both declared and
+     * retired is refused before any schema is read. The retired index is made BY HAND through the
+     * driver's own schema door — the shape a database born under an earlier declaration carries,
+     * or one an older build re-created after a rollback — never by the sync.
+     */
+    describe('retired indexes: the sync drops what the table declares retired, wherever it finds it', () => {
+      const TABLE_NAME = 'db_test_tm_member';
+      const RETIRED = `${TABLE_NAME}_email_unique`;
+      const DECLARED = `${TABLE_NAME}_team_email_unique`;
+      const STRANGER = `${TABLE_NAME}_stranger_unique`;
+
+      /** The same table, declaring its widened unique index, under different retired names. */
+      const tableWhere = (retired: string[]): Table<any> =>
+        new (class extends Table<any> {
+          name = TABLE_NAME;
+          columns = withRecordColumns<any>({
+            email: new StringColumn('email'),
+            team: new StringColumn('team'),
+          });
+          indexes = [{ name: DECLARED, columns: ['team', 'email'], unique: true }];
+          retiredIndexes = retired;
+        })();
+
+      const noChanges = (): TableChanges => ({
+        columnsToCreate: [],
+        columnsToRename: [],
+        columnsToAlter: [],
+        columnTypeChanges: [],
+        toleratedColumnDifferences: [],
+        columnsWithForeignKeysToCreate: [],
+        foreignKeysToCreate: [],
+        columnsWithForeignKeysToDrop: [],
+        foreignKeysToDrop: [],
+        columnsWithUniqueConstraintsToCreate: [],
+        columnsWithUniqueConstraintsToDrop: [],
+        indexesToCreate: [],
+        indexesToDrop: [],
+      });
+
+      /** A unique index made by hand through the driver's schema door, as an earlier declaration would have left it. */
+      const createIndexByHand = (table: Table<any>, name: string, columns: string[]) =>
+        tableManager.schemaOperations.alterTable(table, {
+          ...noChanges(),
+          indexesToCreate: [{ name, columns, unique: true }],
+        });
+
+      /** Sync `table` with the sync's retired-index lines and its alter passes captured. */
+      const sync = async (table: Table<any>) => {
+        const logger = (tableManager as unknown as { logger: { info(line: { message?: string }): void } }).logger;
+        const info = jest.spyOn(logger, 'info');
+        const alter = jest.spyOn(tableManager.schemaOperations, 'alterTable');
+        try {
+          await tableManager.loadTable(table);
+          return {
+            retiredLines: info.mock.calls
+              .map(([line]) => line.message ?? '')
+              .filter((message) => /Dropping retired index/.test(message)),
+            alters: alter.mock.calls.length,
+          };
+        } finally {
+          info.mockRestore();
+          alter.mockRestore();
+        }
+      };
+
+      beforeEach(async () => {
+        await dropTable(tableWhere([]));
+      });
+
+      afterEach(async () => {
+        await dropTable(tableWhere([]));
+      });
+
+      test('a retired index found on the table is dropped; the declared index stands; a second sync is a no-op', async () => {
+        const table = tableWhere([RETIRED]);
+        await tableManager.loadTable(table);
+        await createIndexByHand(table, RETIRED, ['email']);
+        expect(Object.keys(await tableManager.schemaMetadata.getIndexes(table))).toEqual(
+          expect.arrayContaining([RETIRED, DECLARED])
+        );
+
+        const synced = await sync(tableWhere([RETIRED]));
+
+        const indexes = await tableManager.schemaMetadata.getIndexes(table);
+        expect(indexes[RETIRED]).toBeUndefined();
+        expect(indexes[DECLARED]).toEqual(['team', 'email']);
+        expect(synced.alters).toBe(1);
+        expect(synced.retiredLines).toEqual([
+          expect.stringContaining(`[${TABLE_NAME}] Dropping retired index: ${RETIRED} (email)`),
+        ]);
+
+        const again = await sync(tableWhere([RETIRED]));
+        expect(again.alters).toBe(0);
+        expect(again.retiredLines).toEqual([]);
+        expect(Object.keys(await tableManager.schemaMetadata.getIndexes(table))).not.toContain(RETIRED);
+      });
+
+      test('an undeclared unique index the table does not own is kept: never the sync’s to drop', async () => {
+        const table = tableWhere([]);
+        await tableManager.loadTable(table);
+        await createIndexByHand(table, STRANGER, ['email']);
+
+        const synced = await sync(tableWhere([]));
+
+        const indexes = await tableManager.schemaMetadata.getIndexes(table);
+        expect(indexes[STRANGER]).toEqual(['email']);
+        expect(indexes[DECLARED]).toEqual(['team', 'email']);
+        expect(synced.alters).toBe(0);
+        expect(synced.retiredLines).toEqual([]);
+      });
+
+      test('a name declared both as an index and as retired is refused at table load, before any schema is read', async () => {
+        const table = tableWhere([DECLARED]);
+
+        await expect(tableManager.loadTable(table)).rejects.toThrow(
+          `(${TABLE_NAME}) An index cannot be both declared and retired: ${DECLARED}`
+        );
+
+        expect(await tableManager.tableExists(table)).toBe(false);
+      });
     });
 
     /**

@@ -25,6 +25,17 @@ export interface SchemaOperations {
    * the first gate, not the whole guard.
    */
   isAlreadyExistsError?(error: unknown): boolean;
+
+  /**
+   * Classify a drop DDL error as the backend's "not found" class — the loser's outcome when two
+   * actors concurrently drop the same index (one its table declares retired) and the backend
+   * serializes the DDL so the object leaves exactly once. The drop-side twin of
+   * {@link isAlreadyExistsError}, under the same rules: optional (a driver without it keeps the
+   * strict rethrow for its drops), matched on error CLASS and never a loose substring, and only the
+   * first gate — {@link TableManager} re-reads the live schema and confirms the intended definition
+   * (the index gone, nothing else outstanding) before treating the failure as success.
+   */
+  isAlreadyAbsentError?(error: unknown): boolean;
 }
 
 interface Index {

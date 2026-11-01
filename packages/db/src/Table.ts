@@ -136,6 +136,18 @@ export abstract class Table<T extends Record> implements Loadable, CustomSeriali
    * suffix — schema metadata classifies unique indexes by that suffix.
    */
   public indexes: { columns: (keyof T)[]; name?: string; unique?: boolean }[] = [];
+  /**
+   * The names of indexes this table once declared and has since RETIRED. The schema sync drops a
+   * physical index of this table by one of these names wherever it finds one — unique or not,
+   * whatever the name's suffix — and leaves every other index it does not own alone (an index an
+   * operator made by hand is never the sync's to drop). Declaring the name here, beside the index
+   * that replaced it, is what makes the drop durable: a migration runs once by its ledger, and an
+   * older build whose declaration still carried the name (a rollback) re-creates the index after
+   * it, leaving it standing for good. Idempotent — a database without the index is a no-op and a
+   * second sync finds nothing. A name here that `indexes` also declares is a contradiction, refused
+   * at table load.
+   */
+  public retiredIndexes: string[] = [];
   /** When records are deleted, delete records having references pointing to deleted records */
   public cascadeDeleteReferences: () => { table: string; referenceColumn: string }[] = () => [];
   /** Options for configuring SourceRecords (see {@link SourceRecordOptions}) */
