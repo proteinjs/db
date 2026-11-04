@@ -172,7 +172,10 @@ export interface SyncSoftRemovedWidget extends SourceRecord {
  * The full-loop fixture that SOFT-removes (a catalog-shaped table): keyed by `sku`, loaded from a
  * declaration FILE — whose rows carry no id — and patched, never deleted, when the file drops a
  * row. The soft-removal widening (a re-declaration claiming a kept row by its declared id) has
- * nothing to claim here: a file declares no id.
+ * nothing to claim here: a file declares no id. It CLAIMS runtime rows by their key
+ * (`claimRuntimeRows` — a sku is the catalog's own identity, never one a person registers): a
+ * row the product wrote before the file existed, or added since, becomes the sync's as the
+ * product's when a file names it.
  */
 export class SyncSoftRemovedWidgetTable extends Table<SyncSoftRemovedWidget> {
   name = 'db_test_sync_soft_removed_widget';
@@ -186,6 +189,7 @@ export class SyncSoftRemovedWidgetTable extends Table<SyncSoftRemovedWidget> {
   });
   sourceRecordOptions = {
     naturalKey: 'sku',
+    claimRuntimeRows: true,
     declarationColumns: ['sku', 'name', 'price', 'retired'],
     onSourceRemoved: { update: { retired: true } },
   } as Table<SyncSoftRemovedWidget>['sourceRecordOptions'];

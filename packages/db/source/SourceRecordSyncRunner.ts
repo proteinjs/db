@@ -78,8 +78,12 @@ export class SourceRecordSyncRunner implements SourceRecordSync {
    *   may be anyone's — that declaration is REFUSED for the boot (the row untouched, the boot
    *   continuing, one warning naming the declaration, counted `refused`). A declared id, minted
    *   by the declaration itself, still claims a runtime row holding it (see
-   *   {@link SourceRecordOptions.naturalKey}). A scoped natural key is the pair (scope, key)
-   *   everywhere the key is read ({@link SourceRecordOptions.naturalKeyScope}).
+   *   {@link SourceRecordOptions.naturalKey}). A table whose key is its own world's to mint
+   *   CLAIMS such a row instead ({@link SourceRecordOptions.claimRuntimeRows}, see
+   *   {@link claimRuntimeRecord}): the marks and the declaration's stamp are written, no declared
+   *   column is, and the precedence below reads the row from then on — the declaration's where
+   *   it equals the declaration, the product's (kept) where it differs. A scoped natural key is
+   *   the pair (scope, key) everywhere the key is read ({@link SourceRecordOptions.naturalKeyScope}).
    * - THE AUTHORSHIP PRECEDENCE on the rows the sync owns: every row it writes carries a stamp of
    *   the declared columns as written ({@link SourceRecordStamp}). A row still digesting to its
    *   stamp is the declaration's — updated to a changed declaration, removed when the declaration
@@ -180,18 +184,30 @@ export class SourceRecordSyncRunner implements SourceRecordSync {
 
         if (existingRecord) {
           if (existingRecord.isLoadedFromSource !== true && syncKey.key !== 'id') {
-            // A natural key held by a row the sync does not own: never taken over (see load's
-            // ownership model). The row stays exactly as it is and the boot goes on.
-            refusedCount += 1;
-            this.logger.warn({
-              message: `(${table.name}) Refused declaration '${name}': a row the sync does not own holds ${this.keyWords(syncKey, sourceRecord)} — the row is left untouched and the declaration does not load while it stands`,
-              obj: {
-                declaration: qualifiedName,
-                ...this.keyQuery(syncKey, sourceRecord),
-                id: existingRecord.id,
-              },
+            if (table.sourceRecordOptions.claimRuntimeRows !== true) {
+              // A natural key held by a row the sync does not own: never taken over (see load's
+              // ownership model). The row stays exactly as it is and the boot goes on.
+              refusedCount += 1;
+              this.logger.warn({
+                message: `(${table.name}) Refused declaration '${name}': a row the sync does not own holds ${this.keyWords(syncKey, sourceRecord)} — the row is left untouched and the declaration does not load while it stands`,
+                obj: {
+                  declaration: qualifiedName,
+                  ...this.keyQuery(syncKey, sourceRecord),
+                  id: existingRecord.id,
+                },
+              });
+              continue;
+            }
+
+            // The table claims runtime rows by their key: the row becomes the sync's AS THE
+            // PRODUCT'S — the marks and the declaration's stamp, nothing declared written — and
+            // the precedence below reads it (equal: the declaration's; different: kept).
+            existingRecord = await this.claimRuntimeRecord(db, table, existingRecord, sourceRecord, declaredColumns);
+            adoptedCount += 1;
+            this.logger.info({
+              message: `(${table.name}) Claimed a runtime row holding ${this.keyWords(syncKey, sourceRecord)} for declaration '${name}' — the sync's from now on, as the product's where it differs from the declaration`,
+              obj: { declaration: qualifiedName, ...this.keyQuery(syncKey, sourceRecord), id: existingRecord.id },
             });
-            continue;
           }
 
           if (
@@ -745,6 +761,35 @@ export class SourceRecordSyncRunner implements SourceRecordSync {
 
     const serialized = await new RecordSerializer(table).serialize(this.withoutStamps(existingRecord));
     return !SourceRecordStamp.matches(existingRecord.declarationStamp, serialized);
+  }
+
+  /**
+   * The claim of a runtime row by its natural key ({@link SourceRecordOptions.claimRuntimeRows}):
+   * the ownership marks (the declaring package and its version) and the DECLARATION's stamp —
+   * the digest of the declared columns as the declaration holds them, never as the row does — are
+   * written through `Db.update` (watchers see the mark), and nothing else is. The stamp is what
+   * makes the claimed row the product's where it differs: the row no longer digests to it, so the
+   * precedence keeps the row until the declaration comes to equal it, and takes the row the
+   * moment it does. Returns the row as it now stands.
+   */
+  private async claimRuntimeRecord(
+    db: Db,
+    table: Table<any>,
+    existingRecord: SourceRecord,
+    declaredRecord: Omit<SourceRecord, 'created' | 'updated'>,
+    declaredColumns: string[]
+  ): Promise<SourceRecord> {
+    const marks: Partial<SourceRecord> & { id: string } = {
+      id: existingRecord.id,
+      isLoadedFromSource: true,
+      sourcePackage: declaredRecord.sourcePackage,
+      ...(declaredRecord.sourcePackageVersion === undefined
+        ? {}
+        : { sourcePackageVersion: declaredRecord.sourcePackageVersion }),
+      declarationStamp: await this.stampFor(table, declaredRecord, declaredColumns),
+    };
+    await db.update(table, marks);
+    return { ...existingRecord, ...marks };
   }
 
   /** The stamp for a record as the sync is about to write it, over the given column names. */

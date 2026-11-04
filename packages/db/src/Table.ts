@@ -516,7 +516,8 @@ export type SourceRecordOptions<T = any> = {
    * only the declaration mints. The declaration is REFUSED for that boot — the row left exactly
    * as it is, the boot continuing, one warning naming the declaration and the key, counted
    * `refused` in the load summary — and lands as a fresh insert on the first boot after that row
-   * is gone.
+   * is gone. A table whose key is its own world's to mint declares {@link claimRuntimeRows}
+   * instead, and such a row is claimed as the product's.
    *
    * Preconditions, validated at boot by the loader (loud failures):
    * - the column is declared unique (`ColumnOptions.unique` or a single-column unique index in
@@ -535,6 +536,21 @@ export type SourceRecordOptions<T = any> = {
    * on every row (`SourceRecordDeclaration.scope` names it). Requires {@link naturalKey}.
    */
   naturalKeyScope?: keyof T & string;
+  /**
+   * With {@link naturalKey}: a declaration CLAIMS a runtime row holding its key instead of being
+   * refused — for a key the table's own world mints and nobody else can hold (a provider's model
+   * id, a kind's fixed id), never one a person registers (an email). The claimed row becomes the
+   * sync's AS THE PRODUCT'S: it takes the ownership marks and the DECLARATION's stamp, and no
+   * declared column is written — so from then on the authorship precedence reads it like any row
+   * the sync owns (see `SourceRecord.declarationStamp`): equal to the declaration, it is the
+   * declaration's (updated when the declaration moves, removed when it is gone); different, it
+   * is kept exactly as it is until the declaration comes to equal it, then re-adopted. This is
+   * how a table whose rows were runtime-authored for years closes the loop the day its rows are
+   * first declared in a file (every row the file names is claimed, every edit the environment
+   * made since stands), and how a file written FROM an environment takes a row that environment
+   * added. Counted `adopted` in the load summary. Default false: refused (see {@link naturalKey}).
+   */
+  claimRuntimeRows?: boolean;
   /**
    * The columns a DECLARATION of this table covers — what the export door renders and what a
    * declaration file may carry (the sync key, and its scope, are always among them; `id` only

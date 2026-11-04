@@ -1478,6 +1478,102 @@ export const sourceRecordSyncTests = (
         expect(await getDbAsSystem().query(softTable, {})).toHaveLength(2);
       });
 
+      test("a table that CLAIMS runtime rows by their natural key (a key the declaration's world mints — a model id — never one a person registers): a runtime row holding a declared key is adopted as the sync's — equal to the file, the file's; different, the product's, kept until the file comes to equal it; a row the product added and a later file lists is claimed the same way; a row no file names is never touched", async () => {
+        const softTable = sourceRecordSyncTestTables.SyncSoftRemovedWidget;
+        const db = getDbAsSystem();
+        const softRow = async (sku: string) => (await db.get(softTable, { sku })) as SyncSoftRemovedWidget;
+        // Rows the product wrote before the table had a file: one exactly as the file will declare
+        // it, one that moved on since (a price edit), one the file does not name (a row this
+        // environment added on its own).
+        const equal = await db.insert(softTable, { sku: 'C1', name: 'Claimed one', price: 1, retired: false });
+        const moved = await db.insert(softTable, { sku: 'C2', name: 'Claimed two', price: 99, retired: false });
+        const added = await db.insert(softTable, { sku: 'C3', name: 'Added here', price: 3, retired: false });
+        const file = await widgetsFile(
+          'claimed-widgets.json',
+          [
+            { sku: 'C1', name: 'Claimed one', price: 1, retired: false },
+            { sku: 'C2', name: 'Claimed two', price: 2, retired: false },
+          ],
+          softTable
+        );
+
+        const first = await bootFile(file, softTable);
+
+        // Both named rows are claimed — never refused, never inserted over — under the ids the
+        // environment gave them, with the file's own stamp: the equal one is the file's, the moved
+        // one the product's, its edit standing.
+        expect(first[softTable.name]).toMatchObject({
+          adopted: 2,
+          refused: 0,
+          inserts: 0,
+          updates: 0,
+          unchanged: 1,
+          kept: 1,
+          deletes: 0,
+          removedUpdates: 0,
+        });
+        const claimedEqual = await softRow('C1');
+        expect(claimedEqual).toMatchObject({
+          id: equal.id,
+          price: 1,
+          isLoadedFromSource: true,
+          sourcePackage: '@test/pkg-f',
+        });
+        expect(claimedEqual.declarationStamp).toBeTruthy();
+        const claimedMoved = await softRow('C2');
+        expect(claimedMoved).toMatchObject({
+          id: moved.id,
+          price: 99,
+          isLoadedFromSource: true,
+          sourcePackage: '@test/pkg-f',
+        });
+        expect(claimedMoved.declarationStamp).toBeTruthy();
+        expect(claimedMoved.declarationStamp).not.toBe(claimedEqual.declarationStamp);
+        // The row no file names is exactly as the product left it: no mark, no write.
+        const untouched = await softRow('C3');
+        expect(untouched.isLoadedFromSource).toBeFalsy();
+        expect(untouched.declarationStamp).toBeFalsy();
+        expect(untouched.updated.valueOf()).toBe(added.updated.valueOf());
+
+        // Boot after boot: the claim is made once; the moved row stays the product's, nothing written.
+        const second = await bootFile(file, softTable);
+        expect(second[softTable.name]).toMatchObject({ adopted: 0, refused: 0, kept: 1, unchanged: 1, updates: 0 });
+        expect((await softRow('C2')).updated.valueOf()).toBe(claimedMoved.updated.valueOf());
+
+        // The file comes to equal the product's edit and lists the added row (a save from this
+        // environment): the moved row is re-adopted, the added row claimed — both the file's from
+        // then on, so the file's next move lands on them.
+        const caughtUp = await widgetsFile(
+          'claimed-widgets-2.json',
+          [
+            { sku: 'C1', name: 'Claimed one', price: 1, retired: false },
+            { sku: 'C2', name: 'Claimed two', price: 99, retired: false },
+            { sku: 'C3', name: 'Added here', price: 3, retired: false },
+          ],
+          softTable
+        );
+        const third = await bootFile(caughtUp, softTable);
+        expect(third[softTable.name]).toMatchObject({ adopted: 2, refused: 0, kept: 0, unchanged: 2, inserts: 0 });
+        expect(await softRow('C3')).toMatchObject({
+          id: added.id,
+          isLoadedFromSource: true,
+          sourcePackage: '@test/pkg-f',
+        });
+        const movedOn = await widgetsFile(
+          'claimed-widgets-3.json',
+          [
+            { sku: 'C1', name: 'Claimed one', price: 1, retired: false },
+            { sku: 'C2', name: 'Claimed two', price: 50, retired: false },
+            { sku: 'C3', name: 'Added here', price: 3, retired: false },
+          ],
+          softTable
+        );
+        const fourth = await bootFile(movedOn, softTable);
+        expect(fourth[softTable.name]).toMatchObject({ updates: 1, adopted: 0, kept: 0, unchanged: 2, inserts: 0 });
+        expect(await softRow('C2')).toMatchObject({ id: moved.id, price: 50 });
+        expect(await db.query(softTable, {})).toHaveLength(3);
+      });
+
       test('a declaration file is refused by name — a column outside declarationColumns, another table, a missing key — and nothing loads', async () => {
         const secretFile = path.join(scratch, 'secret.json');
         const base = (

@@ -6,11 +6,19 @@ export type SourceRecordTableLoadSummary = {
   inserts: number;
   updates: number;
   unchanged: number;
+  /**
+   * Rows that became the sync's this boot without an insert: a runtime row taken over by the
+   * declaration holding its own declared id; a runtime row CLAIMED by its natural key as the
+   * product's on a table that claims them ({@link SourceRecordOptions.claimRuntimeRows}); a
+   * product-edited row re-adopted because its declaration came to equal it; a soft-removed row a
+   * declaration re-claims by its id.
+   */
   adopted: number;
   /**
    * Declarations whose natural key is held by a row the sync does not own (written at runtime —
    * a person's own row, say): refused for this boot, that row left exactly as it is (see
-   * {@link SourceRecordOptions.naturalKey}).
+   * {@link SourceRecordOptions.naturalKey}) — unless the table claims runtime rows
+   * ({@link SourceRecordOptions.claimRuntimeRows}), when such a row is adopted instead.
    */
   refused: number;
   deletes: number;
