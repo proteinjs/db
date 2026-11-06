@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.61.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.60.0...@proteinjs/db@1.61.0) (2026-11-06)
+
+
+### Features
+
+* **db:** a table may claim the runtime rows holding its natural key — `sourceRecordOptions.claimRuntimeRows`: a declaration takes such a row as the sync's AS THE PRODUCT'S (the marks and the declaration's stamp, nothing declared written), so a table whose rows were runtime-authored for years closes the loop the day its rows are first declared in a file, and a file written from an environment takes a row that environment added ([aae34f8](https://github.com/proteinjs/db/commit/aae34f8b06c822e1773d8e6006f2507b9f4b2c72))
+
+
+
+
+
 # [1.60.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.59.2...@proteinjs/db@1.60.0) (2026-11-01)
 
 
