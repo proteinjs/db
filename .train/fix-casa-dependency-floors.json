@@ -1,0 +1,9 @@
+{
+  "branch": "fix/casa-dependency-floors",
+  "packages": [
+    "drivers/spanner",
+    "ui"
+  ],
+  "suites": [],
+  "removes": []
+}
