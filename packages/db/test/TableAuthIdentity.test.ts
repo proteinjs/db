@@ -31,6 +31,19 @@ class QueryOnlyTable extends Table<Doc> {
   public columns = withRecordColumns<Doc>({ title: new StringColumn('title') });
 }
 
+/**
+ * A door declared as an EMPTY roles list on both apis (the admin passkeys' tables, user_passkey and
+ * auth_challenge): a declaration, not an omission, so it is not the undeclared admin default.
+ */
+class EmptyDoorTable extends Table<Doc> {
+  public name = 'identity_empty_door_test';
+  public auth: Table<Doc>['auth'] = {
+    db: { query: [] },
+    service: { query: [] },
+  };
+  public columns = withRecordColumns<Doc>({ title: new StringColumn('title') });
+}
+
 const setUser = (roles: string[], email = 'user@test.local') => {
   (UserAuth as any).userRepo = { getUser: () => ({ email, roles }) };
 };
@@ -113,6 +126,22 @@ describe('TableAuth operation doors keep their declared-block semantics', () => 
     expect(new TableAuth().canPerform(new QueryOnlyTable(), 'insert')).toBe(false);
     setUser([]);
     expect(new TableAuth().canPerform(new QueryOnlyTable(), 'insert')).toBe(false);
+  });
+
+  test('a declared empty door admits nobody — the admin included, on both apis', () => {
+    const table = new EmptyDoorTable();
+    for (const roles of [['admin'], ['ops'], []]) {
+      setUser(roles);
+      expect(new TableAuth().canPerform(table, 'query', 'service')).toBe(false);
+      expect(new TableAuth().canPerform(table, 'query', 'db')).toBe(false);
+    }
+    setUser(['admin']);
+    expect(() => new TableAuth().canQuery(table, 'service')).toThrow(
+      'User is not authorized to query table: identity_empty_door_test'
+    );
+    expect(() => new TableAuth().canQuery(table)).toThrow(
+      'User is not authorized to query table: identity_empty_door_test'
+    );
   });
 });
 

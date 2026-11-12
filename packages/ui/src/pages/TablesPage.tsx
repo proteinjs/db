@@ -1,6 +1,6 @@
 import React from 'react';
 import { FormPage, Page, Table as TableComponent, RowWindow, BaseTableLoader, useFormFactor } from '@proteinjs/ui';
-import { getTables, getDbService, Table } from '@proteinjs/db';
+import { getTables, getDbService, Table, TableAuth } from '@proteinjs/db';
 import { recordTableLinkByName } from './RecordTablePage';
 import { adminScrollAffordances } from './adminScrollAffordances';
 import { Box, SxProps, Theme } from '@mui/material';
@@ -9,10 +9,11 @@ export const tablesPage: Page = {
   name: 'Tables',
   path: 'tables',
   /**
-   * Dev tool: browse every table and its row count. Gated by the abstract 'dev' permission
-   * (resolved through the consumer app's PermissionRolesMapping; admin passes as break-glass)
-   * instead of the implicit default-admin, so the consumer's dev-role holders can use it.
-   * Row-level reads stay enforced server-side per table.
+   * Dev tool: browse every table the viewer may query and its row count. Gated by the abstract
+   * 'dev' permission (resolved through the consumer app's PermissionRolesMapping; admin passes as
+   * break-glass) instead of the implicit default-admin, so the consumer's dev-role holders can use
+   * it. The list holds only the tables whose query door the viewer clears (TableSummaryLoader);
+   * row-level reads stay enforced server-side per table.
    */
   auth: { permission: 'dev' },
   pageContainerSxProps: (theme: Theme): SxProps => {
@@ -28,9 +29,20 @@ type TableSummary = {
   rowCount: number;
 };
 
+/**
+ * Each row is a count the DbService RPC answers, and the RPC runs two doors: the service gate
+ * (`TableServiceAuth`, which asks the query door on the service api) and then the inner Db's
+ * db-api re-check as the calling user (`Db.getRowCount`). So the loader lists only the tables
+ * whose query door the viewer clears on BOTH apis, as their owner (`TableAuth`) answers, before it
+ * counts any — a table nobody may read through the service (a declared `query: []`, the admin
+ * included) has no row, and a count that fails for any other reason still fails the window.
+ */
 class TableSummaryLoader extends BaseTableLoader<TableSummary> {
-  constructor(private tables: Table<any>[]) {
+  private tables: Table<any>[];
+
+  constructor(tables: Table<any>[]) {
     super();
+    this.tables = this.queryable(tables);
   }
 
   async load(startIndex: number, endIndex: number) {
@@ -43,6 +55,14 @@ class TableSummaryLoader extends BaseTableLoader<TableSummary> {
     }
 
     return page;
+  }
+
+  /** The tables whose query door the viewer clears on both apis the count's RPC runs. */
+  private queryable(tables: Table<any>[]): Table<any>[] {
+    const tableAuth = new TableAuth();
+    return tables.filter(
+      (table) => tableAuth.canPerform(table, 'query', 'service') && tableAuth.canPerform(table, 'query', 'db')
+    );
   }
 }
 
