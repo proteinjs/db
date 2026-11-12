@@ -1,5 +1,5 @@
 {
-  "branch": "fix/tables-page-lists-what-the-viewer-may-query-r3",
+  "branch": "fix/tables-page-lists-what-the-viewer-may-query-r4",
   "packages": ["db", "ui"],
   "suites": [
     "packages/db/test/ColumnDifferenceClassification.test.ts",

@@ -334,4 +334,20 @@ describe('TablesPage lists only the tables the viewer may query', () => {
     // One row, the failure: no table's row, so the list never reads as complete without it.
     expect(desktopRows()).toEqual([[expect.stringContaining(failure.message)]]);
   });
+
+  it('a viewer who is not the admin sees only the tables their own roles open', async () => {
+    phoneMode = false;
+    setUser(['dev']);
+    mockTables = [new UserTable(), new NoteTable(), queryableTable('table_01', 11), new ServiceSealedTable()];
+    await mount();
+    expect(desktopRows()).toEqual([['note', '5']]);
+  });
+
+  it('a count refused for authorization on a table the owner admitted fails the page too: its load failure shows, never a shorter list', async () => {
+    phoneMode = false;
+    const refusal = new Error('User is not authorized to query table: session_lapsed');
+    mockTables = [new UserTable(), failingCountTable('session_lapsed', refusal), queryableTable('table_01', 11)];
+    await mount();
+    expect(desktopRows()).toEqual([[expect.stringContaining(refusal.message)]]);
+  });
 });
