@@ -69,6 +69,17 @@ export class TableAuth {
   }
 
   /**
+   * Non-throwing read for a page acting THROUGH THE SERVICE: whether the CURRENT user may perform
+   * this operation over the DbService RPC, which runs two doors — the service gate
+   * (`TableServiceAuth`, the service api) and then the inner Db's re-check as the calling user (the
+   * db api). True only when both doors admit the user; `canPerform(table, operation, 'service')`
+   * answers the gate alone. Pages ask this one read rather than spelling the two doors themselves.
+   */
+  canPerformThroughService(table: Table<any>, operation: 'query' | 'insert' | 'update' | 'delete'): boolean {
+    return this.canPerform(table, operation, 'service') && this.canPerform(table, operation, 'db');
+  }
+
+  /**
    * Non-throwing read of ONE declared identity against the CURRENT user — the same grammar the
    * table doors speak (`'public' | 'authenticated' | roles[] | { permission }`), for declared
    * UI affordances that carry their own grant (a record form's declared panels, `Table.auth.ui`).

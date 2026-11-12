@@ -30,12 +30,11 @@ type TableSummary = {
 };
 
 /**
- * Each row is a count the DbService RPC answers, and the RPC runs two doors: the service gate
- * (`TableServiceAuth`, which asks the query door on the service api) and then the inner Db's
- * db-api re-check as the calling user (`Db.getRowCount`). So the loader lists only the tables
- * whose query door the viewer clears on BOTH apis, as their owner (`TableAuth`) answers, before it
- * counts any — a table nobody may read through the service (a declared `query: []`, the admin
- * included) has no row, and a count that fails for any other reason still fails the window.
+ * Each row is a count the DbService RPC answers, so the loader lists only the tables the viewer may
+ * query through the service, as their owner answers (`TableAuth.canPerformThroughService`: the
+ * service gate and the inner Db's db-api re-check), before it windows or counts any — a table
+ * nobody may read through the service (a declared `query: []`, the admin included) has no row, and
+ * a count that fails for any other reason still fails the window.
  */
 class TableSummaryLoader extends BaseTableLoader<TableSummary> {
   private tables: Table<any>[];
@@ -57,12 +56,10 @@ class TableSummaryLoader extends BaseTableLoader<TableSummary> {
     return page;
   }
 
-  /** The tables whose query door the viewer clears on both apis the count's RPC runs. */
+  /** The tables the viewer may query through the service, the road the count takes. */
   private queryable(tables: Table<any>[]): Table<any>[] {
     const tableAuth = new TableAuth();
-    return tables.filter(
-      (table) => tableAuth.canPerform(table, 'query', 'service') && tableAuth.canPerform(table, 'query', 'db')
-    );
+    return tables.filter((table) => tableAuth.canPerformThroughService(table, 'query'));
   }
 }
 

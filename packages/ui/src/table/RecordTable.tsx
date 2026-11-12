@@ -358,10 +358,10 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
    * declaration doesn't open for the current user draws no button (a create button on the
    * session table, whose rows are system-written, could only lead to a refused save). A UI act
    * rides the service RPC and DbService's inner Db re-checks the db api as the calling user,
-   * so an affordance requires BOTH doors — TableAuth answers each, and derives the db half where
-   * the block leaves it undeclared (it mirrors the declared service door for the same operation
-   * where that door admits the admin role alone, one-way). Explicit `buttons` props pass through
-   * untouched.
+   * so an affordance requires BOTH doors — TableAuth answers the pair in one read
+   * (`canPerformThroughService`), and derives the db half where the block leaves it undeclared (it
+   * mirrors the declared service door for the same operation where that door admits the admin role
+   * alone, one-way). Explicit `buttons` props pass through untouched.
    *
    * A table whose rows have their OWN page (`Table.ui.recordTable.recordLink`) draws neither
    * derived affordance: its rows are created and removed by whatever owns that page, so a
@@ -396,8 +396,6 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
     }
 
     const tableAuth = new TableAuth();
-    const canPerform = (operation: 'insert' | 'delete') =>
-      tableAuth.canPerform(props.table, operation, 'service') && tableAuth.canPerform(props.table, operation, 'db');
     const declared = (kind: RecordTableAction['kind']) =>
       props.table.ui?.recordTable?.actions?.find((action) => action.kind === kind);
     const allowed = (kind: RecordTableAction['kind'], operation: 'insert' | 'delete') => {
@@ -406,7 +404,9 @@ export function RecordTable<T extends Record>(props: RecordTableProps<T>) {
       }
 
       const door = declared(kind)?.door;
-      return door !== undefined ? tableAuth.identityAllows(door) : canPerform(operation);
+      return door !== undefined
+        ? tableAuth.identityAllows(door)
+        : tableAuth.canPerformThroughService(props.table, operation);
     };
 
     const seatActions: TableButton<T>[] = [];

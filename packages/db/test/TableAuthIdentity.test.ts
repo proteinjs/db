@@ -355,3 +355,60 @@ describe('TableAuth — the mirror reaches only a service door that admits the a
     expect(new TableAuth().canPerform(new AllAdminServiceTable(), 'update', 'db')).toBe(false);
   });
 });
+
+/**
+ * A page acting through the service (db-ui's Tables page counting rows, RecordTable's create and
+ * delete) rides the DbService RPC, which runs two doors: the service gate (`TableServiceAuth`, the
+ * service api) and then the inner Db's re-check as the calling user (the db api). Each table below
+ * opens the query door to the admin on one api, the other, or both; the shut door is a declared
+ * empty list, the one door that refuses the admin.
+ */
+class GateOpenReCheckShutTable extends Table<Doc> {
+  public name = 'identity_gate_open_recheck_shut_test';
+  public auth: Table<Doc>['auth'] = {
+    db: { query: [] },
+    service: { query: ['admin'] },
+  };
+  public columns = withRecordColumns<Doc>({ title: new StringColumn('title') });
+}
+
+class GateShutReCheckOpenTable extends Table<Doc> {
+  public name = 'identity_gate_shut_recheck_open_test';
+  public auth: Table<Doc>['auth'] = {
+    db: { query: ['admin'] },
+    service: { query: [] },
+  };
+  public columns = withRecordColumns<Doc>({ title: new StringColumn('title') });
+}
+
+class BothDoorsOpenTable extends Table<Doc> {
+  public name = 'identity_both_doors_open_test';
+  public auth: Table<Doc>['auth'] = {
+    db: { query: ['admin'] },
+    service: { query: ['admin'] },
+  };
+  public columns = withRecordColumns<Doc>({ title: new StringColumn('title') });
+}
+
+describe('TableAuth.canPerformThroughService — a page acting through the service needs both doors', () => {
+  afterEach(() => {
+    (UserAuth as any).userRepo = undefined;
+  });
+
+  test('open at the gate and shut at the re-check answers no, the reverse answers no, both open answers yes', () => {
+    setUser(['admin']);
+    const auth = new TableAuth();
+
+    const gateOnly = new GateOpenReCheckShutTable();
+    expect(auth.canPerform(gateOnly, 'query', 'service')).toBe(true);
+    expect(auth.canPerform(gateOnly, 'query', 'db')).toBe(false);
+    expect(auth.canPerformThroughService(gateOnly, 'query')).toBe(false);
+
+    const reCheckOnly = new GateShutReCheckOpenTable();
+    expect(auth.canPerform(reCheckOnly, 'query', 'service')).toBe(false);
+    expect(auth.canPerform(reCheckOnly, 'query', 'db')).toBe(true);
+    expect(auth.canPerformThroughService(reCheckOnly, 'query')).toBe(false);
+
+    expect(auth.canPerformThroughService(new BothDoorsOpenTable(), 'query')).toBe(true);
+  });
+});

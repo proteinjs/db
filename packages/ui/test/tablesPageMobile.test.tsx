@@ -7,7 +7,9 @@
  * card face. Desktop keeps the house FormPage card. And its list: each row is a count the DbService
  * RPC answers, so the page lists only the tables the viewer may query through it — a table whose
  * query door the viewer does not clear has no row (the admin passkeys' tables declare `query: []`,
- * a door that admits nobody, the admin included).
+ * a door that admits nobody, the admin included). The list is filtered BEFORE it is windowed: the
+ * table loads ten rows a window and ends at the first window that returns fewer, so a window that
+ * dropped a sealed table after the slice would end the list there.
  */
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
@@ -65,6 +67,14 @@ class NoteTable extends Table<User> {
 let mockTables: Table<any>[] = [new UserTable()];
 const mockRowCounts: { [tableName: string]: number } = { user: 3, note: 5 };
 
+/** A table the admin may query on both apis (no auth block: the admin default), with its own count. */
+const queryableTable = (name: string, rowCount: number): Table<any> => {
+  const table = new UserTable();
+  table.name = name;
+  mockRowCounts[name] = rowCount;
+  return table;
+};
+
 /**
  * The count runs the RPC's two doors as DbService does: the router's service gate
  * (`TableServiceAuth`), then the inner Db's db-api re-check as the calling user (`Db.getRowCount`).
@@ -106,10 +116,25 @@ declare global {
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
+/**
+ * The table's load-more sentinel is watched by an IntersectionObserver; the stub keeps the ones
+ * observing so a case can bring the sentinel into view and ask for the next window.
+ */
+const observing = new Set<StubIntersectionObserver>();
 class StubIntersectionObserver {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
+  constructor(private readonly callback: IntersectionObserverCallback) {}
+  observe() {
+    observing.add(this);
+  }
+  unobserve() {
+    observing.delete(this);
+  }
+  disconnect() {
+    observing.delete(this);
+  }
+  intersect() {
+    this.callback([{ isIntersecting: true } as IntersectionObserverEntry], this as unknown as IntersectionObserver);
+  }
 }
 (globalThis as any).IntersectionObserver = StubIntersectionObserver;
 
@@ -160,6 +185,7 @@ afterEach(() => {
   container.remove();
   (UserAuth as any).userRepo = undefined;
   mockTables = [new UserTable()];
+  observing.clear();
 });
 
 const mount = async () => {
@@ -178,6 +204,22 @@ const mount = async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
 };
+
+/** The sentinel scrolls into view: the table asks for its next window. */
+const reachTheEnd = async () => {
+  await act(async () => {
+    Array.from(observing).forEach((observer) => observer.intersect());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+};
+
+const desktopRows = () =>
+  Array.from(document.querySelectorAll('tbody tr')).map((row) =>
+    Array.from(row.querySelectorAll('td')).map((cell) => cell.textContent)
+  );
 
 describe('TablesPage phone layout', () => {
   it('phone: full-bleed — no card, no gutters; the summary table fills the page column as the card face', async () => {
@@ -206,16 +248,41 @@ describe('TablesPage phone layout', () => {
 });
 
 describe('TablesPage lists only the tables the viewer may query', () => {
-  it('a table whose query door the viewer does not clear on either api has no row; the others keep their counts', async () => {
+  it('a table whose query door the viewer does not clear on either api has no row, BEFORE the list is windowed: the first window is the first ten tables the viewer may query, and the next window still arrives', async () => {
     phoneMode = false;
-    mockTables = [new UserTable(), new ServiceSealedTable(), new DbSealedTable(), new NoteTable()];
+    // Fourteen registered tables, twelve the viewer may query; the two sealed ones are among the first ten.
+    mockTables = [
+      new UserTable(),
+      new ServiceSealedTable(),
+      queryableTable('table_01', 11),
+      queryableTable('table_02', 12),
+      new DbSealedTable(),
+      queryableTable('table_03', 13),
+      queryableTable('table_04', 14),
+      queryableTable('table_05', 15),
+      queryableTable('table_06', 16),
+      queryableTable('table_07', 17),
+      queryableTable('table_08', 18),
+      new NoteTable(),
+      queryableTable('table_09', 19),
+      queryableTable('table_10', 20),
+    ];
     await mount();
-    const rows = Array.from(document.querySelectorAll('tbody tr')).map((row) =>
-      Array.from(row.querySelectorAll('td')).map((cell) => cell.textContent)
-    );
-    expect(rows).toEqual([
+    const firstWindow = [
       ['user', '3'],
+      ['table_01', '11'],
+      ['table_02', '12'],
+      ['table_03', '13'],
+      ['table_04', '14'],
+      ['table_05', '15'],
+      ['table_06', '16'],
+      ['table_07', '17'],
+      ['table_08', '18'],
       ['note', '5'],
-    ]);
+    ];
+    expect(desktopRows()).toEqual(firstWindow);
+
+    await reachTheEnd();
+    expect(desktopRows()).toEqual([...firstWindow, ['table_09', '19'], ['table_10', '20']]);
   });
 });

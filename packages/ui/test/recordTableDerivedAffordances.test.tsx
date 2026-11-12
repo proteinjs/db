@@ -130,6 +130,22 @@ class StricterDbDoorsTable extends Table<Session> {
 }
 
 /**
+ * The reverse asymmetry: the db block opens every door to 'users' while the service block declares
+ * the read alone. The act rides the service RPC, so the gate refuses it before the db-api re-check
+ * is reached: no affordance, however wide the db door.
+ */
+class GateShutDbOpenTable extends Table<Session> {
+  public name = 'gate_shut_db_open';
+  public auth: Table<Session>['auth'] = {
+    db: { all: { permission: 'users' } },
+    service: { query: { permission: 'users' } },
+  };
+  public columns = withRecordColumns<Session>({
+    userEmail: new StringColumn('user_email'),
+  });
+}
+
+/**
  * The invite shape: creation is a DOMAIN ACT (a service mints the row), so the generic insert
  * doors stay closed by design — and the table DECLARES its list actions instead: the create act
  * with the door the act serves and the name the act has (`ui.recordTable.actions`).
@@ -296,6 +312,14 @@ describe('RecordTable — auth-derived affordances', () => {
   it("a declared db door is never overridden by the mirror: the db block's stricter write doors stand", async () => {
     setUser(['staff']);
     await mount(new StricterDbDoorsTable());
+
+    expect(createButton()).toBeNull();
+    expect(selectRowCheckbox()).toBeNull();
+  });
+
+  it('a db door the service gate does not open draws nothing — the gate refuses the act before the re-check', async () => {
+    setUser(['staff']);
+    await mount(new GateShutDbOpenTable());
 
     expect(createButton()).toBeNull();
     expect(selectRowCheckbox()).toBeNull();
