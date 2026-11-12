@@ -7,9 +7,11 @@
  * card face. Desktop keeps the house FormPage card. And its list: each row is a count the DbService
  * RPC answers, so the page lists only the tables the viewer may query through it — a table whose
  * query door the viewer does not clear has no row (the admin passkeys' tables declare `query: []`,
- * a door that admits nobody, the admin included). The list is filtered BEFORE it is windowed: the
+ * a door that admits nobody, the admin included). The page asks the owner which tables those are,
+ * so a door shut without an empty list counts too. The list is filtered BEFORE it is windowed: the
  * table loads ten rows a window and ends at the first window that returns fewer, so a window that
- * dropped a sealed table after the slice would end the list there.
+ * dropped a sealed table after the slice would end the list there. And nothing catches the count:
+ * a count that fails for any other reason fails the page as it did before, never a shorter list.
  */
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
@@ -53,6 +55,22 @@ class DbSealedTable extends Table<User> {
   });
 }
 
+/**
+ * Shut to the admin with no empty list anywhere: the db block declares only an insert door, for
+ * another role, so its undeclared query door stays closed, and the service door is wider than
+ * admin-only, so nothing mirrors into it. A page that drops only `query: []` doors would list it.
+ */
+class OpsInsertOnlyTable extends Table<User> {
+  public name = 'ops_insert_only';
+  public auth: Table<User>['auth'] = {
+    db: { insert: ['ops'] },
+    service: { query: 'authenticated' },
+  };
+  public columns = withRecordColumns<User>({
+    email: new StringColumn('email'),
+  });
+}
+
 class NoteTable extends Table<User> {
   public name = 'note';
   public auth: Table<User>['auth'] = {
@@ -75,10 +93,21 @@ const queryableTable = (name: string, rowCount: number): Table<any> => {
   return table;
 };
 
+/** Counts that fail for a reason that is not authorization, by table name. */
+let mockCountFailures: { [tableName: string]: Error } = {};
+
+/** A table the admin may query on both apis whose count fails anyway (the database times out). */
+const failingCountTable = (name: string, failure: Error): Table<any> => {
+  const table = new UserTable();
+  table.name = name;
+  mockCountFailures[name] = failure;
+  return table;
+};
+
 /**
  * The count runs the RPC's two doors as DbService does: the router's service gate
  * (`TableServiceAuth`), then the inner Db's db-api re-check as the calling user (`Db.getRowCount`).
- * A refused count rejects, as the RPC's does.
+ * A refused count rejects, as the RPC's does; so does a count past both doors that fails.
  */
 const mockDbService = {
   getRowCount: jest.fn(async (table: Table<any>) => {
@@ -86,6 +115,9 @@ const mockDbService = {
       throw new Error(`Not authorized: ${table.name}`);
     }
     new TableAuth().canQuery(table);
+    if (mockCountFailures[table.name]) {
+      throw mockCountFailures[table.name];
+    }
     return mockRowCounts[table.name] ?? 0;
   }),
 };
@@ -185,6 +217,7 @@ afterEach(() => {
   container.remove();
   (UserAuth as any).userRepo = undefined;
   mockTables = [new UserTable()];
+  mockCountFailures = {};
   observing.clear();
 });
 
@@ -250,7 +283,8 @@ describe('TablesPage phone layout', () => {
 describe('TablesPage lists only the tables the viewer may query', () => {
   it('a table whose query door the viewer does not clear on either api has no row, BEFORE the list is windowed: the first window is the first ten tables the viewer may query, and the next window still arrives', async () => {
     phoneMode = false;
-    // Fourteen registered tables, twelve the viewer may query; the two sealed ones are among the first ten.
+    // Fifteen registered tables, twelve the viewer may query. The three it may not are among the
+    // first ten: two sealed by `query: []`, and one shut with no empty list (only the owner knows).
     mockTables = [
       new UserTable(),
       new ServiceSealedTable(),
@@ -260,6 +294,7 @@ describe('TablesPage lists only the tables the viewer may query', () => {
       queryableTable('table_03', 13),
       queryableTable('table_04', 14),
       queryableTable('table_05', 15),
+      new OpsInsertOnlyTable(),
       queryableTable('table_06', 16),
       queryableTable('table_07', 17),
       queryableTable('table_08', 18),
@@ -284,5 +319,19 @@ describe('TablesPage lists only the tables the viewer may query', () => {
 
     await reachTheEnd();
     expect(desktopRows()).toEqual([...firstWindow, ['table_09', '19'], ['table_10', '20']]);
+  });
+
+  it('a count that fails for a reason that is not authorization fails the page as it did: its load failure shows, never a shorter list', async () => {
+    phoneMode = false;
+    const failure = new Error('Deadline exceeded while counting rows');
+    mockTables = [
+      new UserTable(),
+      queryableTable('table_01', 11),
+      failingCountTable('count_times_out', failure),
+      queryableTable('table_02', 12),
+    ];
+    await mount();
+    // One row, the failure: no table's row, so the list never reads as complete without it.
+    expect(desktopRows()).toEqual([[expect.stringContaining(failure.message)]]);
   });
 });
