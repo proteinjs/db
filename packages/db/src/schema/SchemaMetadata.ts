@@ -1,6 +1,7 @@
 import { ParameterizationConfig, QueryBuilder } from '@proteinjs/db-query';
 import { Table } from '../Table';
 import { DbDriver } from '../Db';
+import { LiveDeleteRowsOlderThan } from './SchemaOperations';
 
 export class SchemaMetadata {
   constructor(
@@ -135,4 +136,13 @@ export class SchemaMetadata {
 
     return indexes;
   }
+
+  /**
+   * The age-out the live table carries ({@link Table.deleteRowsOlderThan}), read back from the
+   * database; null when it carries none. OPTIONAL, and not implemented here: a metadata reader
+   * implements it only when its database deletes rows by age itself (Spanner). `TableManager`
+   * reads it for a table that declares an age-out, never for one that does not, and refuses the
+   * declaration at table load where the driver's reader has no such method.
+   */
+  getDeleteRowsOlderThan?(table: Table<any>): Promise<LiveDeleteRowsOlderThan | null>;
 }

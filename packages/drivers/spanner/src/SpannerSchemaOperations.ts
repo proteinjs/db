@@ -38,16 +38,26 @@ export class SpannerSchemaOperations implements SchemaOperations {
    *   unrelated code-9 errors out, so it is deliberately specific (e.g. "already in progress" does
    *   NOT contain "already exists" and is not matched).
    *
+   * - ONE more class, under its own code: INVALID_ARGUMENT (3) naming a ROW DELETION POLICY that
+   *   already stands ("Cannot create ROW DELETION POLICY because there is already one on column
+   *   named <col> in table <table>." — verified against the emulator image, 2026-11): the loser of
+   *   two actors adding the age-out a table declares (`Table.deleteRowsOlderThan`). No other
+   *   message under code 3 matches — INVALID_ARGUMENT is every malformed statement's code.
+   *
    * The reconcile layer's own errors (unsupported type change, column rename) are plain Errors
    * with no `code` and never match.
    */
   isAlreadyExistsError(error: unknown): boolean {
     const code = (error as { code?: number } | undefined)?.code;
+    const message = String((error as { message?: unknown } | undefined)?.message ?? '');
+    if (code === 3) {
+      return /Cannot create ROW DELETION POLICY because there is already one/i.test(message);
+    }
+
     if (code !== 6 && code !== 9) {
       return false;
     }
 
-    const message = String((error as { message?: unknown } | undefined)?.message ?? '');
     return (
       /Duplicate column name/i.test(message) ||
       /Duplicate name in schema/i.test(message) ||
@@ -165,7 +175,7 @@ export class SpannerSchemaOperations implements SchemaOperations {
 
     // One schema-update operation for the whole alter pass, preserving the statement order the
     // serial version applied: alters (add column / drop+add FK), STRING widenings, index drops,
-    // index creates.
+    // index creates; the table's age-out last, so the column it reads is there when it is written.
     const statements: string[] = new StatementFactory()
       .alterTable(alterParams)
       .map((alterStatement) => alterStatement.sql);
@@ -184,6 +194,13 @@ export class SpannerSchemaOperations implements SchemaOperations {
         message: `[${table.name}] Creating index: ${indexName} (${typeof index.columns === 'string' ? index.columns : index.columns.join(', ')})`,
       });
       statements.push(new StatementFactory().createIndex(index, table.name).sql);
+    }
+
+    if (tableChanges.deleteRowsOlderThanToAdd) {
+      // ADD only: Spanner refuses it beside a standing policy, and a standing policy is never the
+      // sync's to replace or drop (`TableChanges.deleteRowsOlderThanLeftAsItStands`).
+      const { column, days } = tableChanges.deleteRowsOlderThanToAdd;
+      statements.push(`ALTER TABLE \`${table.name}\` ADD ROW DELETION POLICY (${this.olderThan(column, days)})`);
     }
 
     if (statements.length === 0) {
@@ -226,7 +243,10 @@ export class SpannerSchemaOperations implements SchemaOperations {
       }
     }
 
-    const statements = [new StatementFactory().createTable(table.name, serializedColumns, 'id', foreignKeys).sql];
+    const statements = [
+      new StatementFactory().createTable(table.name, serializedColumns, 'id', foreignKeys).sql +
+        this.rowDeletionPolicyClause(table),
+    ];
     for (const index of indexes) {
       const indexName = StatementUtil.getIndexName(table.name, index);
       this.logger.info({
@@ -236,6 +256,29 @@ export class SpannerSchemaOperations implements SchemaOperations {
     }
 
     return statements;
+  }
+
+  /**
+   * The clause that ends the `CREATE TABLE` of a table that declares an age-out
+   * (`Table.deleteRowsOlderThan`), so the table is never without it; empty for every other table.
+   * Spanner's own form: `CREATE TABLE … ) PRIMARY KEY (…), ROW DELETION POLICY (OLDER_THAN(col, INTERVAL n DAY))`.
+   */
+  private rowDeletionPolicyClause(table: Table<any>): string {
+    const declared = table.deleteRowsOlderThan;
+    if (declared === undefined) {
+      return '';
+    }
+
+    const columnName = table.columns[declared.column]!.name;
+    this.logger.info({
+      message: `[${table.name}] Rows the database deletes by age: ${columnName} older than ${declared.days} days`,
+    });
+    return `, ROW DELETION POLICY (${this.olderThan(columnName, declared.days)})`;
+  }
+
+  /** The policy's expression, the same text at a create and at an add. */
+  private olderThan(columnName: string, days: number): string {
+    return `OLDER_THAN(\`${columnName}\`, INTERVAL ${days} DAY)`;
   }
 
   /**

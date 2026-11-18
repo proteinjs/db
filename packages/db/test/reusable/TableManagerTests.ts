@@ -594,6 +594,93 @@ export const tableManagerTests = (
     });
 
     /**
+     * A table's declared age-out (`Table.deleteRowsOlderThan`) against a real database. These cases
+     * register only on a driver whose metadata reader can read an age-out back: one whose database
+     * deletes rows by age itself. What they hold is the age-out the live table carries, read back;
+     * that the database then removes an old row is not something a test database shows.
+     */
+    const readAgeOut = tableManager.schemaMetadata.getDeleteRowsOlderThan?.bind(tableManager.schemaMetadata);
+    if (readAgeOut) {
+      describe('rows deleted by age: the live table carries the age-out its table declares', () => {
+        const TABLE_NAME = 'db_test_tm_visit';
+
+        /** The same table under different declarations; `seenAt` is stored as `seen_at`. */
+        const tableWhere = (declared: Table<any>['deleteRowsOlderThan']): Table<any> =>
+          new (class extends Table<any> {
+            name = TABLE_NAME;
+            columns = withRecordColumns<any>({
+              seenAt: new DateTimeColumn('seen_at'),
+            });
+            deleteRowsOlderThan = declared;
+          })();
+
+        /** Sync `table`; the number of alter passes the sync made. */
+        const altersOf = async (table: Table<any>): Promise<number> => {
+          const alter = jest.spyOn(tableManager.schemaOperations, 'alterTable');
+          try {
+            await tableManager.loadTable(table);
+            return alter.mock.calls.length;
+          } finally {
+            alter.mockRestore();
+          }
+        };
+
+        beforeEach(async () => {
+          await dropTable(tableWhere(undefined));
+        });
+
+        afterEach(async () => {
+          jest.restoreAllMocks();
+          await dropTable(tableWhere(undefined));
+        });
+
+        test('a table created with a declared age-out carries it; a second sync is a no-op', async () => {
+          await tableManager.loadTable(tableWhere({ column: 'seenAt', days: 7 }));
+
+          expect(await readAgeOut(tableWhere(undefined))).toEqual({ column: 'seen_at', days: 7 });
+          expect(await altersOf(tableWhere({ column: 'seenAt', days: 7 }))).toBe(0);
+        });
+
+        test('declared on a table that already stands it is added, in the same start as the column it reads; a standing age-out that is not the declared one is left as it stands', async () => {
+          // The table stands with the record's columns only: the column the age-out reads is new too.
+          await tableManager.loadTable(
+            new (class extends Table<any> {
+              name = TABLE_NAME;
+              columns = withRecordColumns<any>({});
+            })()
+          );
+          expect(await readAgeOut(tableWhere(undefined))).toBeNull();
+
+          expect(await altersOf(tableWhere({ column: 'seenAt', days: 7 }))).toBe(1);
+          expect(await readAgeOut(tableWhere(undefined))).toEqual({ column: 'seen_at', days: 7 });
+
+          // Other days, another column: the schema only moves forward, a start never changes it.
+          expect(await altersOf(tableWhere({ column: 'seenAt', days: 30 }))).toBe(0);
+          expect(await altersOf(tableWhere({ column: 'created', days: 7 }))).toBe(0);
+          expect(await readAgeOut(tableWhere(undefined))).toEqual({ column: 'seen_at', days: 7 });
+        });
+
+        test('a table that declares nothing keeps the age-out that stands: never the sync’s to change', async () => {
+          await tableManager.loadTable(tableWhere({ column: 'created', days: 3 }));
+
+          expect(await altersOf(tableWhere(undefined))).toBe(0);
+          expect(await readAgeOut(tableWhere(undefined))).toEqual({ column: 'created', days: 3 });
+        });
+
+        test('two actors adding the SAME age-out both succeed: the loser’s refused statement is reconciled', async () => {
+          await tableManager.loadTable(tableWhere(undefined));
+          // The winner adds. The loser's planning read is stale (none standing), so it issues the
+          // add the database refuses; its own re-read then finds the declared age-out in place.
+          await tableManager.loadTable(tableWhere({ column: 'seenAt', days: 7 }));
+          const addLoser = driver.getTableManager();
+          jest.spyOn(addLoser.schemaMetadata, 'getDeleteRowsOlderThan').mockImplementationOnce(async () => null);
+          await expect(addLoser.loadTable(tableWhere({ column: 'seenAt', days: 7 }))).resolves.toBeUndefined();
+          expect(await readAgeOut(tableWhere(undefined))).toEqual({ column: 'seen_at', days: 7 });
+        });
+      });
+    }
+
+    /**
      * `loadTables` creates every absent registered table in one pass, each table's foreign keys
      * declared inline on its CREATE. The registry's enumeration order says nothing about those
      * references, so these fixtures are enumerated with each referencing table FIRST — the order

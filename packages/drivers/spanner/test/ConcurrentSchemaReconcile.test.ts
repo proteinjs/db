@@ -302,6 +302,15 @@ describe('Concurrent schema reconcile', () => {
     ).toBe(false);
     expect(isAlreadyExists(9, '9 FAILED_PRECONDITION: Index backfill failed: uniqueness violation')).toBe(false);
 
+    // Matched under code 3, this one message class only: a second ADD of a table's row deletion policy.
+    expect(
+      isAlreadyExists(
+        3,
+        '3 INVALID_ARGUMENT: Cannot create ROW DELETION POLICY because there is already one on column named created in table db_test.'
+      )
+    ).toBe(true);
+    expect(isAlreadyExists(3, '3 INVALID_ARGUMENT: ROW DELETION POLICY does not exist on table db_test.')).toBe(false);
+
     // NOT matched — right message, wrong code family.
     expect(isAlreadyExists(3, '3 INVALID_ARGUMENT: Duplicate column name db_test.qty.')).toBe(false);
     expect(isAlreadyExists(5, '5 NOT_FOUND: Table not found: db_test')).toBe(false);

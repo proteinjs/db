@@ -148,6 +148,34 @@ export abstract class Table<T extends Record> implements Loadable, CustomSeriali
    * at table load.
    */
   public retiredIndexes: string[] = [];
+  /**
+   * ROWS THAT LEAVE BY AGE. The database itself deletes a row of this table once the time in `column`
+   * is more than `days` days old (Spanner: the table's row deletion policy,
+   * `OLDER_THAN(column, INTERVAL days DAY)`). Declare it on a table of temporary rows that nothing
+   * else would ever remove, and that may go the moment they are that old.
+   *
+   * - `column` is a declared time column of the table (`created` is every record's own); `days` is
+   *   a whole number of days, 1 or more. A row leaves at `days` days at the earliest and usually
+   *   within about three days after; a row whose `column` is null never leaves.
+   * - THE SCHEMA SYNC ONLY EVER ADDS IT: with the table at create, and to a live table that carries
+   *   none (a table that stood before its declaration; a database restored from a backup, which
+   *   comes back without any). An age-out that STANDS is never changed or removed by a start, so a
+   *   build rolled back to never changes which rows the database deletes: where the live one is not
+   *   the declared one the sync names both and leaves it as it stands. Other days, another column,
+   *   or no age-out any more is a migration's statement, beside the declaration it matches; such a
+   *   migration reads first whether one stands (a restored database carries none, and there the
+   *   sync adds the declared one).
+   * - Undeclared (the default): the sync neither reads nor changes the table's age-out. Removing a
+   *   declaration therefore leaves the database deleting as before.
+   *
+   * THE DATABASE DELETES THE ROW, not this library: no cascade, no column `beforeDelete`, no table
+   * watcher runs for it. A table whose own declaration gives a delete such work
+   * (`cascadeDeleteReferences`, a column with `beforeDelete`, a searchable encrypted column) is
+   * refused at table load, and so is a declaration on a driver whose database has no age-out of its
+   * own (MariaDB through knex): its rows would never leave. A table that another table's reference
+   * column points at cannot carry one either: there the database itself refuses the statement.
+   */
+  public deleteRowsOlderThan?: { column: keyof T & string; days: number };
   /** When records are deleted, delete records having references pointing to deleted records */
   public cascadeDeleteReferences: () => { table: string; referenceColumn: string }[] = () => [];
   /** Options for configuring SourceRecords (see {@link SourceRecordOptions}) */

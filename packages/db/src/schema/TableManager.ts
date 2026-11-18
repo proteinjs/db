@@ -1,10 +1,11 @@
 import { Logger } from '@proteinjs/logger';
+import { isInstanceOf } from '@proteinjs/util';
 import { QueryBuilder, StatementUtil } from '@proteinjs/db-query';
 import { Column, Table, getColumnPropertyName, getTables } from '../Table';
-import { SchemaOperations, TableChanges } from './SchemaOperations';
+import { LiveDeleteRowsOlderThan, SchemaOperations, TableChanges } from './SchemaOperations';
 import { SchemaMetadata } from './SchemaMetadata';
 import { DbDriver } from '../Db';
-import { DynamicReferenceColumn, DynamicReferenceTableNameColumn } from '../Columns';
+import { DateColumn, DateTimeColumn, DynamicReferenceColumn, DynamicReferenceTableNameColumn } from '../Columns';
 import { StatementConfigFactory } from '../StatementConfigFactory';
 import { EncryptedColumns } from '../encryption/EncryptedColumns';
 import { findDbEncryptionConfig } from '../encryption/DbEncryptionConfig';
@@ -84,6 +85,7 @@ export class TableManager {
     for (const table of tables) {
       this.validateDynamicReferenceColumns(table);
       this.validateRetiredIndexes(table);
+      this.validateDeleteRowsOlderThan(table);
       if (await this.tableExists(table)) {
         existingTables.push(table);
       } else {
@@ -116,6 +118,7 @@ export class TableManager {
   private async loadSingleTable(table: Table<any>): Promise<void> {
     this.validateDynamicReferenceColumns(table);
     this.validateRetiredIndexes(table);
+    this.validateDeleteRowsOlderThan(table);
 
     if (await this.tableExists(table)) {
       await this.alterTableIfChanged(table);
@@ -231,6 +234,7 @@ export class TableManager {
     const tableChanges = await this.getTableChanges(table);
     this.noteToleratedDifferences(table, tableChanges);
     this.noteRetiredIndexDrops(table, tableChanges);
+    this.noteDeleteRowsOlderThan(table, tableChanges);
     if (this.shouldAlterTable(tableChanges)) {
       await this.preflightUniqueIndexAdditions(table, tableChanges);
       this.logger.info({ message: `Altering table: ${table.name}` });
@@ -419,6 +423,49 @@ export class TableManager {
     return names;
   }
 
+  /**
+   * A declared age-out ({@link Table.deleteRowsOlderThan}) the database could not honor as declared,
+   * or could honor only by skipping work this library does at a delete, is refused by name before
+   * any schema is read: a column the table does not declare or that holds no time, days that are not
+   * a whole number of 1 or more, a table whose own declaration gives a delete work to do, and a
+   * driver whose database has no age-out of its own (its metadata reader has no
+   * {@link SchemaMetadata.getDeleteRowsOlderThan}), where the rows would never leave. A table that
+   * declares nothing asks nothing of the database and passes on every driver.
+   */
+  private validateDeleteRowsOlderThan(table: Table<any>): void {
+    const declared = table.deleteRowsOlderThan;
+    if (declared === undefined) {
+      return;
+    }
+
+    const refuse = (reason: string): never => {
+      throw new Error(`(${table.name}) deleteRowsOlderThan cannot be declared: ${reason}`);
+    };
+    const column = table.columns[declared.column];
+    if (!column) {
+      return refuse(`the table declares no column '${declared.column}'`);
+    }
+
+    if (!isInstanceOf(column, DateTimeColumn) && !isInstanceOf(column, DateColumn)) {
+      return refuse(`'${declared.column}' is not a time column (a DateTimeColumn or a DateColumn)`);
+    }
+
+    if (!Number.isInteger(declared.days) || declared.days < 1) {
+      return refuse(`days must be a whole number of days, 1 or more (declared: ${declared.days})`);
+    }
+
+    const deleteWork = this.declaredDeleteWork(table);
+    if (deleteWork.length > 0) {
+      return refuse(
+        `the database deletes the row itself and would skip the work this table gives a delete: ${deleteWork.join(', ')}`
+      );
+    }
+
+    if (!this.schemaMetadata.getDeleteRowsOlderThan) {
+      return refuse(`this driver's database has no age-out of its own, so the rows would never leave`);
+    }
+  }
+
   private validateDynamicReferenceColumns(table: Table<any>): void {
     const isDynamicRefColumn = (column: any): column is DynamicReferenceColumn<any> =>
       typeof column.dynamicRefTableColName === 'string';
@@ -477,6 +524,7 @@ export class TableManager {
 
   private shouldAlterTable(tableChanges: TableChanges) {
     if (
+      tableChanges.deleteRowsOlderThanToAdd === undefined &&
       tableChanges.columnsToCreate.length == 0 &&
       tableChanges.columnsToRename.length == 0 &&
       tableChanges.columnsToAlter.length == 0 &&
@@ -615,7 +663,62 @@ export class TableManager {
       tableChanges.columnsToCreate.push(columnPropertyName);
     }
 
+    await this.readDeleteRowsOlderThan(table, tableChanges);
+
     return tableChanges;
+  }
+
+  /**
+   * What a declared age-out ({@link Table.deleteRowsOlderThan}) asks of the live table. Where the
+   * live table carries NONE it is to be ADDED (a table that stood before its declaration; a
+   * database restored from a backup). Where one STANDS that is not the declared one (other days,
+   * another column, a text the driver could not read) it is LEFT AS IT STANDS and named: the schema
+   * only moves forward, so a start never changes or removes a standing age-out — a build rolled
+   * back to, or an older build starting beside a newer one, would otherwise change which rows the
+   * database deletes. A table that declares nothing is NEVER READ, whatever stands on it: an
+   * age-out made by hand is not the sync's.
+   */
+  private async readDeleteRowsOlderThan(table: Table<any>, tableChanges: TableChanges): Promise<void> {
+    const declaration = table.deleteRowsOlderThan;
+    if (declaration === undefined || !this.schemaMetadata.getDeleteRowsOlderThan) {
+      return;
+    }
+
+    const declared = { column: table.columns[declaration.column]!.name, days: declaration.days };
+    const live = await this.schemaMetadata.getDeleteRowsOlderThan(table);
+    if (live === null) {
+      tableChanges.deleteRowsOlderThanToAdd = declared;
+    } else if (!('column' in live) || live.column !== declared.column || live.days !== declared.days) {
+      tableChanges.deleteRowsOlderThanLeftAsItStands = { declared, live };
+    }
+  }
+
+  /**
+   * The work a table's own declaration gives a delete, which a row the DATABASE deletes by age would
+   * skip: its cascade, a column whose `beforeDelete` cascades, the search-token rows of a searchable
+   * encrypted column. Read off the table alone; work other declarations aim at the table (a reverse
+   * cascade from a reference column elsewhere, a table watcher) is not seen here.
+   */
+  private declaredDeleteWork(table: Table<any>): string[] {
+    const work: string[] = [];
+    if (table.cascadeDeleteReferences().length > 0) {
+      work.push('cascadeDeleteReferences');
+    }
+
+    for (const columnPropertyName in table.columns) {
+      // A reference column always carries the hook and works only when it cascades; any other
+      // column that declares the hook is taken to work.
+      const column = table.columns[columnPropertyName] as Column<any, any> & { cascadeDelete?: boolean };
+      if (typeof column.beforeDelete !== 'undefined' && column.cascadeDelete !== false) {
+        work.push(`${columnPropertyName}.beforeDelete`);
+      }
+    }
+
+    if (new EncryptedColumns().tokenTableFor(table)) {
+      work.push('a searchable encrypted column');
+    }
+
+    return work;
   }
 
   private async getIndexOperations(table: Table<any>) {
@@ -795,6 +898,32 @@ export class TableManager {
       this.logger.info({
         message: `[${table.name}] Dropping retired index: ${index.name} (${columns.join(', ')}) — the table declares it retired`,
         obj: { table: table.name, index: index.name, columns },
+      });
+    }
+  }
+
+  /**
+   * Name, once per sync, what the sync does about a declared age-out: the one it is about to add
+   * (info: the line an operator reads to know the sync set which rows the database deletes, not a
+   * hand), and a standing one that is not the declared one, left as it stands (warn: the database
+   * deletes on other terms than this build declares). Names and numbers only.
+   */
+  private noteDeleteRowsOlderThan(table: Table<any>, tableChanges: TableChanges): void {
+    const say = (ageOut: LiveDeleteRowsOlderThan): string =>
+      'unread' in ageOut ? ageOut.unread : `${ageOut.column} older than ${ageOut.days} days`;
+    const toAdd = tableChanges.deleteRowsOlderThanToAdd;
+    if (toAdd) {
+      this.logger.info({
+        message: `[${table.name}] Rows the database deletes by age: ${say(toAdd)} (the live table: none)`,
+        obj: { table: table.name, declared: toAdd },
+      });
+    }
+
+    const stands = tableChanges.deleteRowsOlderThanLeftAsItStands;
+    if (stands) {
+      this.logger.warn({
+        message: `[${table.name}] Rows the database deletes by age: the live table carries ${say(stands.live)} where ${say(stands.declared)} is declared; left as it stands (the schema only moves forward) — a migration changes a standing age-out, a start never does`,
+        obj: { table: table.name, declared: stands.declared, live: stands.live },
       });
     }
   }

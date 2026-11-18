@@ -1,4 +1,4 @@
-import { ParameterizationConfig, QueryBuilder, SchemaMetadata, Table } from '@proteinjs/db';
+import { LiveDeleteRowsOlderThan, ParameterizationConfig, QueryBuilder, SchemaMetadata, Table } from '@proteinjs/db';
 
 export class SpannerSchemaMetadata extends SchemaMetadata {
   async tableExists(table: Table<any>): Promise<boolean> {
@@ -6,6 +6,29 @@ export class SpannerSchemaMetadata extends SchemaMetadata {
     const generateStatement = (config: ParameterizationConfig) => qb.toSql({ dbName: 'INFORMATION_SCHEMA', ...config });
     const results = await this.dbDriver.runQuery(generateStatement);
     return results.length > 0;
+  }
+
+  /**
+   * The table's row deletion policy as Spanner reports it: `INFORMATION_SCHEMA.TABLES`'s
+   * `ROW_DELETION_POLICY_EXPRESSION`, null on a table that carries none and, on the emulator,
+   * `OLDER_THAN(created, INTERVAL 7 DAY)` for one that does (verified against the emulator image,
+   * 2026-11; the product's information schema page gives the same form by example,
+   * `OLDER_THAN(CreatedAt, INTERVAL 1 DAY)`). A text that does not read as that form is handed back
+   * as `unread`, never guessed at: the sync then names it and leaves it as it stands.
+   */
+  async getDeleteRowsOlderThan(table: Table<any>): Promise<LiveDeleteRowsOlderThan | null> {
+    const qb = new QueryBuilder('TABLES').condition({ field: 'TABLE_NAME', operator: '=', value: table.name });
+    const generateStatement = (config: ParameterizationConfig) => qb.toSql({ dbName: 'INFORMATION_SCHEMA', ...config });
+    const results = await this.dbDriver.runQuery(generateStatement);
+    const expression = results[0]?.['ROW_DELETION_POLICY_EXPRESSION'];
+    if (typeof expression !== 'string' || expression.trim().length === 0) {
+      return null;
+    }
+
+    const olderThan = /^\s*OLDER_THAN\s*\(\s*`?([A-Za-z_][A-Za-z0-9_]*)`?\s*,\s*INTERVAL\s+(\d+)\s+DAY\s*\)\s*$/i.exec(
+      expression
+    );
+    return olderThan ? { column: olderThan[1], days: Number(olderThan[2]) } : { unread: expression };
   }
 
   async getColumnMetadata(table: Table<any>): Promise<{ [columnName: string]: { type: string; isNullable: boolean } }> {

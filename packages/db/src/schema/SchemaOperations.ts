@@ -88,7 +88,27 @@ export type ToleratedColumnDifference =
   | { name: string; difference: 'nullable' }
   | { name: string; difference: 'not-null' };
 
+/**
+ * The age-out a live table carries ({@link Table.deleteRowsOlderThan}), as its database reports it:
+ * the column's stored name and the days, or `unread`, the database's own text for an age-out this
+ * library cannot read as that pair (it is then never taken as equal to a declaration).
+ */
+export type LiveDeleteRowsOlderThan = { column: string; days: number } | { unread: string };
+
 export interface TableChanges {
+  /**
+   * The age-out to ADD, by its column's STORED name: present only when the table declares one and
+   * the live table carries none (a table that stood before its declaration; a database restored
+   * from a backup). The one change the sync ever makes to a table's age-out.
+   */
+  deleteRowsOlderThanToAdd?: { column: string; days: number };
+  /**
+   * Never a change: a live age-out that is not the declared one, LEFT AS IT STANDS for the
+   * operator's eyes. The schema only moves forward: a build rolled back to, or an older build
+   * starting beside a newer one, must never change which rows the database deletes, so a start
+   * neither replaces nor removes a standing age-out; a migration does.
+   */
+  deleteRowsOlderThanLeftAsItStands?: { declared: { column: string; days: number }; live: LiveDeleteRowsOlderThan };
   columnsToCreate: string[];
   columnsToRename: string[];
   columnsToAlter: string[];
