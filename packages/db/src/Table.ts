@@ -159,12 +159,19 @@ export abstract class Table<T extends Record> implements Loadable, CustomSeriali
    *   within about three days after; a row whose `column` is null never leaves.
    * - THE SCHEMA SYNC ONLY EVER ADDS IT: with the table at create, and to a live table that carries
    *   none (a table that stood before its declaration; a database restored from a backup, which
-   *   comes back without any). An age-out that STANDS is never changed or removed by a start, so a
-   *   build rolled back to never changes which rows the database deletes: where the live one is not
-   *   the declared one the sync names both and leaves it as it stands. Other days, another column,
-   *   or no age-out any more is a migration's statement, beside the declaration it matches; such a
-   *   migration reads first whether one stands (a restored database carries none, and there the
-   *   sync adds the declared one).
+   *   comes back without any). An age-out that STANDS is never changed or removed by a start: where
+   *   the live one is not the declared one the sync names both and leaves it as it stands, so a build
+   *   rolled back to never changes the column or the days of an age-out that stands.
+   * - CHANGING THE DAYS OR THE COLUMN is one statement in a migration, shipped with the declaration
+   *   it matches (Spanner: `ALTER TABLE t REPLACE ROW DELETION POLICY (OLDER_THAN(column, INTERVAL
+   *   days DAY))`). The migration reads first whether one stands: a restored database carries none,
+   *   refuses that statement, and gets the declared one from the sync's ADD.
+   * - STOPPING ONE TAKES TWO RELEASES. Any build that still declares it ADDS it back at its start to
+   *   a table that carries none: a rollback, or an older build's server starting during a rolling
+   *   deploy. So the first release removes the declaration, and a later one's migration drops the
+   *   age-out (Spanner: `ALTER TABLE t DROP ROW DELETION POLICY`) only once no build that declares
+   *   it can start again. Nothing in the database tells an older build that an age-out was stopped
+   *   on purpose.
    * - Undeclared (the default): the sync neither reads nor changes the table's age-out. Removing a
    *   declaration therefore leaves the database deleting as before.
    *
