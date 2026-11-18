@@ -104,9 +104,10 @@ export interface TableChanges {
   deleteRowsOlderThanToAdd?: { column: string; days: number };
   /**
    * Never a change: a live age-out that is not the declared one, LEFT AS IT STANDS for the
-   * operator's eyes. The schema only moves forward: a build rolled back to, or an older build
-   * starting beside a newer one, must never change which rows the database deletes, so a start
-   * neither replaces nor removes a standing age-out; a migration does.
+   * operator's eyes. A start neither replaces nor removes a standing age-out, so a build rolled
+   * back to, or an older build starting beside a newer one, never changes the column or the days
+   * of one that stands; a migration does. A start still ADDS a declared age-out to a table that
+   * carries none, an older build's start included (`Table.deleteRowsOlderThan`, on stopping one).
    */
   deleteRowsOlderThanLeftAsItStands?: { declared: { column: string; days: number }; live: LiveDeleteRowsOlderThan };
   columnsToCreate: string[];
