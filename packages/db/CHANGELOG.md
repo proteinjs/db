@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.62.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.61.0...@proteinjs/db@1.62.0) (2026-11-20)
+
+
+### Features
+
+* **db:** a table may declare that its rows leave by age ([704f47b](https://github.com/proteinjs/db/commit/704f47b90c85415f39130ca2b46d63c296eb3455))
+
+
+
+
+
 # [1.61.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.60.0...@proteinjs/db@1.61.0) (2026-11-06)
 
 
