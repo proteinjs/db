@@ -135,6 +135,8 @@ type DurableDeleteScene = {
   stepRefusals: number;
   refuseTheStep: boolean;
   refuseTheCascade: boolean;
+  /** Whether the after-delete watcher empties the list of rows it was handed. */
+  emptyTheListAfterDelete: boolean;
   /** The posts a before-delete watcher takes out of a delete. */
   keep: string[];
 };
@@ -185,8 +187,11 @@ class RecordingDurableDeleteWatcher implements TableWatcher<Post> {
     return cascadeDeleteTestTables.Post;
   }
 
-  async afterDelete(): Promise<void> {
+  async afterDelete<T extends Post>(_recordDeleteCount: number, deletedRecords: T[]): Promise<void> {
     this.scene.afterDeletes++;
+    if (this.scene.emptyTheListAfterDelete) {
+      deletedRecords.splice(0, deletedRecords.length);
+    }
   }
 
   async afterDeleteDurable<T extends Post>(deletedRecords: T[], db?: Db): Promise<void> {
@@ -297,6 +302,7 @@ export const tableWatcherAuthorityTests = (
       stepRefusals: 0,
       refuseTheStep: false,
       refuseTheCascade: false,
+      emptyTheListAfterDelete: false,
       keep: [],
     };
     // Constructed in beforeAll, AFTER the watcher registration below: a Db's construction builds
@@ -385,6 +391,7 @@ export const tableWatcherAuthorityTests = (
       beforeEach(async () => {
         scene.refuseTheStep = false;
         scene.refuseTheCascade = false;
+        scene.emptyTheListAfterDelete = false;
         scene.keep = [];
         await systemDb.delete(comments, {});
         await systemDb.delete(posts, {});
@@ -440,6 +447,36 @@ export const tableWatcherAuthorityTests = (
         expect(toldBeforeTheCommit).toBe(0);
         expect(scene.told).toEqual([{ ids: [post.id], standing: 0, inTransaction: false, system: true }]);
         expect(await systemDb.query(posts, { id: post.id })).toHaveLength(0);
+      });
+
+      test('inside a transaction that commits, an after-delete watcher that empties the list it was handed does not change what the step is told', async () => {
+        const post = await systemDb.insert(posts, { title: 'Told of all the same' });
+        scene.emptyTheListAfterDelete = true;
+
+        await systemDb.runTransaction(async () => {
+          await systemDb.delete(posts, { id: post.id });
+        });
+
+        expect(scene.afterDeletes).toBe(1);
+        expect(scene.told).toEqual([{ ids: [post.id], standing: 0, inTransaction: false, system: true }]);
+      });
+
+      test('inside a transaction, a delete on a table none of whose watchers defines the step queues no after-commit hook, and a delete on a table with such a watcher queues one', async () => {
+        const note = await systemDb.insert(notes, { title: 'No watcher of its table defines the step' });
+        const post = await systemDb.insert(posts, { title: 'A watcher of its table defines the step' });
+        const queuedHooks = () => transactionContextFactory.getTransactionContext().postCommitHooks?.length;
+        const queued: (number | undefined)[] = [];
+
+        await systemDb.runTransaction(async () => {
+          queued.push(queuedHooks());
+          await systemDb.delete(notes, { id: note.id });
+          queued.push(queuedHooks());
+          await systemDb.delete(posts, { id: post.id });
+          queued.push(queuedHooks());
+        });
+
+        expect(queued).toEqual([0, 0, 1]);
+        expect(scene.told).toEqual([{ ids: [post.id], standing: 0, inTransaction: false, system: true }]);
       });
 
       test('a watcher that throws in the step: the delete answers its count, the throw is logged with the watcher’s name, and the watchers after it are told', async () => {

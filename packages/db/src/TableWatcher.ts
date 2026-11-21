@@ -110,8 +110,9 @@ export interface TableWatcher<R extends Record = Record> extends Loadable {
    * - Inside a transaction: after the transaction commits, and never when it rolls back
    *   (`Db.runAfterCommit`). `db` then no longer rides that transaction: it has committed.
    *
-   * `deletedRecords` are the rows as the `beforeDelete` watchers left them, the same list the delete
-   * goes on to cascade from: read it, never change it. A delete they leave with no row tells
+   * `deletedRecords` are the rows as the `beforeDelete` watchers left them, in a list of the step's
+   * own: a change an `afterDelete` watcher makes to the delete's list does not reach it. The step's
+   * watchers share that list: read it, never change it. A delete they leave with no row tells
    * nothing. Rows the database removes by age (`Table.deleteRowsOlderThan`) are told to no watcher.
    *
    * It is a telling, not a part of the write: the rows are already gone when it runs, so a throw

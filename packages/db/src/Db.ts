@@ -567,10 +567,13 @@ export class Db<R extends Record = Record> implements DbService<R> {
     // any step below leaves these rows deleted and the after-delete watchers unreached; and through
     // `runAfterCommit`, so inside a transaction the telling waits for the commit and never follows
     // a rollback. A table with no such watcher, and a delete its before-delete watchers left with
-    // no row, queue nothing.
+    // no row, queue nothing. The step is handed its own copy of the list, made here: inside a
+    // transaction it runs after the after-delete watchers below, which are handed the delete's list,
+    // and a change one of them makes to that list must not change what the step is told.
     if (recordsToDelete.length > 0 && this.tableWatcherRunner.hasAfterDeleteDurableTableWatchers(table)) {
+      const durablyDeletedRecords = [...recordsToDelete];
       await this.runAfterCommit(() =>
-        this.tableWatcherRunner.runAfterDeleteDurableTableWatchers(table, recordsToDelete, this.newHookDb())
+        this.tableWatcherRunner.runAfterDeleteDurableTableWatchers(table, durablyDeletedRecords, this.newHookDb())
       );
     }
     await this.runCascadeDeletions(table, recordsToDelete);
