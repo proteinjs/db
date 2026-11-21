@@ -562,6 +562,17 @@ export class Db<R extends Record = Record> implements DbService<R> {
     await this.runColumnBeforeDeletes(table, recordsToDelete);
     await this.tableWatcherRunner.runBeforeDeleteTableWatchers(table, recordsToDelete, qb, deleteQb, this.newHookDb());
     const recordDeleteCount = await this.dbDriver.runDml(generateDelete, this.transactionForDriver());
+    // The rows' own statement has run: what a watcher is told of as durably deleted
+    // (`TableWatcher.afterDeleteDurable`). Asked here, ahead of the cascades, because a throw from
+    // any step below leaves these rows deleted and the after-delete watchers unreached; and through
+    // `runAfterCommit`, so inside a transaction the telling waits for the commit and never follows
+    // a rollback. A table with no such watcher, and a delete its before-delete watchers left with
+    // no row, queue nothing.
+    if (recordsToDelete.length > 0 && this.tableWatcherRunner.hasAfterDeleteDurableTableWatchers(table)) {
+      await this.runAfterCommit(() =>
+        this.tableWatcherRunner.runAfterDeleteDurableTableWatchers(table, recordsToDelete, this.newHookDb())
+      );
+    }
     await this.runCascadeDeletions(table, recordsToDelete);
     await this.runColumnReverseCascadeDeletions(table, recordsToDelete);
     await this.deleteEncryptionTokenRows(table, recordsToDeleteIds as string[]);
@@ -1187,7 +1198,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
   }
 
   /**
-   * The Db a hook is handed — a column's `beforeDelete`, a table watcher's six hooks: an instance
+   * The Db a hook is handed — a column's `beforeDelete`, a table watcher's hooks: an instance
    * riding THIS instance's driver, tables and transaction context AND its system mode, so the hook
    * runs with the authority of the write that fired it. A hook that opened a Db of its own
    * (`getDb()`, a session-scoped Db) ran as whoever the session held: a system write's follow-on

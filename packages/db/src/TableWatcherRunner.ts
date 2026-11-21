@@ -182,4 +182,49 @@ export class TableWatcherRunner<R extends Record = Record> {
     }
     this.logger.info({ message: `(${table.name}) Finished running after-delete table watchers` });
   }
+
+  /**
+   * Tells a table's watchers that `deletedRecords` are durably deleted (`TableWatcher.afterDeleteDurable`).
+   * `Db.delete` asks for it through `Db.runAfterCommit`, right after the rows' own statement: at
+   * once outside a transaction, after the commit inside one, never on a rollback. The rows are
+   * already gone when a watcher hears of it, so a watcher's throw is not the delete's failure: it
+   * is logged with the watcher's name, and the watchers after it are still told.
+   */
+  async runAfterDeleteDurableTableWatchers<T extends R>(table: Table<T>, deletedRecords: T[], db: Db): Promise<void> {
+    const tableWatchers = this.afterDeleteDurableTableWatchers(table);
+    if (tableWatchers.length === 0) {
+      return;
+    }
+
+    this.logger.info({ message: `(${table.name}) Running after-delete-durable table watchers` });
+    for (const tableWatcher of tableWatchers) {
+      try {
+        this.logger.info({ message: `(${table.name}) Running ${tableWatcher.name()}.afterDeleteDurable` });
+        await tableWatcher.afterDeleteDurable(deletedRecords, db);
+        this.logger.info({ message: `(${table.name}) Finished running ${tableWatcher.name()}.afterDeleteDurable` });
+      } catch (error: any) {
+        this.logger.error({ message: `(${table.name}) ${tableWatcher.name()}.afterDeleteDurable failed`, error });
+      }
+    }
+    this.logger.info({ message: `(${table.name}) Finished running after-delete-durable table watchers` });
+  }
+
+  /**
+   * Whether a watcher of `table` defines `afterDeleteDurable`. `Db.delete` asks before it queues
+   * the telling, so a delete on a table with no such watcher does exactly what it did before the
+   * step existed: nothing is queued on its transaction and its rows are not held until the commit.
+   */
+  hasAfterDeleteDurableTableWatchers<T extends R>(table: Table<T>): boolean {
+    return this.afterDeleteDurableTableWatchers(table).length > 0;
+  }
+
+  /**
+   * The watchers of `table` that define `afterDeleteDurable`: none for a table no watcher names,
+   * and none for a map entry that carries no list for the step. Such an entry is one put in the
+   * map by hand with only the six lists of the write hooks (a suite that stands its own watchers
+   * in for the reflection roster): it names no watcher to tell.
+   */
+  private afterDeleteDurableTableWatchers(table: Table<any>) {
+    return TableWatcherRunner.tableWatcherMap[table.name]?.afterDeleteDurable ?? [];
+  }
 }

@@ -16,6 +16,7 @@ export type TableWatcherMap<R extends Record = any> = {
     afterUpdate: RequiredProps<TableWatcher<R>, 'afterUpdate'>[];
     beforeDelete: RequiredProps<TableWatcher<R>, 'beforeDelete'>[];
     afterDelete: RequiredProps<TableWatcher<R>, 'afterDelete'>[];
+    afterDeleteDurable: RequiredProps<TableWatcher<R>, 'afterDeleteDurable'>[];
   };
 };
 
@@ -31,6 +32,7 @@ export const getTableWatcherMap = <R extends Record = any>(): TableWatcherMap<R>
         afterUpdate: [],
         beforeDelete: [],
         afterDelete: [],
+        afterDeleteDurable: [],
       };
     }
 
@@ -57,6 +59,10 @@ export const getTableWatcherMap = <R extends Record = any>(): TableWatcherMap<R>
 
     if (tableWatcher.afterDelete) {
       mapping.afterDelete.push(tableWatcher as any);
+    }
+
+    if (tableWatcher.afterDeleteDurable) {
+      mapping.afterDeleteDurable.push(tableWatcher as any);
     }
   }
 
@@ -94,4 +100,23 @@ export interface TableWatcher<R extends Record = Record> extends Loadable {
     deleteQb: QueryBuilder<T>,
     db?: Db
   ): Promise<void>;
+  /**
+   * These rows are durably deleted. A delete tells it as soon as the statement that removed the
+   * rows is durable, which is earlier than `afterDelete` and holds where `afterDelete` does not:
+   *
+   * - Outside a transaction: at once after the rows' own statement, BEFORE the delete's cascades,
+   *   reverse cascades and `afterDelete` watchers. Any of those that throws leaves the rows deleted
+   *   and `afterDelete` unreached; this step has already been told.
+   * - Inside a transaction: after the transaction commits, and never when it rolls back
+   *   (`Db.runAfterCommit`). `db` then no longer rides that transaction: it has committed.
+   *
+   * `deletedRecords` are the rows as the `beforeDelete` watchers left them, the same list the delete
+   * goes on to cascade from: read it, never change it. A delete they leave with no row tells
+   * nothing. Rows the database removes by age (`Table.deleteRowsOlderThan`) are told to no watcher.
+   *
+   * It is a telling, not a part of the write: the rows are already gone when it runs, so a throw
+   * here is logged with the watcher's name and neither fails the delete nor keeps the table's
+   * other watchers from being told.
+   */
+  afterDeleteDurable?<T extends R>(deletedRecords: T[], db?: Db): Promise<void>;
 }
