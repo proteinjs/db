@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.63.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.62.0...@proteinjs/db@1.63.0) (2026-11-21)
+
+
+### Bug Fixes
+
+* **db:** the durable-delete step is handed its own copy of the rows ([cf17d3c](https://github.com/proteinjs/db/commit/cf17d3c8db3af4ec063fc456b7628f5ddce4d7a5))
+
+
+### Features
+
+* **db:** a table watcher is told when its rows are durably deleted ([66c3c3e](https://github.com/proteinjs/db/commit/66c3c3e1d6db6105ae141b08ac948e0beb6032f3))
+
+
+
+
+
 # [1.62.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.61.0...@proteinjs/db@1.62.0) (2026-11-20)
 
 
