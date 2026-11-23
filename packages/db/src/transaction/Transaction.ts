@@ -14,8 +14,21 @@ export type OperationQueue<R extends Record = Record> = {
   delete: (...args: Parameters<DbService<R>['delete']>) => void;
 };
 
+/**
+ * THE OPERATIONS A `Transaction` QUEUES, each by the name of the `Db` method that runs it. Declared once:
+ * the `Operation` type names these, and the server's runner runs these and no other
+ * (`TransactionRunner.run`).
+ */
+export const TRANSACTION_OPERATIONS = [
+  'insert',
+  'update',
+  'delete',
+  'updateArrayMembership',
+  'updatePreserving',
+] as const;
+
 export type Operation<R extends Record = Record> = {
-  name: 'insert' | 'update' | 'delete' | 'updateArrayMembership' | 'updatePreserving';
+  name: (typeof TRANSACTION_OPERATIONS)[number];
   args:
     | Parameters<DbService<R>['insert']>
     | Parameters<DbService<R>['update']>

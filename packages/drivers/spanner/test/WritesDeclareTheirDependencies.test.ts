@@ -233,6 +233,25 @@ describe('a write declares the rows it depends on; the server waits for them', (
     ).rejects.toThrow(/afterRows cannot be honoured inside an ambient transaction/);
   }, 30000);
 
+  test('a transaction runs the operations a transaction queues and no other: a request that holds anything else is refused up front, and nothing of it runs', async () => {
+    const id = 'queued-operations-row';
+    await getDbAsSystem().insert(table, { id, text: 'as it was', visible: true } as any);
+    const runner = new TransactionRunner() as unknown as { run: (ops: unknown) => Promise<void> };
+    const refused = /a transaction runs only the operations a transaction queues/;
+    const textNow = async () => (await getDbAsSystem().get(table, { id } as any)).text;
+
+    // A name that is none of the five, beside a queued update: the request is refused, and the update did not run.
+    for (const name of ['toString', 'constructor', '__proto__', 'runTransaction', 'notAnOperation']) {
+      await expect(runner.run([...updateOps(id, 'changed'), { name, args: [table] }])).rejects.toThrow(refused);
+      expect(await textNow()).toBe('as it was');
+    }
+
+    // A queued name with no list of arguments, and a request that is no list, are refused the same way.
+    await expect(runner.run([{ name: 'update' }])).rejects.toThrow(refused);
+    await expect(runner.run({ name: 'update', args: [table, { id, text: 'changed' }] })).rejects.toThrow(refused);
+    expect(await textNow()).toBe('as it was');
+  }, 30000);
+
   test('(e) a write with nothing to declare is the request it always was: the operations alone, run at once', async () => {
     const id = 'declared-row-e';
     await getDbAsSystem().insert(table, { id, text: 'plain', visible: true } as any);

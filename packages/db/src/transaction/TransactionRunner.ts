@@ -12,7 +12,7 @@ import {
   TransactionRunOptions,
   getTransactionRunnerService,
 } from '../services/TransactionRunnerService';
-import { Operation } from './Transaction';
+import { Operation, TRANSACTION_OPERATIONS } from './Transaction';
 
 export const getTransactionRunner = () =>
   typeof self === 'undefined' ? new TransactionRunner() : (getTransactionRunnerService() as TransactionRunner);
@@ -31,6 +31,11 @@ export const getTransactionRunner = () =>
  * exist AND be visible to the caller (a read as the caller sees a row exactly when the caller's
  * grant on its scope has committed), then runs the operations. A row that never appears fails the
  * request with a plain clause.
+ *
+ * THE RUNNER RUNS THE OPERATIONS A `Transaction` QUEUES AND NO OTHER (`TRANSACTION_OPERATIONS`, declared
+ * beside the `Operation` type that names them). A request whose operations are not a list, or that
+ * holds one of another name or with no list of arguments, is refused whole and up front with a plain
+ * clause: no row is waited for, no transaction is opened, and none of its operations runs.
  */
 export class TransactionRunner implements TransactionRunnerService {
   public serviceMetadata = {
@@ -45,6 +50,12 @@ export class TransactionRunner implements TransactionRunnerService {
   private logger = new Logger({ name: this.constructor.name });
 
   async run(ops: Operation<any>[], options?: TransactionRunOptions): Promise<void> {
+    if (!TransactionRunner.areQueuedOperations(ops)) {
+      throw new Error(
+        `TransactionRunner: a transaction runs only the operations a transaction queues (${TRANSACTION_OPERATIONS.join(', ')}) — the write was not run`
+      );
+    }
+
     const db = getDb();
     const afterRows = options?.afterRows ?? [];
     if (afterRows.length > 0) {
@@ -137,6 +148,24 @@ export class TransactionRunner implements TransactionRunnerService {
       await new Promise((resolve) => setTimeout(resolve, Math.min(interval, deadline - now)));
       interval = Math.min(interval * 2, TransactionRunner.MAX_POLL_INTERVAL_MS);
     }
+  }
+
+  /**
+   * Whether a request's operations are ones a `Transaction` queues: a list, each entry named by one of
+   * `TRANSACTION_OPERATIONS` with its arguments in a list.
+   */
+  private static areQueuedOperations(ops: unknown): ops is Operation<any>[] {
+    return (
+      Array.isArray(ops) &&
+      ops.every((op) => {
+        const { name, args } = (op ?? {}) as { name?: unknown; args?: unknown };
+        return (
+          typeof name === 'string' &&
+          (TRANSACTION_OPERATIONS as readonly string[]).indexOf(name) !== -1 &&
+          Array.isArray(args)
+        );
+      })
+    );
   }
 
   /**
