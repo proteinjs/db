@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.38.2](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.38.1...@proteinjs/db-driver-spanner@1.38.2) (2026-11-24)
+
+
+### Bug Fixes
+
+* **db:** a transaction runs the operations a transaction queues and no other ([89f5ed8](https://github.com/proteinjs/db/commit/89f5ed821c3f165c733ee3c05231e2e6cd8bba41))
+
+
+
+
+
 ## [1.38.1](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.38.0...@proteinjs/db-driver-spanner@1.38.1) (2026-11-21)
 
 **Note:** Version bump only for package @proteinjs/db-driver-spanner

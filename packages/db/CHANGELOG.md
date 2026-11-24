@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.63.1](https://github.com/proteinjs/db/compare/@proteinjs/db@1.63.0...@proteinjs/db@1.63.1) (2026-11-24)
+
+
+### Bug Fixes
+
+* **db:** a transaction asks each table's own service door ([a9f28ff](https://github.com/proteinjs/db/commit/a9f28ff520f4fd6a830ce5bb62ccd914820d2440))
+* **db:** a transaction runs the operations a transaction queues and no other ([89f5ed8](https://github.com/proteinjs/db/commit/89f5ed821c3f165c733ee3c05231e2e6cd8bba41))
+
+
+
+
+
 # [1.63.0](https://github.com/proteinjs/db/compare/@proteinjs/db@1.62.0...@proteinjs/db@1.63.0) (2026-11-21)
 
 
