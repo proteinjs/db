@@ -4,6 +4,7 @@ import { Table } from '../src/Table';
 import { withRecordColumns, Record } from '../src/Record';
 import { StringColumn } from '../src/Columns';
 import { TableServiceAuth } from '../src/auth/TableServiceAuth';
+import { TransactionRunner } from '../src/transaction/TransactionRunner';
 
 /**
  * Covers the service-path (RPC) table auth gate:
@@ -16,6 +17,9 @@ import { TableServiceAuth } from '../src/auth/TableServiceAuth';
  *   must be distinguishable from an empty one at the surface that shows it (the admin Sessions
  *   table read "no rows" while every query behind it was denied, 2026-08). A boolean `false`
  *   here collapses into the generic run-service denial.
+ *
+ * - a transaction's operations are held to the same gate, each to its own table's door: the
+ *   transaction runner's service declaration asks `TableServiceAuth` for every operation of a request
  *
  * `UserAuth` reads from a static repo; tests stub it directly per identity — no server needed.
  */
@@ -387,5 +391,84 @@ describe('TableServiceAuth — serviceProtectedColumns', () => {
     setUser([]);
     const table = new ProtectedColumnTable();
     expect(auth().canAccess('query', [table, { owner: 'someone' }])).toBe(true);
+  });
+});
+
+describe('a transaction is held, operation by operation, to each table’s own service door', () => {
+  afterEach(() => {
+    (UserAuth as unknown as UserAuthInternals).userRepo = undefined;
+  });
+
+  /**
+   * Whether the service layer would run a transaction of these operations for the session's person, read from the
+   * runner's own declaration the way the service layer reads any service's: its `canAccess` when it declares one,
+   * else its door for every signed-in person.
+   */
+  const mayRun = (ops: unknown[]): boolean => {
+    const declared = new TransactionRunner().serviceMetadata?.auth as {
+      canAccess?: (methodName: string, args: unknown[]) => boolean;
+      allUsers?: boolean;
+    };
+    return declared.canAccess ? declared.canAccess('run', [ops]) : !!declared.allUsers && UserAuth.isLoggedIn();
+  };
+
+  it('a person with no role: each write to a server-written table is refused in the door’s own words, and one such operation refuses the whole request', () => {
+    setUser([]);
+    const table = new ServerWrittenTable();
+    expectDenied(
+      () => mayRun([{ name: 'insert', args: [table, { title: 't' }] }]),
+      'User is not authorized to insert records into table: server_written_test'
+    );
+    for (const update of [
+      { name: 'update', args: [table, { id: 'x', title: 't' }] },
+      { name: 'updatePreserving', args: [table, { id: 'x', title: 't' }, []] },
+      { name: 'updateArrayMembership', args: [table, { recordId: 'x', columnPropertyName: 'title', ops: [] }] },
+    ]) {
+      expectDenied(() => mayRun([update]), 'User is not authorized to update records in table: server_written_test');
+    }
+    expectDenied(
+      () => mayRun([{ name: 'delete', args: [table, { id: 'x' }] }]),
+      'User is not authorized to delete records from table: server_written_test'
+    );
+    expectDenied(
+      () =>
+        mayRun([
+          { name: 'update', args: [new ProtectedColumnTable(), { id: 'x', title: 't' }] },
+          { name: 'delete', args: [table, { id: 'x' }] },
+        ]),
+      'User is not authorized to delete records from table: server_written_test'
+    );
+  });
+
+  it('a column a table closes to a service write is closed to a transaction’s write', () => {
+    setUser([]);
+    const table = new ProtectedColumnTable();
+    for (const write of [
+      { name: 'insert', args: [table, { title: 't', owner: 'someone' }] },
+      { name: 'update', args: [table, { id: 'x', owner: 'someone' }] },
+      { name: 'updatePreserving', args: [table, { id: 'x', owner: 'someone' }, []] },
+      { name: 'updateArrayMembership', args: [table, { recordId: 'x', columnPropertyName: 'owner', ops: [] }] },
+    ]) {
+      expectDenied(
+        () => mayRun([write]),
+        "Column 'owner' cannot be written via the db service on table: protected_column_test"
+      );
+    }
+  });
+
+  it('what the doors admit is run: a person’s writes to a table open to them, an admin’s to a server-written one; with no one signed in, nothing', () => {
+    const open = new ProtectedColumnTable();
+    const aPersonsWrites = [
+      { name: 'insert', args: [open, { title: 't' }] },
+      { name: 'update', args: [open, { id: 'x', title: 't2', owner: null }] },
+      { name: 'delete', args: [open, { id: 'x' }] },
+    ];
+    setUser([]);
+    expect(mayRun(aPersonsWrites)).toBe(true);
+    setUser(['admin']);
+    expect(mayRun([{ name: 'insert', args: [new ServerWrittenTable(), { title: 't' }] }])).toBe(true);
+    (UserAuth as unknown as UserAuthInternals).userRepo = undefined;
+    expect(mayRun([])).toBe(false);
+    expect(mayRun(aPersonsWrites)).toBe(false);
   });
 });

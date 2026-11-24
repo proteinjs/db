@@ -1,5 +1,8 @@
 import { Logger } from '@proteinjs/logger';
+import { Service } from '@proteinjs/service';
+import { UserAuth } from '@proteinjs/user-auth';
 import { isInstanceOf } from '@proteinjs/util';
+import { TableServiceAuth } from '../auth/TableServiceAuth';
 import { Db, getDb } from '../Db';
 import { Column, Table, getColumnPropertyName, tableByName } from '../Table';
 // After Table: Columns ↔ Table ↔ Record load in a cycle that resolves only when Record is entered
@@ -36,11 +39,19 @@ export const getTransactionRunner = () =>
  * beside the `Operation` type that names them). A request whose operations are not a list, or that
  * holds one of another name or with no list of arguments, is refused whole and up front with a plain
  * clause: no row is waited for, no transaction is opened, and none of its operations runs.
+ *
+ * A PERSON'S TRANSACTION IS HELD, OPERATION BY OPERATION, TO EACH TABLE'S OWN SERVICE DOOR, as the table
+ * service holds the same call made alone (`TableServiceAuth`, the gate of the `Db` class's own service): the
+ * door the table's `auth.service` declares for that operation, and the columns the table closes to a
+ * service write (`serviceProtectedColumns`). One operation its door refuses refuses the whole request, in
+ * the door's own words, before anything of it runs. A transaction the server's own code runs in process
+ * (`Transaction.run` on the server) is not a service call: like every server-side write it answers to the
+ * database doors alone.
  */
 export class TransactionRunner implements TransactionRunnerService {
-  public serviceMetadata = {
+  public serviceMetadata: Service['serviceMetadata'] = {
     auth: {
-      allUsers: true,
+      canAccess: (methodName, args) => TransactionRunner.mayBeCalled(methodName, args),
     },
   };
 
@@ -148,6 +159,26 @@ export class TransactionRunner implements TransactionRunnerService {
       await new Promise((resolve) => setTimeout(resolve, Math.min(interval, deadline - now)));
       interval = Math.min(interval * 2, TransactionRunner.MAX_POLL_INTERVAL_MS);
     }
+  }
+
+  /**
+   * Whether the service layer may run a call for the session's person: `run` alone, for a signed-in person,
+   * each operation admitted by its own table's service door (`TableServiceAuth`, which answers a refusal in
+   * the door's own words). A request that is not operations a `Transaction` queues is left to `run`, which
+   * refuses it by its own clause.
+   */
+  private static mayBeCalled(methodName: string, args: any[]): boolean {
+    if (methodName !== 'run' || !UserAuth.isLoggedIn()) {
+      return false;
+    }
+
+    const ops: unknown = args?.[0];
+    if (!TransactionRunner.areQueuedOperations(ops)) {
+      return true;
+    }
+
+    const tableServiceAuth = new TableServiceAuth();
+    return ops.every((op) => tableServiceAuth.canAccess(op.name, op.args));
   }
 
   /**
