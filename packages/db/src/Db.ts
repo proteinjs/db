@@ -395,7 +395,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
       }
     }
     await addUpdateFieldValues(table, recordCopy);
-    const qb = new QueryBuilderFactory().getQueryBuilder(table, query);
+    const qb = await this.builderFor(table, query, true);
     await this.addColumnQueries(table, qb, 'write');
     if (!query) {
       qb.condition({ field: 'id', operator: '=', value: recordCopy.id as T[keyof T] });
@@ -541,7 +541,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
       this.auth.canDelete(table);
     }
 
-    const qb = new QueryBuilderFactory().getQueryBuilder(table, query);
+    const qb = await this.builderFor(table, query, true);
     await this.addColumnQueries(table, qb, 'delete');
     const recordsToDelete = await this._query(table, qb);
     if (recordsToDelete.length == 0) {
@@ -771,7 +771,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
    * which drift under concurrent writes (rows slide across window frames).
    */
   async query<T extends R>(table: Table<T>, query: Query<T>, options?: QueryOptions<T>): Promise<T[]> {
-    const qb = new QueryBuilderFactory().getQueryBuilder(table, query);
+    const qb = await this.builderFor(table, query);
 
     // Public query interface always runs column queries
     await this.addColumnQueries(table, qb);
@@ -884,7 +884,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
       this.auth.canQuery(table);
     }
 
-    const qb = new QueryBuilderFactory().getQueryBuilder(table, query);
+    const qb = await this.builderFor(table, query);
     qb.aggregate({ function: 'COUNT', resultProp: 'count' });
     await this.addColumnQueries(table, qb);
     const generateQuery = (config: DbDriverQueryStatementConfig) =>
@@ -910,10 +910,58 @@ export class Db<R extends Record = Record> implements DbService<R> {
       this.auth.canQuery(table);
     }
 
+    // Its caller is the running code and so is its builder: nothing is added to one that was read from a text.
+    if (!QueryBuilder.isTheCodesOwn(qb)) {
+      throw new Error(
+        `An aggregates read takes a builder the running code made: nothing was read on table: ${table.name}`
+      );
+    }
+
     await this.addColumnQueries(table, qb);
     const generateQuery = (config: DbDriverQueryStatementConfig) =>
       qb.toSql(this.statementConfigFactory.getStatementConfig(config));
     return await this.dbDriver.runQuery(generateQuery, this.transactionForDriver());
+  }
+
+  /**
+   * The builder a call is run with. A caller's own builder, or a query written as an object, is taken
+   * as it is. A builder that was read from a text is a description of a query: the Db builds its own
+   * builder from it ({@link QueryBuilder.rebuiltFrom}) before anything is added to it or written from
+   * it, so the column queries this Db adds land in a builder this Db made. A query inside the
+   * description is a query of a table of its own: that table's door is asked and that table's column
+   * queries are added to it, as they are to a query of that table made alone.
+   *
+   * The description of an update or a delete (`forAWrite`) says which rows and nothing else
+   * ({@link QueryBuilder.saysOnlyWhichRows}): the rows a write reaches, the rows its watchers are told of
+   * and the rows a delete reads first are then the same rows of this table, under its column queries.
+   */
+  private async builderFor<T extends R>(
+    table: Table<T>,
+    query?: Query<T>,
+    forAWrite: boolean = false
+  ): Promise<QueryBuilder<T>> {
+    if (!isInstanceOf(query, QueryBuilder) || QueryBuilder.isTheCodesOwn(query)) {
+      return new QueryBuilderFactory().getQueryBuilder(table, query);
+    }
+
+    const queriesWithin: QueryBuilder<any>[] = [];
+    const rebuilt = QueryBuilder.rebuiltFrom(query as QueryBuilder<T>, (within) => queriesWithin.push(within));
+    if (forAWrite && !rebuilt.saysOnlyWhichRows()) {
+      throw new Error(
+        `An update's or a delete's query says which rows and nothing else: nothing was written on table: ${table.name}`
+      );
+    }
+
+    const qb = new QueryBuilderFactory().getQueryBuilder(table, rebuilt);
+    for (const within of queriesWithin) {
+      const tableWithin = this.getTable(within.tableName);
+      if (!this.runAsSystem) {
+        this.auth.canQuery(tableWithin);
+      }
+      await this.addColumnQueries(tableWithin, within);
+    }
+
+    return qb;
   }
 
   private async addColumnQueries<T extends R>(

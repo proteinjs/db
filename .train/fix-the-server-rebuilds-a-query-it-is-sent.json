@@ -1,0 +1,6 @@
+{
+  "branch": "fix/the-server-rebuilds-a-query-it-is-sent",
+  "packages": ["db", "query"],
+  "suites": ["packages/db/", "packages/query/"],
+  "removes": []
+}

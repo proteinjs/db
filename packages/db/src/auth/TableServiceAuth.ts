@@ -1,6 +1,8 @@
 import { Logger } from '@proteinjs/logger';
 import { ServiceError, ServiceRefusal } from '@proteinjs/service';
-import { Table, isTable } from '../Table';
+import { isInstanceOf } from '@proteinjs/util';
+import { QueryBuilder } from '@proteinjs/db-query';
+import { Table, isTable, tableByName } from '../Table';
 import { TableAuth } from './TableAuth';
 
 export class TableServiceAuth {
@@ -16,12 +18,14 @@ export class TableServiceAuth {
       const tableAuth = new TableAuth();
       if (methodName === 'get' || methodName == 'query' || methodName == 'getRowCount') {
         tableAuth.canQuery(table as Table<any>, 'service');
+        this.checkServiceQuery(table as Table<any>, args[1]);
       } else if (methodName === 'insert') {
         tableAuth.canInsert(table as Table<any>, 'service');
         this.checkServiceProtectedColumns(table as Table<any>, args[1]);
       } else if (methodName === 'update') {
         tableAuth.canUpdate(table as Table<any>, 'service');
         this.checkServiceProtectedColumns(table as Table<any>, args[1]);
+        this.checkServiceQuery(table as Table<any>, args[2], true);
       } else if (methodName === 'updateArrayMembership') {
         // An update in RMW clothing: gated exactly like `update`. Row visibility is enforced
         // inside the operation itself — scoped/column query injection runs on the server-side
@@ -33,6 +37,7 @@ export class TableServiceAuth {
         this.checkServiceProtectedColumns(table as Table<any>, args[1]);
       } else if (methodName === 'delete') {
         tableAuth.canDelete(table as Table<any>, 'service');
+        this.checkServiceQuery(table as Table<any>, args[1], true);
       } else {
         throw new Error(`User is not authorized to access unsupported Db service api: ${methodName}`);
       }
@@ -80,6 +85,72 @@ export class TableServiceAuth {
       if (value !== undefined && value !== null) {
         throw new ServiceError(`Column '${column}' cannot be written via the db service on table: ${table.name}`);
       }
+    }
+  }
+
+  /**
+   * A query that comes through the service is a description of rows of the table asked. It is read here
+   * the way the Db will read it ({@link QueryBuilder.rebuiltFrom}): it has to describe a query of that
+   * table, and each query inside it is a query of a table of its own, so that table's service door is
+   * asked as well. The Db then builds its own builder from the same description and adds each table's
+   * column queries to it. A query written as an object holds values, not queries. The query of an update
+   * or a delete (`forAWrite`) says which rows and nothing else ({@link QueryBuilder.saysOnlyWhichRows}).
+   */
+  private checkServiceQuery(table: Table<any>, query: any, forAWrite: boolean = false): void {
+    if (!query || typeof query !== 'object') {
+      return;
+    }
+
+    if (!isInstanceOf(query, QueryBuilder)) {
+      const holdsAQuery = (value: any) =>
+        isInstanceOf(value, QueryBuilder) ||
+        (Array.isArray(value) && value.some((item) => isInstanceOf(item, QueryBuilder)));
+      if (Object.keys(query).some((prop) => holdsAQuery(query[prop]))) {
+        throw new ServiceError(
+          `A query written as an object holds values, not a query: it cannot be run via the db service on table: ${table.name}`
+        );
+      }
+      return;
+    }
+
+    const queriesWithin: QueryBuilder<any>[] = [];
+    let described: QueryBuilder<any> = query;
+    if (!QueryBuilder.isTheCodesOwn(query)) {
+      try {
+        described = QueryBuilder.rebuiltFrom(query, (within) => queriesWithin.push(within));
+      } catch {
+        throw new ServiceError(
+          `A query that is not one a builder writes cannot be run via the db service on table: ${table.name}`
+        );
+      }
+    }
+
+    if (described.tableName !== table.name) {
+      throw new ServiceError(
+        `A query built for another table cannot be run via the db service on table: ${table.name}`
+      );
+    }
+
+    if (forAWrite && !described.saysOnlyWhichRows()) {
+      throw new ServiceError(
+        `An update's or a delete's query says which rows and nothing else: this one cannot be run via the db service on table: ${table.name}`
+      );
+    }
+
+    const tableAuth = new TableAuth();
+    for (const within of queriesWithin) {
+      tableAuth.canQuery(this.tableWithin(table, within), 'service');
+    }
+  }
+
+  /** The table a query inside a query names. */
+  private tableWithin(table: Table<any>, within: QueryBuilder<any>): Table<any> {
+    try {
+      return tableByName(within.tableName);
+    } catch {
+      throw new ServiceError(
+        `A query within a query names no table: it cannot be run via the db service on table: ${table.name}`
+      );
     }
   }
 

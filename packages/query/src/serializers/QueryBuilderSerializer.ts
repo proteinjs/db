@@ -34,6 +34,8 @@ export class QueryBuilderSerializer implements CustomSerializer {
     qb.rootId = serializedQb.rootId;
     qb.currentContextIds = serializedQb.currentContextIds;
     qb.paginationNodeId = serializedQb.paginationNodeId;
-    return qb;
+    // A builder made here was read from a text: a description of a query. Whoever runs it builds its own
+    // builder from it (`QueryBuilder.rebuiltFrom`), and no statement is written from this one.
+    return qb.markReadFromText();
   }
 }

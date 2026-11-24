@@ -1,5 +1,9 @@
+import { SourceRepository } from '@proteinjs/reflection';
 import { UserAuth } from '@proteinjs/user-auth';
 import { Logger } from '@proteinjs/logger';
+import { QueryBuilder } from '@proteinjs/db-query';
+import { Serializer } from '@proteinjs/serializer';
+import { QueryBuilderFactory } from '../src/QueryBuilderFactory';
 import { Table } from '../src/Table';
 import { withRecordColumns, Record } from '../src/Record';
 import { StringColumn } from '../src/Columns';
@@ -470,5 +474,153 @@ describe('a transaction is held, operation by operation, to each table’s own s
     (UserAuth as unknown as UserAuthInternals).userRepo = undefined;
     expect(mayRun([])).toBe(false);
     expect(mayRun(aPersonsWrites)).toBe(false);
+  });
+});
+
+/**
+ * A query that comes through the service is a DESCRIPTION of rows of the table asked: a builder read from a
+ * text. The door reads it the way the Db will (`QueryBuilder.rebuiltFrom`): it has to describe a query of
+ * that table, and each query inside it is a query of a table of its own, so that table's service door is
+ * asked too. A query written as an object holds values. The query of an update or a delete says which rows
+ * and nothing else. (The Db then builds its own builder from the same description and adds each table's
+ * column queries: `DbIsSystem.test.ts` holds those cases.)
+ */
+describe('a query that comes through the service is a description of rows of the table asked', () => {
+  type RegistryInternals = { objectCache: { [qualifiedName: string]: unknown[] } };
+  const registry = () => (SourceRepository.get() as unknown as RegistryInternals).objectCache;
+  let registered: unknown[] | undefined;
+
+  const asked = new ProtectedColumnTable();
+  const another = new NoAuthTable();
+  const readable = new ReadOnlyTable();
+  /** A builder as a text gives it to the service: written and read by the serializer, every builder inside it too. */
+  const read = <T>(qb: QueryBuilder<T>): QueryBuilder<T> => Serializer.deserialize(Serializer.serialize(qb));
+  const of = (table: { name: string }) => new QueryBuilder<Doc>(table.name).select({ fields: ['id'] });
+  const holding = (inner: unknown): QueryBuilder<Doc>[] => [
+    read(new QueryBuilder<Doc>(asked.name).condition({ field: 'id', operator: 'IN', value: inner as any })),
+    read(new QueryBuilder<Doc>(asked.name).condition({ field: 'id', operator: 'IN', value: ['x', inner] as any })),
+    read(new QueryBuilder<Doc>(asked.name).sort([{ field: 'id', byValues: [inner] as any }])),
+  ];
+
+  beforeAll(() => {
+    registered = registry()['@proteinjs/db/Table'];
+    registry()['@proteinjs/db/Table'] = [asked, another, readable];
+  });
+
+  afterAll(() => {
+    if (registered) {
+      registry()['@proteinjs/db/Table'] = registered;
+    } else {
+      delete registry()['@proteinjs/db/Table'];
+    }
+  });
+
+  beforeEach(() => {
+    setUser([]);
+  });
+
+  afterEach(() => {
+    (UserAuth as unknown as UserAuthInternals).userRepo = undefined;
+  });
+
+  it('a query built for another table is refused, on every road that takes a query', () => {
+    const refusal = `A query built for another table cannot be run via the db service on table: ${asked.name}`;
+    for (const method of ['query', 'get', 'getRowCount', 'delete']) {
+      expectDenied(() => auth().canAccess(method, [asked, read(of(another))]), refusal);
+    }
+    expectDenied(() => auth().canAccess('update', [asked, { title: 't2' }, read(of(another))]), refusal);
+  });
+
+  it('a query inside a query is a query of a table of its own: that table’s service door is asked', () => {
+    for (const query of holding(of(another))) {
+      expectDenied(
+        () => auth().canAccess('query', [asked, query]),
+        `User is not authorized to query table: ${another.name}`
+      );
+    }
+    for (const query of holding(of(readable))) {
+      expect(auth().canAccess('query', [asked, query])).toBe(true);
+    }
+    expectDenied(
+      () => auth().canAccess('delete', [asked, holding(of(another))[0]]),
+      `User is not authorized to query table: ${another.name}`
+    );
+    expectDenied(
+      () => auth().canAccess('update', [asked, { title: 't2' }, holding(of(another))[0]]),
+      `User is not authorized to query table: ${another.name}`
+    );
+    expectDenied(
+      () => auth().canAccess('query', [asked, holding(of({ name: 'a_table_nobody_declared' }))[0]]),
+      `A query within a query names no table: it cannot be run via the db service on table: ${asked.name}`
+    );
+  });
+
+  it('a query written as an object holds values, not a query', () => {
+    const refusal = `A query written as an object holds values, not a query: it cannot be run via the db service on table: ${asked.name}`;
+    expectDenied(() => auth().canAccess('query', [asked, { id: read(of(readable)) }]), refusal);
+    expectDenied(() => auth().canAccess('query', [asked, { id: ['x', read(of(readable))] }]), refusal);
+    expectDenied(() => auth().canAccess('update', [asked, { title: 't2' }, { id: read(of(readable)) }]), refusal);
+  });
+
+  it('a description no builder writes is refused in plain words', () => {
+    const description = read(
+      new QueryBuilder<Doc>(asked.name).condition({ field: 'title', operator: '=', value: 't' })
+    );
+    (description as unknown as { rootId: unknown }).rootId = '__proto__';
+    expectDenied(
+      () => auth().canAccess('query', [asked, description]),
+      `A query that is not one a builder writes cannot be run via the db service on table: ${asked.name}`
+    );
+  });
+
+  it('an update’s or a delete’s query says which rows and nothing else; a read’s may say more', () => {
+    const refusal = `An update's or a delete's query says which rows and nothing else: this one cannot be run via the db service on table: ${asked.name}`;
+    const rows = () => new QueryBuilder<Doc>(asked.name).condition({ field: 'title', operator: '=', value: 't' });
+    const sayingMore = [
+      rows().aggregate({ function: 'MAX', field: 'title', resultProp: 'latest' }),
+      rows().select({ fields: ['title'] }),
+      rows().groupBy(['title']),
+      rows().timeBucket({ field: 'created', unit: 'day', resultProp: 'day' }),
+      rows().sort([{ field: 'title' }]),
+      rows().paginate({ start: 0, end: 1 }),
+    ];
+    for (const query of sayingMore) {
+      expectDenied(() => auth().canAccess('update', [asked, { title: 't2' }, read(query)]), refusal);
+      expectDenied(() => auth().canAccess('delete', [asked, read(query)]), refusal);
+      expect(auth().canAccess('query', [asked, read(query)])).toBe(true);
+      expect(auth().canAccess('getRowCount', [asked, read(query)])).toBe(true);
+    }
+
+    const grouped = rows().or([
+      { field: 'title', operator: '=', value: 'u' },
+      { field: 'id', operator: 'IN', value: of(readable) as any },
+    ]);
+    expect(auth().canAccess('update', [asked, { title: 't2' }, read(rows())])).toBe(true);
+    expect(auth().canAccess('update', [asked, { title: 't2' }, read(grouped)])).toBe(true);
+    expect(auth().canAccess('delete', [asked, read(grouped)])).toBe(true);
+  });
+
+  it('a person’s own queries of the table are admitted as before: a builder, an object, none', () => {
+    const own = read(
+      new QueryBuilder<Doc>(asked.name)
+        .condition({ field: 'title', operator: 'IN', value: ['a', 'b'] })
+        .sort([{ field: 'title', byValues: ['a'] }])
+        .paginate({ start: 0, end: 10 })
+    );
+    expect(auth().canAccess('query', [asked, own])).toBe(true);
+    expect(auth().canAccess('get', [asked, { id: 'x' }])).toBe(true);
+    expect(auth().canAccess('getRowCount', [asked])).toBe(true);
+    expect(auth().canAccess('update', [asked, { title: 't2', owner: null }, { id: 'x' }])).toBe(true);
+    expect(auth().canAccess('delete', [asked, { id: ['x', 'y'] }])).toBe(true);
+  });
+
+  it('the database runs a builder against the table it was built for, whoever hands it over', () => {
+    const factory = new QueryBuilderFactory();
+    const refusal = `A query built for another table cannot be run on table: ${asked.name}`;
+    const ofAnother = new QueryBuilder<Doc>(another.name);
+    expect(() => factory.getQueryBuilder(asked, ofAnother)).toThrow(refusal);
+    expect(() => factory.createQueryBuilder(asked, ofAnother)).toThrow(refusal);
+    const own = new QueryBuilder<Doc>(asked.name);
+    expect(factory.getQueryBuilder(asked, own)).toBe(own);
   });
 });

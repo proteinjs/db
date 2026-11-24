@@ -109,6 +109,26 @@ describe('QueryBuilder.applyColumnTransforms', () => {
     expect(qb.toSql(config).sql).toContain("`secret_artifact` = 'fp'");
   });
 
+  test('a query inside that was read from a text is not walked into; one the code made is', async () => {
+    const asked: string[] = [];
+    const provider: ColumnQueryTransformProvider = {
+      getTransform: (tableName, prop) => {
+        asked.push(`${tableName}.${prop}`);
+        return undefined;
+      },
+    };
+    const inner = () => new QueryBuilder<Doc>('doc_within').condition({ field: 'secret', operator: '=', value: 'v' });
+    const holding = (within: QueryBuilder<Doc>) =>
+      new QueryBuilder<Doc>('doc').condition({ field: 'id', operator: 'IN', value: within });
+
+    await holding(inner().markReadFromText()).applyColumnTransforms(provider);
+    expect(asked).toEqual(['doc.id']);
+
+    asked.length = 0;
+    await holding(inner()).applyColumnTransforms(provider);
+    expect(asked).toEqual(['doc_within.secret', 'doc.id']);
+  });
+
   test('sort, aggregate, and group-by uses consult the transform', async () => {
     const qb = new QueryBuilder<Doc>('doc')
       .sort([{ field: 'secret' }])

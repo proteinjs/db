@@ -264,6 +264,14 @@ export class StatementParamManager {
       value = Array.isArray(value) ? value.map(momentToDate) : momentToDate(value);
     }
     if (isInstanceOf(value, QueryBuilder)) {
+      // A query inside a statement is written, not bound, and reads a table of its own: it is one the
+      // running code made. A builder read from a text is data, wherever it turns up as a value.
+      if (!QueryBuilder.isTheCodesOwn(value)) {
+        throw new Error(
+          `QueryBuilder: a query inside a statement is one the running code made, not one read from a text — no statement was written`
+        );
+      }
+
       // Generate SQL for the subquery
       const subQuery = value.toSql(this.config);
       if (this.config.useParams) {
