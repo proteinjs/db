@@ -1,6 +1,7 @@
-import { Db, DbDriver, QueryBuilderFactory, Reference, ReferenceArray, Table } from '@proteinjs/db';
+import { Db, DbDriver, QueryBuilderFactory, Reference, ReferenceArray, Table, tableByName } from '@proteinjs/db';
 import { DbTestEnvironment } from '../util/DbTestEnvironment';
-import { dynamicReferenceTestTables } from '../util/tables/dynamicReferenceColumnTestTables';
+import { registerTestUser } from '../util/testUser';
+import { dynamicReferenceTestTables, ProjectAssignment } from '../util/tables/dynamicReferenceColumnTestTables';
 import { cascadeDeleteTestTables } from '../util/tables/cascadeDeleteTestTables';
 
 /**
@@ -121,6 +122,167 @@ export const preloadReferencesTests = (driver: DbDriver, dropTable: (table: Tabl
       expect(queryCount).toBe(0);
       // One round trip for the groups, one for ALL members across both arrays.
       expect(queriesDuringPreload).toBe(2);
+    });
+
+    test("a referenced table the asker's `admits` does not admit is left unloaded; the rest load as before", async () => {
+      const engineerA = await db.insert(dynamicReferenceTestTables.Engineer, {
+        name: 'preload-admits engineer A',
+        yearsOfExperience: 4,
+      });
+      const engineerB = await db.insert(dynamicReferenceTestTables.Engineer, {
+        name: 'preload-admits engineer B',
+        yearsOfExperience: 9,
+      });
+      const designer = await db.insert(dynamicReferenceTestTables.Designer, {
+        name: 'preload-admits designer',
+        specialization: 'Type',
+      });
+      const employees = [engineerA, engineerB, designer];
+      const employeeTables = [
+        dynamicReferenceTestTables.Engineer.name,
+        dynamicReferenceTestTables.Engineer.name,
+        dynamicReferenceTestTables.Designer.name,
+      ];
+      for (let i = 0; i < employees.length; i++) {
+        await db.insert(dynamicReferenceTestTables.ProjectAssignment, {
+          projectName: `preload-admits project ${i}`,
+          employeeRef: new Reference(employeeTables[i], employees[i].id),
+          startDate: '2026-01-01',
+        });
+      }
+
+      const askedAbout: string[] = [];
+      const qb = new QueryBuilderFactory()
+        .getQueryBuilder(dynamicReferenceTestTables.ProjectAssignment)
+        .condition({ field: 'projectName', operator: 'LIKE', value: 'preload-admits project %' })
+        .sort([{ field: 'projectName', desc: false }]);
+      queryCount = 0;
+      const assignments = await db.query(dynamicReferenceTestTables.ProjectAssignment, qb, {
+        preloadReferences: {
+          enabled: true,
+          includeColumns: ['employeeRef'],
+          admits: (tableName) => {
+            askedAbout.push(tableName);
+            return tableName !== dynamicReferenceTestTables.Designer.name;
+          },
+        },
+      });
+      // One round trip for the assignments and one for the engineers; none for the designers.
+      expect(queryCount).toBe(2);
+      expect(assignments.map((assignment) => assignment.employeeRef!._object?.name)).toEqual([
+        'preload-admits engineer A',
+        'preload-admits engineer B',
+        undefined,
+      ]);
+      // The reference left unloaded still says which row it names, for its reader to ask for.
+      expect(assignments[2].employeeRef!._table).toBe(dynamicReferenceTestTables.Designer.name);
+      expect(assignments[2].employeeRef!._id).toBe(designer.id);
+      // Each referenced table is asked about once, however many rows name it.
+      expect(askedAbout.sort()).toEqual(
+        [dynamicReferenceTestTables.Designer.name, dynamicReferenceTestTables.Engineer.name].sort()
+      );
+
+      const member = await db.insert(cascadeDeleteTestTables.MemberArr, { name: 'preload-admits member' });
+      await db.insert(cascadeDeleteTestTables.GroupArr, {
+        groupName: 'preload-admits group',
+        memberRefs: new ReferenceArray(cascadeDeleteTestTables.MemberArr.name, [member.id]),
+      });
+      queryCount = 0;
+      const groups = await db.query(
+        cascadeDeleteTestTables.GroupArr,
+        { groupName: 'preload-admits group' },
+        { preloadReferences: { enabled: true, admits: () => false } }
+      );
+      // One round trip for the group; none for its members.
+      expect(queryCount).toBe(1);
+      expect(groups.length).toBe(1);
+      expect(groups[0].memberRefs!._ids).toEqual([member.id]);
+      expect(groups[0].memberRefs!._objects).toBeUndefined();
+
+      // A list that names nothing has nothing to load: it is filled as before, and its table is not asked about.
+      await db.insert(cascadeDeleteTestTables.GroupArr, {
+        groupName: 'preload-admits empty group',
+        memberRefs: new ReferenceArray(cascadeDeleteTestTables.MemberArr.name, []),
+      });
+      const askedOfAnEmptyList: string[] = [];
+      const empty = await db.query(
+        cascadeDeleteTestTables.GroupArr,
+        { groupName: 'preload-admits empty group' },
+        {
+          preloadReferences: {
+            enabled: true,
+            admits: (tableName) => {
+              askedOfAnEmptyList.push(tableName);
+              return false;
+            },
+          },
+        }
+      );
+      expect(empty[0].memberRefs!._objects).toEqual([]);
+      expect(askedOfAnEmptyList).toEqual([]);
+    });
+
+    test('a read through the table service loads a reference only from a table whose own service door admits the caller', async () => {
+      const engineer = await db.insert(dynamicReferenceTestTables.Engineer, {
+        name: 'preload-door engineer',
+        yearsOfExperience: 2,
+      });
+      const designer = await db.insert(dynamicReferenceTestTables.Designer, {
+        name: 'preload-door designer',
+        specialization: 'Print',
+      });
+      const named: [string, { id: string }][] = [
+        [dynamicReferenceTestTables.Engineer.name, engineer],
+        [dynamicReferenceTestTables.Designer.name, designer],
+      ];
+      for (let i = 0; i < named.length; i++) {
+        await db.insert(dynamicReferenceTestTables.ProjectAssignment, {
+          projectName: `preload-door project ${i}`,
+          employeeRef: new Reference(named[i][0], named[i][1].id),
+          startDate: '2026-01-01',
+        });
+      }
+
+      // The tables as the service resolves them by name. For this case they carry doors: a signed-in person
+      // reads all three through the Db; through the table service they read the assignments and the engineers,
+      // and the designers are left to the default (an admin).
+      const assignments = tableByName(dynamicReferenceTestTables.ProjectAssignment.name);
+      const engineers = tableByName(dynamicReferenceTestTables.Engineer.name);
+      const designers = tableByName(dynamicReferenceTestTables.Designer.name);
+      const asDeclared = [assignments, engineers, designers].map((table) => [table, table.auth] as const);
+      assignments.auth = { db: { all: 'authenticated' }, service: { query: 'authenticated' } };
+      engineers.auth = { db: { all: 'authenticated' }, service: { query: 'authenticated' } };
+      designers.auth = { db: { all: 'authenticated' } };
+
+      /** The read as the service runs it: its arguments as a call's text reads them, the door asked, then the method. */
+      const served = async (projectName: string): Promise<ProjectAssignment> => {
+        const args: [Table<any>, any, any] = [
+          assignments,
+          JSON.parse(JSON.stringify({ projectName })),
+          JSON.parse(JSON.stringify({ preloadReferences: { enabled: true, includeColumns: ['employeeRef'] } })),
+        ];
+        expect(db.serviceMetadata!.auth!.canAccess!('query', args)).toBe(true);
+        return (await db.query(...args))[0];
+      };
+
+      try {
+        // A signed-in person with no role.
+        registerTestUser([]);
+        expect((await served('preload-door project 0')).employeeRef!._object?.name).toBe('preload-door engineer');
+        const ofTheDesigner = await served('preload-door project 1');
+        expect(ofTheDesigner.employeeRef!._table).toBe(designers.name);
+        expect(ofTheDesigner.employeeRef!._id).toBe(designer.id);
+        expect(ofTheDesigner.employeeRef!._object).toBeUndefined();
+
+        // The designers' service door admits an admin, and so the same read loads the designer for one.
+        registerTestUser(['admin']);
+        expect((await served('preload-door project 1')).employeeRef!._object?.name).toBe('preload-door designer');
+      } finally {
+        registerTestUser();
+        for (const [table, auth] of asDeclared) {
+          table.auth = auth;
+        }
+      }
     });
   };
 };

@@ -139,6 +139,21 @@ export interface DbDriver {
   isDuplicateKeyError?(error: unknown): boolean;
 }
 
+/**
+ * What only code on the server sets on a read's preload. A referenced table is loaded only when `admits` answers
+ * `true` for it; a table it does not admit is left unloaded, for the caller to ask for itself. The table
+ * service's door sets it to its own answer for each table (`TableServiceAuth`). It is a function, so it never
+ * crosses the service: one set by a page does nothing. Absent, or anything but a function, every referenced
+ * table is loaded as before (the Db's own door for each still refuses the whole read where it refuses the
+ * caller).
+ */
+export type PreloadHold = { admits?: (tableName: string) => boolean };
+
+/** Read options as the Db takes them: a caller's `QueryOptions`, and the hold on its preload. */
+export type HeldQueryOptions<T> = Omit<QueryOptions<T>, 'preloadReferences'> & {
+  preloadReferences?: NonNullable<QueryOptions<T>['preloadReferences']> & PreloadHold;
+};
+
 export class Db<R extends Record = Record> implements DbService<R> {
   private dbDriver: DbDriver;
   private getTable: (tableName: string) => Table<any>;
@@ -234,7 +249,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     return await this.dbDriver.getTableManager().tableExists(table);
   }
 
-  async get<T extends R>(table: Table<T>, query: Query<T>, options?: QueryOptions<T>): Promise<T> {
+  async get<T extends R>(table: Table<T>, query: Query<T>, options?: HeldQueryOptions<T>): Promise<T> {
     return (await this.query(table, query, options))[0];
   }
 
@@ -770,7 +785,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
    * `QueryCursorLoader` in the UI) instead of positional `paginate(start, end)` offsets,
    * which drift under concurrent writes (rows slide across window frames).
    */
-  async query<T extends R>(table: Table<T>, query: Query<T>, options?: QueryOptions<T>): Promise<T[]> {
+  async query<T extends R>(table: Table<T>, query: Query<T>, options?: HeldQueryOptions<T>): Promise<T[]> {
     const qb = await this.builderFor(table, query);
 
     // Public query interface always runs column queries
@@ -779,7 +794,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     return this._query(table, qb, options);
   }
 
-  private async _query<T extends R>(table: Table<T>, qb: QueryBuilder, options?: QueryOptions<T>): Promise<T[]> {
+  private async _query<T extends R>(table: Table<T>, qb: QueryBuilder, options?: HeldQueryOptions<T>): Promise<T[]> {
     if (!this.runAsSystem) {
       this.auth.canQuery(table);
     }
@@ -801,13 +816,28 @@ export class Db<R extends Record = Record> implements DbService<R> {
    * driver Db). The batch queries ride THIS instance — driver, table resolution, ambient
    * transaction, and authority — so a preload behaves like part of the query that carried
    * it. References already loaded, or serveable from `ReferenceCache` (`Reference.get`
-   * consults it per read, deliberately never stamping `_object`), are left untouched.
+   * consults it per read, deliberately never stamping `_object`), are left untouched. So are the references
+   * into a table the options' `admits` does not admit (`PreloadHold`): asked once for each table that has a
+   * reference to load.
    */
-  private async preloadReferences(records: any[], queryOptions?: QueryOptions<any>) {
+  private async preloadReferences(records: any[], queryOptions?: HeldQueryOptions<any>) {
     const { preloadReferences } = queryOptions || {};
     if (!preloadReferences?.enabled) {
       return;
     }
+
+    // A table the asker's `admits` does not admit is left as it came: its references stay unloaded.
+    const admitted = new Map<string, boolean>();
+    const admits = (tableName: string): boolean => {
+      if (typeof preloadReferences.admits !== 'function') {
+        return true;
+      }
+
+      if (!admitted.has(tableName)) {
+        admitted.set(tableName, preloadReferences.admits(tableName) === true);
+      }
+      return admitted.get(tableName) === true;
+    };
 
     const pendingReferences: Reference<any>[] = [];
     const pendingReferenceArrays: ReferenceArray<any>[] = [];
@@ -823,12 +853,17 @@ export class Db<R extends Record = Record> implements DbService<R> {
 
         if (isInstanceOf(fieldValue, Reference)) {
           const reference = fieldValue as Reference<any>;
-          if (!reference._object && reference._id && !ReferenceCache.get().get(reference._table, reference._id)) {
+          if (
+            !reference._object &&
+            reference._id &&
+            !ReferenceCache.get().get(reference._table, reference._id) &&
+            admits(reference._table)
+          ) {
             pendingReferences.push(reference);
           }
         } else if (isInstanceOf(fieldValue, ReferenceArray)) {
           const referenceArray = fieldValue as ReferenceArray<any>;
-          if (!referenceArray._objects) {
+          if (!referenceArray._objects && (referenceArray._ids.length === 0 || admits(referenceArray._table))) {
             pendingReferenceArrays.push(referenceArray);
           }
         }

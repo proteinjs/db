@@ -7,7 +7,9 @@ import { QueryBuilderFactory } from '../src/QueryBuilderFactory';
 import { Table } from '../src/Table';
 import { withRecordColumns, Record } from '../src/Record';
 import { StringColumn } from '../src/Columns';
+import { TableAuth } from '../src/auth/TableAuth';
 import { TableServiceAuth } from '../src/auth/TableServiceAuth';
+import { HeldQueryOptions } from '../src/Db';
 import { TransactionRunner } from '../src/transaction/TransactionRunner';
 
 /**
@@ -97,6 +99,18 @@ class ReadOnlyTable extends Table<Doc> {
   public auth: Table<Doc>['auth'] = {
     db: { query: 'authenticated' },
     service: { query: 'authenticated' },
+  };
+  public columns = withRecordColumns<Doc>({
+    title: new StringColumn('title'),
+    owner: new StringColumn('owner'),
+  });
+}
+
+/** Read through the Db by any signed-in person; the table service's door is left to the default (an admin). */
+class DbOnlyTable extends Table<Doc> {
+  public name = 'db_only_test';
+  public auth: Table<Doc>['auth'] = {
+    db: { query: 'authenticated' },
   };
   public columns = withRecordColumns<Doc>({
     title: new StringColumn('title'),
@@ -493,6 +507,7 @@ describe('a query that comes through the service is a description of rows of the
   const asked = new ProtectedColumnTable();
   const another = new NoAuthTable();
   const readable = new ReadOnlyTable();
+  const dbOnly = new DbOnlyTable();
   /** A builder as a text gives it to the service: written and read by the serializer, every builder inside it too. */
   const read = <T>(qb: QueryBuilder<T>): QueryBuilder<T> => Serializer.deserialize(Serializer.serialize(qb));
   const of = (table: { name: string }) => new QueryBuilder<Doc>(table.name).select({ fields: ['id'] });
@@ -504,7 +519,7 @@ describe('a query that comes through the service is a description of rows of the
 
   beforeAll(() => {
     registered = registry()['@proteinjs/db/Table'];
-    registry()['@proteinjs/db/Table'] = [asked, another, readable];
+    registry()['@proteinjs/db/Table'] = [asked, another, readable, dbOnly];
   });
 
   afterAll(() => {
@@ -622,5 +637,61 @@ describe('a query that comes through the service is a description of rows of the
     expect(() => factory.createQueryBuilder(asked, ofAnother)).toThrow(refusal);
     const own = new QueryBuilder<Doc>(asked.name);
     expect(factory.getQueryBuilder(asked, own)).toBe(own);
+  });
+
+  it('a read’s references are loaded from a table only when that table’s own service door admits the caller', () => {
+    const preloading = (): HeldQueryOptions<Doc> => ({ preloadReferences: { enabled: true } });
+
+    for (const method of ['query', 'get']) {
+      const options = preloading();
+      expect(auth().canAccess(method, [asked, { id: 'x' }, options])).toBe(true);
+      expect(typeof options.preloadReferences!.admits).toBe('function');
+      const admits = options.preloadReferences!.admits!;
+      expect(admits(asked.name)).toBe(true);
+      expect(admits(readable.name)).toBe(true);
+      // The Db's own door admits this person to the table and the service's does not: the service's is asked.
+      expect(new TableAuth().canPerform(dbOnly, 'query', 'db')).toBe(true);
+      expect(admits(dbOnly.name)).toBe(false);
+      expect(admits(another.name)).toBe(false);
+      expect(admits('a_table_nobody_declared')).toBe(false);
+    }
+
+    // The door's answer stands, whatever the call held under that name.
+    const carried: HeldQueryOptions<Doc> = { preloadReferences: { enabled: true, admits: () => true } };
+    expect(auth().canAccess('query', [asked, { id: 'x' }, carried])).toBe(true);
+    expect(carried.preloadReferences!.admits!(dbOnly.name)).toBe(false);
+
+    // The door admits an admin to both tables, and so does the preload.
+    setUser(['admin']);
+    const admins = preloading();
+    expect(auth().canAccess('query', [asked, { id: 'x' }, admins])).toBe(true);
+    expect(admins.preloadReferences!.admits!(dbOnly.name)).toBe(true);
+    expect(admins.preloadReferences!.admits!(another.name)).toBe(true);
+    setUser([]);
+
+    // A read that asks for no preload is handed on as it came.
+    for (const untouched of ['x', 7, {}, { preloadReferences: null }, { preloadReferences: true }]) {
+      const before = JSON.stringify(untouched);
+      expect(auth().canAccess('query', [asked, { id: 'x' }, untouched])).toBe(true);
+      expect(JSON.stringify(untouched)).toBe(before);
+    }
+    // A count takes no options: whatever stands in their place is neither read nor written on.
+    expect(auth().canAccess('getRowCount', [asked, { id: 'x' }])).toBe(true);
+    const besideACount = preloading();
+    expect(auth().canAccess('getRowCount', [asked, { id: 'x' }, besideACount])).toBe(true);
+    expect(besideACount.preloadReferences!.admits).toBeUndefined();
+    expect(auth().canAccess('getRowCount', [asked, { id: 'x' }, readable])).toBe(true);
+
+    // Options as a call's text reads them are the plain objects the door writes on.
+    const asRead: HeldQueryOptions<Doc> = Serializer.deserialize(Serializer.serialize(preloading()));
+    expect(auth().canAccess('query', [asked, { id: 'x' }, asRead])).toBe(true);
+    expect(asRead.preloadReferences!.admits!(dbOnly.name)).toBe(false);
+
+    // The answer is written onto the plain objects a call's text reads as, and onto no other object.
+    const refusal = `Read options that are not a plain object cannot be run via the db service on table: ${asked.name}`;
+    for (const options of [['x'], readable, { preloadReferences: ['x'] }, { preloadReferences: readable }]) {
+      expectDenied(() => auth().canAccess('query', [asked, { id: 'x' }, options]), refusal);
+    }
+    expect('admits' in readable).toBe(false);
   });
 });

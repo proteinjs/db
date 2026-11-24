@@ -1,0 +1,10 @@
+{
+  "branch": "fix/a-preloaded-reference-asks-its-tables-service-door",
+  "packages": ["db", "drivers/spanner", "drivers/knex"],
+  "suites": [
+    "packages/db/",
+    "packages/drivers/spanner/test/PreloadReferences.test.ts",
+    "packages/drivers/knex/test/PreloadReferences.test.ts"
+  ],
+  "removes": []
+}

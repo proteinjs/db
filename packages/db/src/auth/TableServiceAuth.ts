@@ -3,6 +3,7 @@ import { ServiceError, ServiceRefusal } from '@proteinjs/service';
 import { isInstanceOf } from '@proteinjs/util';
 import { QueryBuilder } from '@proteinjs/db-query';
 import { Table, isTable, tableByName } from '../Table';
+import type { HeldQueryOptions } from '../Db';
 import { TableAuth } from './TableAuth';
 
 export class TableServiceAuth {
@@ -19,6 +20,10 @@ export class TableServiceAuth {
       if (methodName === 'get' || methodName == 'query' || methodName == 'getRowCount') {
         tableAuth.canQuery(table as Table<any>, 'service');
         this.checkServiceQuery(table as Table<any>, args[1]);
+        // A count takes no options: only a read that can preload has its options held.
+        if (methodName !== 'getRowCount') {
+          this.holdPreloadToTheServiceDoor(table as Table<any>, args[2]);
+        }
       } else if (methodName === 'insert') {
         tableAuth.canInsert(table as Table<any>, 'service');
         this.checkServiceProtectedColumns(table as Table<any>, args[1]);
@@ -141,6 +146,60 @@ export class TableServiceAuth {
     for (const within of queriesWithin) {
       tableAuth.canQuery(this.tableWithin(table, within), 'service');
     }
+  }
+
+  /**
+   * A read through the service may ask for the rows its result's references point at
+   * (`QueryOptions.preloadReferences`). Each referenced table is a table of its own: it is loaded only when its
+   * own service door admits the caller for a query. The Db asks through the preload's `admits` (`PreloadHold`),
+   * which is set here whatever the call held under that name; a table the door does not admit is left unloaded,
+   * for the caller to ask for itself. The answer is written onto the options a call's text reads as, which are
+   * plain objects: any other object in their place is refused, never written on.
+   */
+  private holdPreloadToTheServiceDoor(table: Table<any>, options: unknown): void {
+    if (options === null || typeof options !== 'object') {
+      return;
+    }
+
+    const refusal = `Read options that are not a plain object cannot be run via the db service on table: ${table.name}`;
+    if (!TableServiceAuth.isPlainObject(options)) {
+      throw new ServiceError(refusal);
+    }
+
+    const preload: unknown = (options as HeldQueryOptions<any>).preloadReferences;
+    if (preload === null || typeof preload !== 'object') {
+      return;
+    }
+
+    if (!TableServiceAuth.isPlainObject(preload)) {
+      throw new ServiceError(refusal);
+    }
+
+    const tableAuth = new TableAuth();
+    const held: NonNullable<HeldQueryOptions<any>['preloadReferences']> = preload as any;
+    held.admits = (tableName: string): boolean => {
+      let referenced: Table<any>;
+      try {
+        referenced = tableByName(tableName);
+      } catch {
+        this.logger.warn({
+          message: `A reference names a table that is not declared: left unloaded`,
+          obj: {
+            table: table.name,
+            referenced: typeof tableName === 'string' ? tableName.slice(0, 80) : `a ${typeof tableName}`,
+          },
+        });
+        return false;
+      }
+
+      return tableAuth.canPerform(referenced, 'query', 'service');
+    };
+  }
+
+  /** An object as a call's text reads one: made by `{}` or with no prototype, never an array or a class's instance. */
+  private static isPlainObject(value: object): boolean {
+    const prototype = Object.getPrototypeOf(value);
+    return prototype === Object.prototype || prototype === null;
   }
 
   /** The table a query inside a query names. */
