@@ -1,0 +1,19 @@
+{
+  "branch": "feat/a-cascade-made-as-the-system-keeps-to-the-holders-owner",
+  "packages": ["db", "drivers/spanner", "drivers/knex"],
+  "suites": [
+    "packages/db/",
+    "packages/drivers/spanner/test/CascadeDelete.test.ts",
+    "packages/drivers/spanner/test/Crud.test.ts",
+    "packages/drivers/spanner/test/Transaction.test.ts",
+    "packages/drivers/spanner/test/TableWatcherAuthority.test.ts",
+    "packages/drivers/spanner/test/DynamicReferenceColumn.test.ts",
+    "packages/drivers/spanner/test/PreloadReferences.test.ts",
+    "packages/drivers/knex/test/CascadeDelete.test.ts",
+    "packages/drivers/knex/test/Crud.test.ts",
+    "packages/drivers/knex/test/Transaction.test.ts",
+    "packages/drivers/knex/test/DynamicReferenceColumn.test.ts",
+    "packages/drivers/knex/test/PreloadReferences.test.ts"
+  ],
+  "removes": []
+}

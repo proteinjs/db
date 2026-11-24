@@ -428,6 +428,24 @@ export type ColumnOptions = {
    * this a client-path update could reassign a row into another user's scope).
    */
   immutable?: boolean | ((runAsSystem: boolean) => boolean);
+  /**
+   * This column says whose row it is (a scoped table's scope column). Where the table that holds a cascading
+   * reference (`ReferenceColumn`, `ReferenceArrayColumn` or `DynamicReferenceColumn` with `cascadeDelete`) and
+   * the table it names each have such a column, a delete made as the system removes, with each holder, only
+   * the rows it names whose column holds that holder's own value; a holder whose value is null takes the rows
+   * whose value is null. The option changes nothing else: a cascade made for a person is as it was (which rows
+   * a person may delete in the referenced table is that table's own door and its columns' `addToQuery`), and
+   * so is a cascade where either table has no such column.
+   *
+   * - One column per table: a table that marks two is refused when a cascade reads it.
+   * - A plain stored value, the same kind in both tables (a string or a number, compared as it is read): a
+   *   value that is an object is refused when a cascade reads it.
+   * - The holder is read with this column: a delete made as the system whose query leaves it out is refused
+   *   where the holder names a row of a table that has such a column too.
+   * - Not the key owner of an encrypted column (`DbEncryptionConfig.resolveKeyOwner`: whose data key seals a
+   *   cell). In a scoped table both come to the row's scope by default.
+   */
+  owner?: boolean;
   /** Add conditions to query; called on every query of this table */
   addToQuery?: (qb: QueryBuilder, runAsSystem: boolean, operation: 'read' | 'write' | 'delete') => Promise<void>;
   /**

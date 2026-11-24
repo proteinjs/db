@@ -266,7 +266,8 @@ export class ReferenceArrayColumn<T extends Record> extends ObjectColumn<Referen
   /**
    * Cascade: the referenced records go with the holder. Runs through the Db the firing write
    * hands it — its driver, its transaction context, its authority — and off the ids the column
-   * stores; nothing here opens a Db of its own or re-reads the referenced rows, either of which
+   * stores; nothing here opens a Db of its own. What a cascade reads (whose the named rows are,
+   * where both tables say: `Cascade`) and what it removes go through that Db, since any other
    * would run as the session's user rather than as the write (a system delete's cascade must stay
    * system: in a background context there is no session user at all).
    */
@@ -281,24 +282,20 @@ export class ReferenceArrayColumn<T extends Record> extends ObjectColumn<Referen
       return;
     }
 
-    const recordIdsToDelete: string[] = [];
+    const namings: Naming[] = [];
     for (const record of records) {
       const referenceArray = record[columnPropertyName] as ReferenceArray<Record> | null | undefined;
-      if (referenceArray) {
-        recordIdsToDelete.push(...referenceArray._ids);
+      if (referenceArray && referenceArray._ids.length > 0) {
+        namings.push({ holder: record, ids: referenceArray._ids });
       }
     }
 
-    if (recordIdsToDelete.length < 1) {
+    if (namings.length < 1) {
       return;
     }
 
     // Optional in the hook contract for implementers that need neither; the Db hands both to every hook.
-    const referenceTable = getTable!(this.referenceTable);
-    const qb = new QueryBuilderFactory()
-      .getQueryBuilder(referenceTable)
-      .condition({ field: 'id', operator: 'IN', value: recordIdsToDelete });
-    await db!.delete(referenceTable, qb);
+    await new Cascade(table, getTable!(this.referenceTable), db!).remove(namings);
   }
 }
 
@@ -360,24 +357,20 @@ export class ReferenceColumn<T extends Record> extends StringColumn<Reference<T>
       return;
     }
 
-    const recordIdsToDelete: string[] = [];
+    const namings: Naming[] = [];
     for (const record of records) {
       const reference = record[columnPropertyName] as Reference<Record>;
       if (reference && reference._id) {
-        recordIdsToDelete.push(reference._id);
+        namings.push({ holder: record, ids: [reference._id] });
       }
     }
 
-    if (recordIdsToDelete.length < 1) {
+    if (namings.length < 1) {
       return;
     }
 
     // Optional in the hook contract for implementers that need neither; the Db hands both to every hook.
-    const referenceTable = getTable!(this.referenceTable);
-    const qb = new QueryBuilderFactory()
-      .getQueryBuilder(referenceTable)
-      .condition({ field: 'id', operator: 'IN', value: recordIdsToDelete });
-    await db!.delete(referenceTable, qb);
+    await new Cascade(table, getTable!(this.referenceTable), db!).remove(namings);
   }
 }
 
@@ -550,27 +543,129 @@ export class DynamicReferenceColumn<T extends Record> extends StringColumn<Refer
       return;
     }
 
-    // The referenced ids, grouped by the table each row names
-    const recordsToDelete = new Map<string, string[]>();
+    // What each holder names, grouped by the table each row names
+    const namingsByTable = new Map<string, Naming[]>();
     for (const record of records) {
       const reference = record[columnPropertyName] as Reference<Record>;
       if (!reference?._id || !reference._table) {
         continue;
       }
 
-      if (!recordsToDelete.has(reference._table)) {
-        recordsToDelete.set(reference._table, []);
+      if (!namingsByTable.has(reference._table)) {
+        namingsByTable.set(reference._table, []);
       }
-      recordsToDelete.get(reference._table)!.push(reference._id);
+      namingsByTable.get(reference._table)!.push({ holder: record, ids: [reference._id] });
     }
 
     // Optional in the hook contract for implementers that need neither; the Db hands both to every hook.
-    for (const [tableName, ids] of Array.from(recordsToDelete.entries())) {
-      const referenceTable = getTable!(tableName);
-      const qb = new QueryBuilderFactory()
-        .getQueryBuilder(referenceTable)
-        .condition({ field: 'id', operator: 'IN', value: ids });
-      await db!.delete(referenceTable, qb);
+    for (const [tableName, namings] of Array.from(namingsByTable.entries())) {
+      await new Cascade(table, getTable!(tableName), db!).remove(namings);
     }
+  }
+}
+
+/** What one holder row that is being deleted names in one referenced table. */
+type Naming = { holder: any; ids: string[] };
+
+/**
+ * The delete a cascade makes: the rows that the holders being deleted name in one referenced table.
+ *
+ * A cascade runs through the Db of the delete that fired it. Made for a person it is one delete of every row
+ * named, and which of those a person may delete is the referenced table's own affair (its door, its columns'
+ * `addToQuery`), as it always was. Made as the system it meets no such rule. So where the holding table and
+ * the referenced table each have a column that says whose row it is (`ColumnOptions.owner`), a cascade made as
+ * the system keeps to the holder's owner itself: the owners of the rows named are read once, and the rows
+ * removed are those whose owner is the owner of a holder that names them. A holder that has no owner takes the
+ * rows that have none. Where either table has no such column the cascade is as it was.
+ *
+ * A declaration or a read this cannot keep to is refused by name, before this cascade removes a row: a table
+ * that marks two such columns, an owner that is an object, a holder read without its owner.
+ */
+class Cascade {
+  constructor(
+    private holderTable: Table<any>,
+    private referenceTable: Table<any>,
+    private db: Db
+  ) {}
+
+  async remove(namings: Naming[]): Promise<void> {
+    const holderOwner = Cascade.ownerColumnOf(this.holderTable);
+    const referenceOwner = Cascade.ownerColumnOf(this.referenceTable);
+    const everyId: string[] = [];
+    for (const { ids } of namings) {
+      everyId.push(...ids);
+    }
+
+    if (!this.db.isSystem() || holderOwner === undefined || referenceOwner === undefined) {
+      await this.db.delete(this.referenceTable, this.rows(everyId));
+      return;
+    }
+
+    // The holders' owners first: a refusal here comes before this cascade reads or removes anything.
+    for (const { holder } of namings) {
+      if (holder[holderOwner] === undefined) {
+        throw new Error(
+          `A cascade made as the system keeps to its holder's owner, and ${this.holderTable.name}.${holderOwner} was not read with the row: this cascade removed nothing`
+        );
+      }
+
+      Cascade.plain(holder[holderOwner], this.holderTable, holderOwner);
+    }
+
+    // Whose each named row is, read once. A holder takes the rows it names that are its own owner's.
+    const read: any[] = await this.db.query(
+      this.referenceTable,
+      this.rows(everyId).select({ fields: ['id', referenceOwner] })
+    );
+    const ownerOf = new Map<string, unknown>();
+    for (const row of read) {
+      ownerOf.set(row.id, Cascade.plain(row[referenceOwner] ?? null, this.referenceTable, referenceOwner));
+    }
+
+    const own = new Set<string>();
+    for (const { holder, ids } of namings) {
+      const owner = holder[holderOwner];
+      for (const id of ids) {
+        if (ownerOf.has(id) && ownerOf.get(id) === owner) {
+          own.add(id);
+        }
+      }
+    }
+
+    if (own.size > 0) {
+      await this.db.delete(this.referenceTable, this.rows(Array.from(own)));
+    }
+  }
+
+  /** The rows of the referenced table that have these ids. */
+  private rows(ids: string[]) {
+    return new QueryBuilderFactory()
+      .getQueryBuilder(this.referenceTable)
+      .condition({ field: 'id', operator: 'IN', value: ids });
+  }
+
+  /** An owner is a plain stored value, compared as it is read (a string, a number, or none): an object is refused. */
+  private static plain(owner: unknown, table: Table<any>, column: string): unknown {
+    if (owner !== null && typeof owner === 'object') {
+      throw new Error(
+        `An owner column holds a plain value (a string or a number), and ${table.name}.${column} holds an object: this cascade removed nothing`
+      );
+    }
+
+    return owner;
+  }
+
+  /** The property name of the column that says whose row it is, where the table has one. A row is one owner's. */
+  private static ownerColumnOf(table: Table<any>): string | undefined {
+    const owners = Object.keys(table.columns).filter(
+      (property) => (table.columns as any)[property]?.options?.owner === true
+    );
+    if (owners.length > 1) {
+      throw new Error(
+        `Table ${table.name} marks more than one column as its rows' owner (${owners.join(', ')}): a row is one owner's`
+      );
+    }
+
+    return owners[0];
   }
 }

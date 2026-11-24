@@ -12,20 +12,26 @@ import {
 } from '@proteinjs/db';
 
 // --- Cascade: ReferenceColumn (GroupRef -> MemberRef)
+// The holder says whose row it is (`keeper`, its owner column) and the member table does not: a pair where
+// one table has no such column, cascaded as a pair with none.
 export interface MemberRef extends Record {
   name: string;
 }
 export interface GroupRef extends Record {
   groupName: string;
+  keeper?: string | null;
   memberRef?: Reference<MemberRef> | null;
 }
 
 // --- Cascade: ReferenceArrayColumn (GroupArr -> MemberArr[])
+// Both say whose row it is (`keeper`), and a person may delete in both: what a person's delete takes along.
 export interface MemberArr extends Record {
   name: string;
+  keeper?: string | null;
 }
 export interface GroupArr extends Record {
   groupName: string;
+  keeper?: string | null;
   memberRefs?: ReferenceArray<MemberArr> | null;
 }
 
@@ -85,19 +91,25 @@ export interface Mission extends Record {
 // the caller's scope to each query and throws when the context carries no user). A holder deleted
 // AS SYSTEM must take its children with it: the cascade runs with the authority of the write that
 // fired it, never as whoever happens to be in the session.
+// Each of the four also says whose row it is (`keeper`, the tables' owner column, stored as `keeper_id`): a
+// holder deleted AS SYSTEM takes with it the children of its own keeper, and no other keeper's.
 export interface GuardedMember extends Record {
   name: string;
+  keeper?: string | null;
 }
 export interface GuardedHolderRef extends Record {
   holderName: string;
+  keeper?: string | null;
   memberRef?: Reference<GuardedMember> | null;
 }
 export interface GuardedHolderArr extends Record {
   holderName: string;
+  keeper?: string | null;
   memberRefs?: ReferenceArray<GuardedMember> | null;
 }
 export interface GuardedHolderDyn extends Record {
   holderName: string;
+  keeper?: string | null;
   memberDynTableName?: string | null;
   memberDynRef?: Reference<GuardedMember> | null;
 }
@@ -157,6 +169,7 @@ export class GroupRefTable extends Table<GroupRef> {
   name = GROUP_REF_TABLE;
   columns: Table<GroupRef>['columns'] = withRecordColumns<GroupRef>({
     groupName: new StringColumn('group_name'),
+    keeper: new StringColumn('keeper_id', { owner: true }),
     memberRef: new ReferenceColumn<MemberRef>(
       'member_id',
       MEMBER_REF_TABLE,
@@ -170,12 +183,14 @@ export class MemberArrTable extends Table<MemberArr> {
   name = MEMBER_ARR_TABLE;
   columns: Table<MemberArr>['columns'] = withRecordColumns<MemberArr>({
     name: new StringColumn('name'),
+    keeper: new StringColumn('keeper_id', { owner: true }),
   });
 }
 export class GroupArrTable extends Table<GroupArr> {
   name = GROUP_ARR_TABLE;
   columns: Table<GroupArr>['columns'] = withRecordColumns<GroupArr>({
     groupName: new StringColumn('group_name'),
+    keeper: new StringColumn('keeper_id', { owner: true }),
     memberRefs: new ReferenceArrayColumn<MemberArr>(
       'member_ids',
       MEMBER_ARR_TABLE,
@@ -305,12 +320,14 @@ export class GuardedMemberTable extends Table<GuardedMember> {
         }
       },
     }),
+    keeper: new StringColumn('keeper_id', { owner: true }),
   });
 }
 export class GuardedHolderRefTable extends Table<GuardedHolderRef> {
   name = GUARDED_HOLDER_REF_TABLE;
   columns: Table<GuardedHolderRef>['columns'] = withRecordColumns<GuardedHolderRef>({
     holderName: new StringColumn('holder_name'),
+    keeper: new StringColumn('keeper_id', { owner: true }),
     memberRef: new ReferenceColumn<GuardedMember>(
       'member_id',
       GUARDED_MEMBER_TABLE,
@@ -322,6 +339,7 @@ export class GuardedHolderArrTable extends Table<GuardedHolderArr> {
   name = GUARDED_HOLDER_ARR_TABLE;
   columns: Table<GuardedHolderArr>['columns'] = withRecordColumns<GuardedHolderArr>({
     holderName: new StringColumn('holder_name'),
+    keeper: new StringColumn('keeper_id', { owner: true }),
     memberRefs: new ReferenceArrayColumn<GuardedMember>(
       'member_ids',
       GUARDED_MEMBER_TABLE,
@@ -333,6 +351,7 @@ export class GuardedHolderDynTable extends Table<GuardedHolderDyn> {
   name = GUARDED_HOLDER_DYN_TABLE;
   columns: Table<GuardedHolderDyn>['columns'] = withRecordColumns<GuardedHolderDyn>({
     holderName: new StringColumn('holder_name'),
+    keeper: new StringColumn('keeper_id', { owner: true }),
     memberDynTableName: new DynamicReferenceTableNameColumn('member_dyn_table_name', 'member_dyn_ref'),
     memberDynRef: new DynamicReferenceColumn<GuardedMember>(
       'member_dyn_ref',
