@@ -91,6 +91,10 @@ export class TransactionRunner implements TransactionRunnerService {
    * takes its measure from there — one owner for the number, configured with the database — not
    * from a number of its own. A write that waits here holds one request and a poll, nothing else.
    *
+   * A row is there when the caller can reach it (`Db.canReach`): as a reader, or, when that read
+   * answers nothing, as a writer of it. A table may hide from a read a row it leaves open to a write,
+   * and what waits here is a write. Both questions are asked as the caller, never as the system.
+   *
    * Each poll is a single-use strong read outside any transaction, so a commit is seen the moment
    * it lands; the interval starts short and backs off so a dependency landing in hundreds of
    * milliseconds is caught within tens.
@@ -125,7 +129,7 @@ export class TransactionRunner implements TransactionRunnerService {
       for (const row of waiting) {
         const stillAbsent: Table<any>[] = [];
         for (const table of row.tables) {
-          if (!(await db.get(table, { id: row.id } as any))) {
+          if (!(await db.canReach(table, row.id))) {
             stillAbsent.push(table);
           }
         }

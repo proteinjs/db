@@ -41,6 +41,8 @@ interface Line extends Record {
   text: string;
   /** The row is visible to a caller only once `visible` is true (a scope's grant, modelled). */
   visible?: boolean | null;
+  /** A row put away is hidden from a caller's read and stays open to a caller's write. */
+  putAway?: boolean | null;
 }
 
 class DeclaredRowTestTable extends Table<Line> {
@@ -53,6 +55,15 @@ class DeclaredRowTestTable extends Table<Line> {
       addToQuery: async (qb, runAsSystem) => {
         if (!runAsSystem) {
           qb.condition({ field: 'visible', operator: '=', value: true });
+        }
+      },
+    }),
+    putAway: new BooleanColumn('put_away', {
+      // Hidden from a read ≠ closed to a write: a column's query is handed the operation it is asked
+      // for, and this one hides a row that is put away from every operation but a write.
+      addToQuery: async (qb, runAsSystem, operation) => {
+        if (!runAsSystem && operation !== 'write') {
+          qb.condition({ field: 'putAway', operator: 'IS NULL' });
         }
       },
     }),
@@ -169,6 +180,31 @@ describe('a write declares the rows it depends on; the server waits for them', (
     expect((await db.get(table, { id })).text).toBe('root, edited');
     expect(elapsed).toBeGreaterThanOrEqual(350);
   }, 30000);
+
+  test('a row hidden from a read and open to a write is there for the write that depends on it; a row the caller can reach neither way is waited for to the bound', async () => {
+    const putAway = 'declared-row-put-away';
+    const closed = 'declared-row-closed-both-ways';
+    await getDbAsSystem().insert(table, { id: putAway, text: 'put away', visible: true, putAway: true } as any);
+    await getDbAsSystem().insert(table, { id: closed, text: 'closed', visible: false, putAway: true } as any);
+    const deadlineMs = 2_000;
+    const shortDeadlineDriver = new SpannerDriver({ ...spannerConfig, operationDeadlineMs: deadlineMs }, getTable);
+    const runner = new TransactionRunner() as unknown as Runner;
+    const textOf = async (id: string) => (await getDbAsSystem().get(table, { id } as any)).text;
+    const declared = (id: string, text: string) =>
+      onDefaultDriver(shortDeadlineDriver, () => runner.run(updateOps(id, text), { afterRows: [id] }));
+
+    // The caller's read does not show the row and the caller's write reaches it. A wait that asked as a
+    // reader alone waited the bound out and refused a write that had its row all along.
+    expect(await db.get(table, { id: putAway })).toBeUndefined();
+    await declared(putAway, 'put away, edited');
+    expect(await textOf(putAway)).toBe('put away, edited');
+
+    // The caller's write does not reach this one either: it is waited for, and the write is refused.
+    await expect(declared(closed, 'never')).rejects.toThrow(
+      new RegExp(`waited ${deadlineMs} ms for rows this write depends on .* still absent: ${table.name}:${closed} `)
+    );
+    expect(await textOf(closed)).toBe('closed');
+  }, 45_000);
 
   test('(c) a row that never exists: a plain failure at the db driver`s per-operation deadline — never a hang, never a silent OK; the operations did not run', async () => {
     const absent = 'declared-row-never';
