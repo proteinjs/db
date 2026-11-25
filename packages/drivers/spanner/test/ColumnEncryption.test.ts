@@ -149,6 +149,34 @@ describe('Column encryption: the transparent seam', () => {
     await db.delete(noteTable, { id: inserted.id });
   });
 
+  test("a column's own step before an update runs before the write of encrypted columns too: a refusal there leaves the row's ciphertext as it was", async () => {
+    const inserted = await db.insert(noteTable, {
+      scope: OWNER_A,
+      title: 'Before',
+      label: 'a',
+      body: 'b',
+      status: 'active',
+    });
+    const atRest = await rawColumn(noteTable.name, inserted.id, 'title');
+
+    await expect(
+      db.update(noteTable, {
+        id: inserted.id,
+        title: 'Never written',
+        status: EncNoteTable.STATUS_ITS_COLUMN_REFUSES,
+      })
+    ).rejects.toThrow('the status column refuses this update');
+
+    expect(await rawColumn(noteTable.name, inserted.id, 'title')).toBe(atRest);
+    const fetched = await db.get(noteTable, { id: inserted.id });
+    expect([fetched.title, fetched.status]).toEqual(['Before', 'active']);
+    // An update its column lets through is written through the seam as before.
+    expect(await db.update(noteTable, { id: inserted.id, title: 'After', status: 'archived' })).toBe(1);
+    expect((await db.get(noteTable, { id: inserted.id })).title).toBe('After');
+
+    await db.delete(noteTable, { id: inserted.id });
+  });
+
   test('null stays null: IS NULL / IS NOT NULL queries keep working natively', async () => {
     const withTitle = await db.insert(noteTable, { scope: OWNER_A, title: 'present', label: 'x', body: null });
     const withoutTitle = await db.insert(noteTable, { scope: OWNER_A, title: null, label: 'y', body: 'here' });

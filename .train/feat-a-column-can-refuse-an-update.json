@@ -1,0 +1,18 @@
+{
+  "branch": "feat/a-column-can-refuse-an-update",
+  "packages": ["db", "drivers/spanner", "drivers/knex"],
+  "suites": [
+    "packages/db/",
+    "packages/drivers/spanner/test/Crud.test.ts",
+    "packages/drivers/spanner/test/Transaction.test.ts",
+    "packages/drivers/spanner/test/DynamicReferenceColumn.test.ts",
+    "packages/drivers/spanner/test/ServiceUpdateVerbs.test.ts",
+    "packages/drivers/spanner/test/TableWatcherAuthority.test.ts",
+    "packages/drivers/spanner/test/WritesDeclareTheirDependencies.test.ts",
+    "packages/drivers/spanner/test/ColumnEncryption.test.ts",
+    "packages/drivers/knex/test/Crud.test.ts",
+    "packages/drivers/knex/test/Transaction.test.ts",
+    "packages/drivers/knex/test/DynamicReferenceColumn.test.ts"
+  ],
+  "removes": []
+}

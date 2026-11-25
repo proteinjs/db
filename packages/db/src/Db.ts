@@ -402,6 +402,7 @@ export class Db<R extends Record = Record> implements DbService<R> {
     }
 
     recordCopy = await this.tableWatcherRunner.runBeforeUpdateTableWatchers(table, recordCopy, qb, this.newHookDb());
+    await this.runColumnBeforeUpdateHooks(table, recordCopy);
     let recordUpdateCount: number;
     if (await this.updateTouchesEncryptedColumns(table, recordCopy)) {
       recordUpdateCount = await this.updateEncrypted(table, recordCopy, qb, driverOptions);
@@ -959,6 +960,16 @@ export class Db<R extends Record = Record> implements DbService<R> {
       const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
       if (column.options?.onAfterInsert) {
         await column.options.onAfterInsert(table, record, this.runAsSystem);
+      }
+    }
+  }
+
+  /** Update-side twin of {@link addColumnInsertHooks} — see `ColumnOptions.onBeforeUpdate`. */
+  private async runColumnBeforeUpdateHooks(table: Table<any>, record: any) {
+    for (const columnPropertyName in table.columns) {
+      const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
+      if (column.options?.onBeforeUpdate) {
+        await column.options.onBeforeUpdate(table, record, this.runAsSystem);
       }
     }
   }

@@ -446,6 +446,16 @@ export type ColumnOptions = {
    */
   onAfterInsert?: (table: Table<any>, insertObj: any & Record, runAsSystem: boolean) => Promise<void>;
   /**
+   * Called before an update's DML runs, after `updateValue`s and before-update table watchers, with
+   * the payload as it will be written. The update-side twin of `onBeforeInsert`: it runs where
+   * updates execute (`Db.update`, which `updateArrayMembership` and `updatePreserving` end in), once
+   * per update whichever rows the update selects, and on every update of the table — a column reads
+   * the payload to see whether the update concerns it (a field the payload leaves `undefined` is not
+   * being written). Throw to refuse the update: its own statement is not issued. The before-update
+   * table watchers have run by then, and what they wrote themselves stands outside a transaction.
+   */
+  onBeforeUpdate?: (table: Table<any>, updateObj: any, runAsSystem: boolean) => Promise<void>;
+  /**
    * Called after an id-targeted SINGLE-ROW filtered write (update or delete) on this table matched
    * ZERO rows in a NON-system context. A column that narrows row visibility by capability (e.g.
    * `SharedRecord`'s permission subquery) implements this to turn a silent 0 — which the caller
