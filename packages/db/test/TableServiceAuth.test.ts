@@ -283,6 +283,21 @@ describe('TableServiceAuth — default deny (no auth block)', () => {
       errorSpy.mockRestore();
     }
   });
+
+  it('asking whether a row is within the caller’s reach is a call for the server’s own code: the service refuses it, admin included, and a transaction does not queue it', async () => {
+    setUser(['admin']);
+    const table = new NoAuthTable();
+    const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    try {
+      expect(auth().canAccess('canReach', [table, 'x'])).toBe(false);
+    } finally {
+      errorSpy.mockRestore();
+    }
+    const notQueued = [{ name: 'canReach', args: [table, 'x'] }] as unknown as Parameters<TransactionRunner['run']>[0];
+    await expect(new TransactionRunner().run(notQueued)).rejects.toThrow(
+      /a transaction runs only the operations a transaction queues/
+    );
+  });
 });
 
 describe('TableServiceAuth — updateArrayMembership / updatePreserving (update parity)', () => {
