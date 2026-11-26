@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [0.2.43](https://github.com/proteinjs/db/compare/@proteinjs/db-encryption-driver-gcp-kms@0.2.42...@proteinjs/db-encryption-driver-gcp-kms@0.2.43) (2026-11-26)
+
+**Note:** Version bump only for package @proteinjs/db-encryption-driver-gcp-kms
+
+
+
+
+
 ## [0.2.42](https://github.com/proteinjs/db/compare/@proteinjs/db-encryption-driver-gcp-kms@0.2.41...@proteinjs/db-encryption-driver-gcp-kms@0.2.42) (2026-11-24)
 
 **Note:** Version bump only for package @proteinjs/db-encryption-driver-gcp-kms
