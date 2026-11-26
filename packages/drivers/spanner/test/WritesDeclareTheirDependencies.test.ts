@@ -206,6 +206,24 @@ describe('a write declares the rows it depends on; the server waits for them', (
     expect(await textOf(closed)).toBe('closed');
   }, 45_000);
 
+  test('a row open to a write is within the reach of a caller the table’s update door admits, and of no other', async () => {
+    const putAway = 'declared-row-put-away-read-only';
+    await getDbAsSystem().insert(table, { id: putAway, text: 'put away', visible: true, putAway: true } as any);
+    const doors = table.auth;
+    try {
+      // The caller's read does not show the row; the columns leave it open to a write, and the door admits the write.
+      expect(await db.get(table, { id: putAway })).toBeUndefined();
+      expect(await db.canReach(table, putAway)).toBe(true);
+
+      // The table read and never updated by this caller: the row is not theirs to write, so it is not within reach.
+      table.auth = { db: { query: 'authenticated' } };
+      expect(await db.get(table, { id: putAway })).toBeUndefined();
+      expect(await db.canReach(table, putAway)).toBe(false);
+    } finally {
+      table.auth = doors;
+    }
+  }, 30000);
+
   test('(c) a row that never exists: a plain failure at the db driver`s per-operation deadline — never a hang, never a silent OK; the operations did not run', async () => {
     const absent = 'declared-row-never';
     const child = 'declared-row-child-of-never';

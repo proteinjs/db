@@ -1,0 +1,10 @@
+{
+  "branch": "fix/a-writes-wait-asks-its-tables-service-doors",
+  "packages": ["db", "drivers/spanner"],
+  "suites": [
+    "packages/db/",
+    "packages/drivers/spanner/test/WritesDeclareTheirDependencies.test.ts",
+    "packages/drivers/spanner/test/InsertsDeclareTheRowsTheyReference.test.ts"
+  ],
+  "removes": []
+}

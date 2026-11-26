@@ -1,5 +1,5 @@
 import { Logger } from '@proteinjs/logger';
-import { Service } from '@proteinjs/service';
+import { Service, ServiceError } from '@proteinjs/service';
 import { UserAuth } from '@proteinjs/user-auth';
 import { isInstanceOf } from '@proteinjs/util';
 import { TableServiceAuth } from '../auth/TableServiceAuth';
@@ -16,6 +16,9 @@ import {
   getTransactionRunnerService,
 } from '../services/TransactionRunnerService';
 import { Operation, TRANSACTION_OPERATIONS } from './Transaction';
+
+/** A row a request declares it depends on, as the wait reads it: its id, and the table(s) the operations reference it in. */
+type DeclaredRow = { id: string; tables: Table<any>[] };
 
 export const getTransactionRunner = () =>
   typeof self === 'undefined' ? new TransactionRunner() : (getTransactionRunnerService() as TransactionRunner);
@@ -47,6 +50,14 @@ export const getTransactionRunner = () =>
  * the door's own words, before anything of it runs. A transaction the server's own code runs in process
  * (`Transaction.run` on the server) is not a service call: like every server-side write it answers to the
  * database doors alone.
+ *
+ * A ROW A PERSON'S TRANSACTION DECLARES IT DEPENDS ON IS READ BY THE WAIT, AND THE REQUEST IS HELD TO THE SERVICE
+ * DOOR, FOR A QUERY, OF EVERY TABLE SUCH A ROW IS READ FROM (asked as the table service asks it of a `get` of
+ * the row by its id): the table of the operation that targets the row; for a row an insert names through a
+ * reference column, the table that column names, or the table the record names beside it. One declared row
+ * whose table's door refuses the person refuses the whole request, in the door's own words, before the wait
+ * reads anything. Past that door the wait asks what it asks for any caller (`Db.canReach`): whether the row is
+ * there for them as a reader, then, of a caller the table's Db door admits to update it, as its writer.
  */
 export class TransactionRunner implements TransactionRunnerService {
   public serviceMetadata: Service['serviceMetadata'] = {
@@ -68,7 +79,7 @@ export class TransactionRunner implements TransactionRunnerService {
     }
 
     const db = getDb();
-    const afterRows = options?.afterRows ?? [];
+    const afterRows = TransactionRunner.afterRowsOf(options);
     if (afterRows.length > 0) {
       await this.awaitRows(ops, afterRows);
     }
@@ -106,22 +117,12 @@ export class TransactionRunner implements TransactionRunnerService {
       );
     }
 
-    const tablesById = TransactionRunner.rowsTheOperationsReference(ops);
-    const unknown = afterRows.filter((id) => !tablesById.has(id));
-    if (unknown.length > 0) {
-      throw new Error(
-        `TransactionRunner: afterRows names rows none of the operations reference (${unknown.join(', ')}) — the write was not run`
-      );
-    }
-
+    /** Per declared id, the (table, id) rows still absent. */
+    let waiting = TransactionRunner.declaredRows(ops, afterRows);
     const db = getDb();
     const boundMs = Db.getDefaultDbDriver().getOperationDeadlineMs();
     const started = Date.now();
     const deadline = started + boundMs;
-    /** Per declared id, the (table, id) rows still absent. */
-    let waiting: { id: string; tables: Table<any>[] }[] = afterRows
-      .filter((id, index) => afterRows.indexOf(id) === index)
-      .map((id) => ({ id, tables: tablesById.get(id)!.slice() }));
     let interval = TransactionRunner.FIRST_POLL_INTERVAL_MS;
     let polls = 0;
     for (;;) {
@@ -168,8 +169,10 @@ export class TransactionRunner implements TransactionRunnerService {
   /**
    * Whether the service layer may run a call for the session's person: `run` alone, for a signed-in person,
    * each operation admitted by its own table's service door (`TableServiceAuth`, which answers a refusal in
-   * the door's own words). A request that is not operations a `Transaction` queues is left to `run`, which
-   * refuses it by its own clause.
+   * the door's own words), and each row the request declares it depends on admitted by the door of every
+   * table the wait reads it from, as a `get` of that row by its id (`declaredRows`, the wait's own reading
+   * of the request). A declaration `declaredRows` refuses is refused here in the same words. A request that
+   * is not operations a `Transaction` queues is left to `run`, which refuses it by its own clause.
    */
   private static mayBeCalled(methodName: string, args: any[]): boolean {
     if (methodName !== 'run' || !UserAuth.isLoggedIn()) {
@@ -182,7 +185,49 @@ export class TransactionRunner implements TransactionRunnerService {
     }
 
     const tableServiceAuth = new TableServiceAuth();
-    return ops.every((op) => tableServiceAuth.canAccess(op.name, op.args));
+    if (!ops.every((op) => tableServiceAuth.canAccess(op.name, op.args))) {
+      return false;
+    }
+
+    let declared: DeclaredRow[];
+    try {
+      declared = TransactionRunner.declaredRows(ops, TransactionRunner.afterRowsOf(args[1]));
+    } catch (error) {
+      throw new ServiceError(error instanceof Error ? error.message : String(error));
+    }
+
+    return declared.every((row) =>
+      row.tables.every((table) => tableServiceAuth.canAccess('get', [table, { id: row.id }]))
+    );
+  }
+
+  /** The ids a request declares it depends on (`TransactionRunOptions.afterRows`), as `run` is handed them. */
+  private static afterRowsOf(options: unknown): string[] {
+    return (options as TransactionRunOptions | null | undefined)?.afterRows ?? [];
+  }
+
+  /**
+   * The rows a request declares it depends on, as the wait reads them: each declared id once, with the table(s)
+   * the operations reference it in (`rowsTheOperationsReference`). A request that declares none has none; a
+   * declared id none of the operations reference is refused by a plain clause. The wait and the service's gate
+   * both take the rows from here, so the tables whose doors the gate asks are the tables the wait reads.
+   */
+  private static declaredRows(ops: Operation<any>[], afterRows: string[]): DeclaredRow[] {
+    if (!(afterRows.length > 0)) {
+      return [];
+    }
+
+    const tablesById = TransactionRunner.rowsTheOperationsReference(ops);
+    const unknown = afterRows.filter((id) => !tablesById.has(id));
+    if (unknown.length > 0) {
+      throw new Error(
+        `TransactionRunner: afterRows names rows none of the operations reference (${unknown.join(', ')}) — the write was not run`
+      );
+    }
+
+    return afterRows
+      .filter((id, index) => afterRows.indexOf(id) === index)
+      .map((id) => ({ id, tables: tablesById.get(id)!.slice() }));
   }
 
   /**

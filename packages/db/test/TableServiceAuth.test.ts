@@ -6,7 +6,8 @@ import { Serializer } from '@proteinjs/serializer';
 import { QueryBuilderFactory } from '../src/QueryBuilderFactory';
 import { Table } from '../src/Table';
 import { withRecordColumns, Record } from '../src/Record';
-import { StringColumn } from '../src/Columns';
+import { DynamicReferenceColumn, ReferenceColumn, StringColumn } from '../src/Columns';
+import { Reference } from '../src/reference/Reference';
 import { TableAuth } from '../src/auth/TableAuth';
 import { TableServiceAuth } from '../src/auth/TableServiceAuth';
 import { HeldQueryOptions } from '../src/Db';
@@ -25,7 +26,8 @@ import { TransactionRunner } from '../src/transaction/TransactionRunner';
  *   here collapses into the generic run-service denial.
  *
  * - a transaction's operations are held to the same gate, each to its own table's door: the
- *   transaction runner's service declaration asks `TableServiceAuth` for every operation of a request
+ *   transaction runner's service declaration asks `TableServiceAuth` for every operation of a request,
+ *   and for the read of every row the request declares it waits for
  *
  * `UserAuth` reads from a static repo; tests stub it directly per identity — no server needed.
  */
@@ -118,6 +120,46 @@ class DbOnlyTable extends Table<Doc> {
   });
 }
 
+interface Note extends Record {
+  title: string;
+  /** A row of this table. */
+  under?: Reference<Note> | null;
+  /** A row of the table read through the Db alone (`DbOnlyTable`). */
+  about?: Reference<Doc> | null;
+  /** A row of the table the record names beside it (`onTable`). */
+  on?: Reference<Doc> | null;
+  onTable?: string | null;
+}
+
+/** A person's own rows, each able to name other rows: one of this table, one of `DbOnlyTable`, one of a table the row names. */
+class NamingRowsTable extends Table<Note> {
+  public name = 'naming_rows_test';
+  public auth: Table<Note>['auth'] = {
+    db: { all: 'authenticated' },
+    service: { all: 'authenticated' },
+  };
+  public columns = withRecordColumns<Note>({
+    title: new StringColumn('title'),
+    under: new ReferenceColumn<Note>('under', this.name, false),
+    about: new ReferenceColumn<Doc>('about', new DbOnlyTable().name, false),
+    on: new DynamicReferenceColumn<Doc>('on_row', 'on_table'),
+    onTable: new StringColumn('on_table'),
+  });
+}
+
+/** Written and deleted through the service by any signed-in person; the service declares no door for a read of it. */
+class WrittenNotReadTable extends Table<Doc> {
+  public name = 'written_not_read_test';
+  public auth: Table<Doc>['auth'] = {
+    db: { all: 'authenticated' },
+    service: { insert: 'authenticated', update: 'authenticated', delete: 'authenticated' },
+  };
+  public columns = withRecordColumns<Doc>({
+    title: new StringColumn('title'),
+    owner: new StringColumn('owner'),
+  });
+}
+
 type UserAuthInternals = {
   userRepo?: { getUser: () => { email: string; roles: string[] } };
   permissionRolesMapping?: { getRoles: (permission: string) => string[] | undefined };
@@ -136,6 +178,10 @@ const setMapping = (mapping: { [permission: string]: string[] }) => {
 };
 
 const auth = () => new TableServiceAuth();
+
+type RegistryInternals = { objectCache: { [qualifiedName: string]: unknown[] } };
+/** The tables the process declares, as `tableByName` reads them. */
+const registry = () => (SourceRepository.get() as unknown as RegistryInternals).objectCache;
 
 /** A denial must be a client-safe ServiceError naming the table and operation. */
 const expectDenied = (fn: () => unknown, message: string) => {
@@ -437,12 +483,13 @@ describe('a transaction is held, operation by operation, to each table’s own s
    * runner's own declaration the way the service layer reads any service's: its `canAccess` when it declares one,
    * else its door for every signed-in person.
    */
-  const mayRun = (ops: unknown[]): boolean => {
+  const mayRun = (ops: unknown[], options?: unknown): boolean => {
     const declared = new TransactionRunner().serviceMetadata?.auth as {
       canAccess?: (methodName: string, args: unknown[]) => boolean;
       allUsers?: boolean;
     };
-    return declared.canAccess ? declared.canAccess('run', [ops]) : !!declared.allUsers && UserAuth.isLoggedIn();
+    const args = options === undefined ? [ops] : [ops, options];
+    return declared.canAccess ? declared.canAccess('run', args) : !!declared.allUsers && UserAuth.isLoggedIn();
   };
 
   it('a person with no role: each write to a server-written table is refused in the door’s own words, and one such operation refuses the whole request', () => {
@@ -504,6 +551,93 @@ describe('a transaction is held, operation by operation, to each table’s own s
     expect(mayRun([])).toBe(false);
     expect(mayRun(aPersonsWrites)).toBe(false);
   });
+
+  it('a write’s wait is a read of each row it declares: that row’s table is asked for its own service door, and one that refuses the person refuses the whole request', () => {
+    const naming = new NamingRowsTable();
+    const dbOnly = new DbOnlyTable();
+    const readable = new ReadOnlyTable();
+    const written = new WrittenNotReadTable();
+    const row = (table: Table<any>, id: string) => new Reference<any>(table.name, id);
+    const insert = (record: Partial<Note>) => [
+      { name: 'insert', args: [naming, { id: 'new', title: 't', ...record }] },
+    ];
+    const refusedAt = (table: Table<any>) => `User is not authorized to query table: ${table.name}`;
+    const declared = registry()['@proteinjs/db/Table'];
+    registry()['@proteinjs/db/Table'] = [naming, dbOnly, readable, written];
+    try {
+      setUser([]);
+      // Rows of tables the person reads through the service: the table's own, and one the record names.
+      const readThroughTheService = insert({ under: row(naming, 'u'), on: row(dbOnly, 'r'), onTable: readable.name });
+      expect(mayRun(readThroughTheService, { afterRows: ['u', 'r'] })).toBe(true);
+      expect(mayRun([{ name: 'update', args: [naming, { id: 'u', title: 't2' }] }], { afterRows: ['u'] })).toBe(true);
+
+      // A row of a table the Db's own door admits the person to and the service's does not: the service's is
+      // asked, whether the table is the column's own, the one the record names, or the one the reference carries.
+      expect(new TableAuth().canPerform(dbOnly, 'query', 'db')).toBe(true);
+      for (const ops of [
+        insert({ about: row(dbOnly, 'd') }),
+        insert({ on: row(readable, 'd'), onTable: dbOnly.name }),
+        insert({ on: row(dbOnly, 'd') }),
+      ]) {
+        expectDenied(() => mayRun(ops, { afterRows: ['d'] }), refusedAt(dbOnly));
+        // The same row named and not waited for is read by no wait: the request is held as its operations are.
+        expect(mayRun(ops)).toBe(true);
+        expect(mayRun(ops, { afterRows: [] })).toBe(true);
+      }
+
+      // One such row among the rows a request declares refuses the request.
+      expectDenied(
+        () => mayRun(insert({ under: row(naming, 'u'), about: row(dbOnly, 'd') }), { afterRows: ['u', 'd'] }),
+        refusedAt(dbOnly)
+      );
+
+      // A row the operations name in two tables is read from both: each table's door is asked.
+      expectDenied(
+        () => mayRun(insert({ under: row(naming, 'x'), about: row(dbOnly, 'x') }), { afterRows: ['x'] }),
+        refusedAt(dbOnly)
+      );
+
+      // The row an operation targets is read by the wait like any other: its table's door for a read is asked
+      // too, whichever operation targets it.
+      for (const targeting of [
+        { name: 'update', args: [written, { id: 'w', title: 't' }] },
+        { name: 'updatePreserving', args: [written, { id: 'w', title: 't' }, []] },
+        { name: 'updateArrayMembership', args: [written, { recordId: 'w', columnPropertyName: 'title', ops: [] }] },
+        { name: 'delete', args: [written, { id: 'w' }] },
+      ]) {
+        expect(mayRun([targeting])).toBe(true);
+        expectDenied(() => mayRun([targeting], { afterRows: ['w'] }), refusedAt(written));
+      }
+
+      // A declaration the wait itself refuses is refused here in the same words, never passed on to be read: an
+      // id none of the operations name, a row of a table nobody declared, a declaration that is no list.
+      expectDenied(
+        () => mayRun(readThroughTheService, { afterRows: ['u', 'some-other-row'] }),
+        'TransactionRunner: afterRows names rows none of the operations reference (some-other-row) — the write was not run'
+      );
+      expectDenied(
+        () => mayRun(insert({ on: row(readable, 'd'), onTable: 'a_table_nobody_declared' }), { afterRows: ['d'] }),
+        'Unable to find table: a_table_nobody_declared'
+      );
+      let noList: any;
+      try {
+        mayRun(readThroughTheService, { afterRows: 'u' });
+      } catch (error) {
+        noList = error;
+      }
+      expect(noList?.name).toBe('ServiceError');
+
+      // The service's door admits an admin to that table, and so the wait's read of its row.
+      setUser(['admin']);
+      expect(mayRun(insert({ about: row(dbOnly, 'd') }), { afterRows: ['d'] })).toBe(true);
+    } finally {
+      if (declared) {
+        registry()['@proteinjs/db/Table'] = declared;
+      } else {
+        delete registry()['@proteinjs/db/Table'];
+      }
+    }
+  });
 });
 
 /**
@@ -515,8 +649,6 @@ describe('a transaction is held, operation by operation, to each table’s own s
  * column queries: `DbIsSystem.test.ts` holds those cases.)
  */
 describe('a query that comes through the service is a description of rows of the table asked', () => {
-  type RegistryInternals = { objectCache: { [qualifiedName: string]: unknown[] } };
-  const registry = () => (SourceRepository.get() as unknown as RegistryInternals).objectCache;
   let registered: unknown[] | undefined;
 
   const asked = new ProtectedColumnTable();
