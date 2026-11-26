@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.38.3](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.38.2...@proteinjs/db-driver-spanner@1.38.3) (2026-11-26)
+
+
+### Bug Fixes
+
+* **db:** a write's wait counts a row its caller can reach as a writer ([e780f73](https://github.com/proteinjs/db/commit/e780f732651315a1bc49a0683a6d4c8af6d521f0))
+
+
+
+
+
 ## [1.38.2](https://github.com/proteinjs/db/compare/@proteinjs/db-driver-spanner@1.38.1...@proteinjs/db-driver-spanner@1.38.2) (2026-11-24)
 
 

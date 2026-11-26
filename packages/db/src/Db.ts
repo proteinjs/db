@@ -254,6 +254,36 @@ export class Db<R extends Record = Record> implements DbService<R> {
   }
 
   /**
+   * Whether this Db's caller can reach one row of a table by its id: as a reader, or, when that read
+   * answers nothing, as a writer of it. A table's columns may hide from a read a row they leave open
+   * to a write (a column's `addToQuery` is handed the operation it is asked for); a write that depends
+   * on such a row has it there to write.
+   *
+   * The second question is the read by id an update of the row makes before it writes
+   * (`updateArrayMembership`, `updatePreserving`): the columns' queries for a write, as this Db's
+   * caller. It is asked only when the first found nothing, and only of a caller the table's update
+   * door admits. The answer is a yes or a no: no row is handed back.
+   *
+   * A call for the server's own code: the table service admits the calls it names (`TableServiceAuth`)
+   * and a `Transaction` queues the operations it names (`TRANSACTION_OPERATIONS`), and this is neither.
+   */
+  async canReach<T extends R>(table: Table<T>, id: string): Promise<boolean> {
+    if (await this.get(table, { id } as ObjectQuery<T>)) {
+      return true;
+    }
+
+    if (!this.runAsSystem && !this.auth.canPerform(table, 'update')) {
+      return false;
+    }
+
+    const qb = new QueryBuilderFactory().getQueryBuilder(table);
+    await this.addColumnQueries(table, qb, 'write');
+    qb.select({ fields: ['id'] as any });
+    qb.condition({ field: 'id', operator: '=', value: id as T[keyof T] });
+    return (await this._query(table, qb)).length > 0;
+  }
+
+  /**
    * Insert one row. Outside a transaction the insert is a transaction of its own, and
    * `options.retry` names how it is re-run when the database aborts it (`TransactionRetryPolicy`:
    * the driver's own road when omitted; a bounded policy for a best-effort write, past which the
