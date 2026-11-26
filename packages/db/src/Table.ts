@@ -384,6 +384,31 @@ export type EncryptedColumnConfig = {
   sortKey?: { revealPrefix: number };
 };
 
+/**
+ * Which rows an update writes, as a column's step before the write is handed them
+ * (`ColumnOptions.onBeforeUpdate`).
+ */
+export type UpdateRows = {
+  /**
+   * The id of the one row the update names, when it names its row by id: the record's own id, or a
+   * query written as an object that holds a string id. An update that names its rows by a builder,
+   * or by an object that holds no id, has none.
+   */
+  id?: string;
+  /**
+   * The update's own conditions: the caller's query, or the record's id, with the columns' queries
+   * for a write as this Db's caller. It is the update's own builder, so what a step adds at its
+   * root is ANDed into the conditions the update's rows are chosen by: a step narrows the rows an
+   * update writes here. Where the update is one statement, that is the statement's own WHERE, and
+   * the narrowing and the write are one. An update that writes an encrypted column chooses its rows
+   * by a read under these conditions and writes the rows it read, by id (ciphertext is written per
+   * row owner): there what a step adds rules the read. A condition a step adds is used as it is
+   * written: the columns' own query transforms have run by then, so a condition on an encrypted
+   * column would be compared with what is stored.
+   */
+  conditions: QueryBuilder<any>;
+};
+
 export type ColumnOptions = {
   unique?: { unique: boolean; indexName?: string };
   /**
@@ -453,8 +478,11 @@ export type ColumnOptions = {
    * the payload to see whether the update concerns it (a field the payload leaves `undefined` is not
    * being written). Throw to refuse the update: its own statement is not issued. The before-update
    * table watchers have run by then, and what they wrote themselves stands outside a transaction.
+   *
+   * `rows` says which rows the update writes ({@link UpdateRows}): the id of its one row when it
+   * names its row by id, and its own conditions, which a step may add to.
    */
-  onBeforeUpdate?: (table: Table<any>, updateObj: any, runAsSystem: boolean) => Promise<void>;
+  onBeforeUpdate?: (table: Table<any>, updateObj: any, runAsSystem: boolean, rows: UpdateRows) => Promise<void>;
   /**
    * Called after an id-targeted SINGLE-ROW filtered write (update or delete) on this table matched
    * ZERO rows in a NON-system context. A column that narrows row visibility by capability (e.g.
@@ -466,12 +494,17 @@ export type ColumnOptions = {
    * Scope is deliberately narrow: only single-row id targets fire it, so a legitimate multi-row
    * filtered write that matches nothing is never mis-flagged, and system-context maintenance
    * writes never reach it.
+   *
+   * `record` is the payload of the update that matched nothing, as it was to be written. A delete
+   * has none, and neither has a write whose own read found no row before its payload was made (a
+   * preserving update or a change of membership that finds no row to write).
    */
   onZeroRowFilteredWrite?: (
     table: Table<any>,
     id: string,
     operation: 'write' | 'delete',
-    runAsSystem: boolean
+    runAsSystem: boolean,
+    record?: any
   ) => Promise<void>;
   ui?: {
     hidden?: boolean;

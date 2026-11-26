@@ -22,6 +22,8 @@ export interface EncNote extends Record {
 export class EncNoteTable extends Table<EncNote> {
   /** A status its own column refuses at an update: for the case that a column's step runs before the write of encrypted columns too. */
   static readonly STATUS_ITS_COLUMN_REFUSES = 'refused-by-its-column';
+  /** A status its own column writes to active rows alone: the step adds that to the update's conditions. */
+  static readonly STATUS_FOR_ACTIVE_ROWS_ALONE = 'for-active-rows-alone';
   name = 'db_test_enc_note';
   columns: Table<EncNote>['columns'] = withRecordColumns<EncNote>({
     scope: new StringColumn('scope', {}, 36),
@@ -30,9 +32,12 @@ export class EncNoteTable extends Table<EncNote> {
     body: new StringColumn('body', { encrypted: {} }, 'MAX'),
     status: new StringColumn('status', {
       encrypted: false,
-      onBeforeUpdate: async (table, updateObj) => {
+      onBeforeUpdate: async (table, updateObj, _runAsSystem, rows) => {
         if (updateObj.status === EncNoteTable.STATUS_ITS_COLUMN_REFUSES) {
           throw new Error(`the status column refuses this update of ${table.name}`);
+        }
+        if (updateObj.status === EncNoteTable.STATUS_FOR_ACTIVE_ROWS_ALONE) {
+          rows.conditions.condition({ field: 'status', operator: '=', value: 'active' });
         }
       },
     }),

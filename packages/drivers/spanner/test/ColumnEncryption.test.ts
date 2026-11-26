@@ -149,7 +149,7 @@ describe('Column encryption: the transparent seam', () => {
     await db.delete(noteTable, { id: inserted.id });
   });
 
-  test("a column's own step before an update runs before the write of encrypted columns too: a refusal there leaves the row's ciphertext as it was", async () => {
+  test("a column's own step before an update runs before the write of encrypted columns too: a refusal there leaves the row's ciphertext as it was, and a condition the step adds rules the rows that are written", async () => {
     const inserted = await db.insert(noteTable, {
       scope: OWNER_A,
       title: 'Before',
@@ -173,6 +173,18 @@ describe('Column encryption: the transparent seam', () => {
     // An update its column lets through is written through the seam as before.
     expect(await db.update(noteTable, { id: inserted.id, title: 'After', status: 'archived' })).toBe(1);
     expect((await db.get(noteTable, { id: inserted.id })).title).toBe('After');
+
+    // A condition a column's step adds rules the rows this road writes too: the write of encrypted columns chooses
+    // its rows by a read under the update's conditions. The row is archived: nothing of the update is written.
+    const forActiveRowsAlone = EncNoteTable.STATUS_FOR_ACTIVE_ROWS_ALONE;
+    const archivedAtRest = await rawColumn(noteTable.name, inserted.id, 'title');
+    expect(await db.update(noteTable, { id: inserted.id, title: 'Not written', status: forActiveRowsAlone })).toBe(0);
+    expect(await rawColumn(noteTable.name, inserted.id, 'title')).toBe(archivedAtRest);
+    expect((await db.get(noteTable, { id: inserted.id })).status).toBe('archived');
+    // An active row is written.
+    await db.update(noteTable, { id: inserted.id, status: 'active' });
+    expect(await db.update(noteTable, { id: inserted.id, title: 'Written', status: forActiveRowsAlone })).toBe(1);
+    expect((await db.get(noteTable, { id: inserted.id })).title).toBe('Written');
 
     await db.delete(noteTable, { id: inserted.id });
   });

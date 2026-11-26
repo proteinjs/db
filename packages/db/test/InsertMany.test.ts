@@ -1,5 +1,5 @@
 import { SourceRepository } from '@proteinjs/reflection';
-import { Statement } from '@proteinjs/db-query';
+import { Condition, QueryBuilder, Statement } from '@proteinjs/db-query';
 import { Db, DbDriver, DbDriverDmlStatementConfig } from '../src/Db';
 import { Table } from '../src/Table';
 import { Record, RecordSerializer, withRecordColumns } from '../src/Record';
@@ -302,9 +302,11 @@ describe('Db.insertMany', () => {
  * `Db.update`'s contract for a column's own step before the write (`ColumnOptions.onBeforeUpdate`, the
  * update-side twin of the before-insert hook pinned above), against the same recording driver: the step runs
  * once an update, after the columns' update values and the before-update table watcher, with the payload as it
- * is written and the caller's authority, on every update of the table; a step that throws refuses the update
- * and its own statement is not issued; the two roads that end in `update` reach it. Joined here: this file already holds
- * the recording driver and the transaction context these cases stand on.
+ * is written and the caller's authority, on every update of the table; it is told which rows the update writes
+ * (the id of its one row when it names its row by id, and its own conditions, which a step may add to); a step
+ * that throws refuses the update and its own statement is not issued; the two roads that end in `update` reach
+ * it; and a write that matched nothing hands the column's own step the payload. Joined here: this file already
+ * holds the recording driver and the transaction context these cases stand on.
  */
 
 interface Page extends Record {
@@ -316,15 +318,28 @@ interface Page extends Record {
 }
 
 type StepEvent = {
-  phase: 'watcher.before' | 'column.step' | 'watcher.after';
+  phase: 'watcher.before' | 'column.step' | 'column.matched-nothing' | 'watcher.after';
   /** The column whose step it is. */
   column?: 'title' | 'stamp';
   payload: Partial<Page>;
   asSystem?: boolean;
+  /** The id of the one row the update names, as the step was told it: null when it was told none. */
+  rowId?: string | null;
+  /** The update's own conditions as the step found them: each as [field, operator, value], by field. */
+  where?: [string, string, unknown][];
 };
 const steps: StepEvent[] = [];
 /** The payloads the title column's step refuses: set by a case, cleared before each. */
 let refused: (payload: Partial<Page>) => boolean = () => false;
+/** A condition the title column's step adds to the update's own conditions: set by a case, cleared before each. */
+let narrowedBy: Condition<Page> | undefined;
+/** The conditions a builder holds, each as [field, operator, value], by field. */
+const whereOf = (qb: QueryBuilder<any>): [string, string, unknown][] =>
+  (qb.graph.nodes() as string[])
+    .map((nodeId) => qb.graph.node(nodeId))
+    .filter((node) => node?.type === 'CONDITION')
+    .map((node): [string, string, unknown] => [node.field, node.operator, node.value])
+    .sort(([a], [b]) => a.localeCompare(b));
 
 class PageTable extends Table<Page> {
   public name = 'update_step_page';
@@ -332,21 +347,50 @@ class PageTable extends Table<Page> {
   public auth: Table<Page>['auth'] = { db: { all: 'public' } };
   public columns = withRecordColumns<Page>({
     title: new StringColumn('title', {
-      onBeforeUpdate: async (table, updateObj, runAsSystem) => {
-        steps.push({ phase: 'column.step', column: 'title', payload: { ...updateObj }, asSystem: runAsSystem });
+      onBeforeUpdate: async (table, updateObj, runAsSystem, rows) => {
+        steps.push({
+          phase: 'column.step',
+          column: 'title',
+          payload: { ...updateObj },
+          asSystem: runAsSystem,
+          rowId: rows.id ?? null,
+          where: whereOf(rows.conditions),
+        });
+        if (narrowedBy) {
+          rows.conditions.condition(narrowedBy);
+        }
         if (refused(updateObj)) {
           throw new Error(`the title column refuses this update of ${table.name}`);
         }
+      },
+      // The step of a write that matched nothing: this suite's driver answers every update with no row.
+      onZeroRowFilteredWrite: async (_table, id, operation, runAsSystem, record) => {
+        steps.push({
+          phase: 'column.matched-nothing',
+          column: 'title',
+          payload: { ...record },
+          asSystem: runAsSystem,
+          rowId: `${operation}:${id}`,
+        });
       },
     }),
     stamp: new StringColumn('stamp', {
       updateValue: async () => 'stamped',
       // A second column with a step of its own: every declaring column's step runs, in the table's column order.
+      // Declared with three arguments: a step that does not ask about the rows.
       onBeforeUpdate: async (_table, updateObj, runAsSystem) => {
         steps.push({ phase: 'column.step', column: 'stamp', payload: { ...updateObj }, asSystem: runAsSystem });
       },
     }),
-    locked: new StringColumn('locked', { immutable: true }),
+    locked: new StringColumn('locked', {
+      immutable: true,
+      // The table's own rule for a person's write: it is among the conditions a step finds.
+      addToQuery: async (qb, runAsSystem, operation) => {
+        if (!runAsSystem && operation === 'write') {
+          qb.condition({ field: 'locked', operator: 'IS NULL' });
+        }
+      },
+    }),
     body: new ObjectColumn<Page['body']>('body'),
     parts: new ReferenceArrayColumn<Page>('parts', 'update_step_page', false),
   });
@@ -411,18 +455,21 @@ describe("Db.update: a column's own step before the write", () => {
   beforeEach(() => {
     steps.length = 0;
     refused = () => false;
+    narrowedBy = undefined;
   });
 
-  test("an update runs each declaring column's step once, in column order, after the update values and the before-update watcher, with the payload as it is written and the caller's authority, and then issues its statement", async () => {
+  test("an update runs each declaring column's step once, in column order, after the update values and the before-update watcher, with the payload as it is written, the caller's authority and the rows it writes, and then issues its statement", async () => {
     const driver = new RecordingDriver();
 
     await pageDbOver(driver, false).update(pageTable, { id: 'p1', title: 'new', locked: 'never written' });
 
-    // Both declaring columns' steps, in the table's column order, between the watcher's two hooks.
+    // Both declaring columns' steps, in the table's column order, between the watcher's two hooks. The write
+    // matched no row (this suite's driver answers none), so the title column's step for that ran after it.
     expect(steps.map((step) => [step.phase, step.column])).toEqual([
       ['watcher.before', undefined],
       ['column.step', 'title'],
       ['column.step', 'stamp'],
+      ['column.matched-nothing', 'title'],
       ['watcher.after', undefined],
     ]);
     const [step] = columnSteps();
@@ -436,11 +483,71 @@ describe("Db.update: a column's own step before the write", () => {
     const bound = Object.values(driver.dml[0].params);
     expect(bound).toEqual(expect.arrayContaining(['new', 'stamped+watched']));
     expect(bound).not.toContain('never written');
+    // The rows it writes, as the step is told them: the id of its one row, and its own conditions (the id and the
+    // table's own rule for a person's write).
+    expect([step.rowId, step.where]).toEqual([
+      'p1',
+      [
+        ['id', '=', 'p1'],
+        ['locked', 'IS NULL', null],
+      ],
+    ]);
+    // The write that matched nothing hands the column's step for that the payload as it was to be written.
+    const [matchedNothing] = steps.filter((each) => each.phase === 'column.matched-nothing');
+    expect([matchedNothing.rowId, matchedNothing.asSystem]).toEqual(['write:p1', false]);
+    expect(matchedNothing.payload).toMatchObject({ id: 'p1', title: 'new', stamp: 'stamped+watched' });
+    expect(matchedNothing.payload).not.toHaveProperty('locked');
 
     // The system's update is told so; an update of the rows a query selects is one update and one step.
     steps.length = 0;
     await pageDbOver(new RecordingDriver(), true).update(pageTable, { title: 'every' }, { stamp: 'old' });
-    expect(columnSteps().map((each) => [each.payload.title, each.asSystem])).toEqual([['every', true]]);
+    expect(columnSteps().map((each) => [each.payload.title, each.asSystem, each.rowId, each.where])).toEqual([
+      ['every', true, null, [['stamp', '=', 'old']]],
+    ]);
+
+    // An update names its one row by the record's id, or by a query written as an object that holds an id. Rows
+    // named by a builder are named by conditions, whatever id the record holds beside it.
+    const toldOf = async (update: (db: Db<Page>) => Promise<number>) => {
+      steps.length = 0;
+      await update(pageDbOver(new RecordingDriver(), false));
+      return columnSteps().map((each) => each.rowId);
+    };
+    expect(await toldOf((db) => db.update(pageTable, { title: 'by a query that holds an id' }, { id: 'p2' }))).toEqual([
+      'p2',
+    ]);
+    expect(
+      await toldOf((db) => db.update(pageTable, { title: 'by a query that holds none' }, { title: 'old' }))
+    ).toEqual([null]);
+    expect(
+      await toldOf((db) =>
+        db.update(
+          pageTable,
+          { id: 'p1', title: 'by a builder' },
+          new QueryBuilder<Page>(pageTable.name).condition({ field: 'id', operator: 'IN', value: ['p1'] })
+        )
+      )
+    ).toEqual([null]);
+    // An id is the row's when it is one of the query's own conditions: an object that only inherits one names
+    // its rows by the conditions it does hold.
+    const inheritsAnId = Object.assign(Object.create({ id: 'p3' }), { title: 'old' });
+    expect(
+      await toldOf((db) => db.update(pageTable, { title: 'by a query that inherits an id' }, inheritsAnId))
+    ).toEqual([null]);
+    // No query is no query, however it is said: the record's id names the row.
+    expect(
+      await toldOf((db) =>
+        db.update(pageTable, { id: 'p4', title: 'with a query that is null' }, null as unknown as undefined)
+      )
+    ).toEqual(['p4']);
+
+    // The conditions a step is handed are the update's own: what a step adds is in that update's statement.
+    steps.length = 0;
+    narrowedBy = { field: 'stamp', operator: '=', value: 'only this stamp' };
+    const narrowed = new RecordingDriver();
+    await pageDbOver(narrowed, false).update(pageTable, { id: 'p1', title: 'narrowed' });
+    expect(narrowed.dml).toHaveLength(1);
+    expect(narrowed.dml[0].sql).toMatch(/WHERE .*`stamp` = /);
+    expect(Object.values(narrowed.dml[0].params)).toEqual(expect.arrayContaining(['narrowed', 'only this stamp']));
   });
 
   test("a step that throws refuses the update: the caller gets the step's own error, the update's own statement is not issued and nothing after the write runs", async () => {
@@ -502,6 +609,17 @@ describe("Db.update: a column's own step before the write", () => {
     refused = () => true;
     await expect(addPart('c')).rejects.toThrow('the title column refuses this update of update_step_page');
     await expect(typeOver()).rejects.toThrow('the title column refuses this update of update_step_page');
+    expect(driver.dml).toHaveLength(2);
+
+    // A preserving update whose own read finds no row has made no payload: the step of a write that matched
+    // nothing is told the row and handed none.
+    steps.length = 0;
+    refused = () => false;
+    driver.rows = [];
+    expect(await typeOver()).toBe(0);
+    expect(
+      steps.filter((each) => each.phase === 'column.matched-nothing').map((each) => [each.rowId, each.payload])
+    ).toEqual([['write:p1', {}]]);
     expect(driver.dml).toHaveLength(2);
   });
 });

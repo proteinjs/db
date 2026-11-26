@@ -4,6 +4,7 @@ import { Loadable, SourceRepository } from '@proteinjs/reflection';
 import {
   Column,
   Table,
+  UpdateRows,
   getColumnPropertyName,
   tableByName,
   addDefaultFieldValues,
@@ -401,8 +402,11 @@ export class Db<R extends Record = Record> implements DbService<R> {
       qb.condition({ field: 'id', operator: '=', value: recordCopy.id as T[keyof T] });
     }
 
+    // The one row these conditions name, when they name a row by id: read off what they were built from.
+    const rowId = this.singleRowIdTarget(recordCopy, query);
+
     recordCopy = await this.tableWatcherRunner.runBeforeUpdateTableWatchers(table, recordCopy, qb, this.newHookDb());
-    await this.runColumnBeforeUpdateHooks(table, recordCopy);
+    await this.runColumnBeforeUpdateHooks(table, recordCopy, { id: rowId, conditions: qb });
     let recordUpdateCount: number;
     if (await this.updateTouchesEncryptedColumns(table, recordCopy)) {
       recordUpdateCount = await this.updateEncrypted(table, recordCopy, qb, driverOptions);
@@ -419,11 +423,8 @@ export class Db<R extends Record = Record> implements DbService<R> {
         );
       recordUpdateCount = await this.dbDriver.runDml(generateUpdate, this.transactionForDriver(), driverOptions);
     }
-    if (!this.runAsSystem && recordUpdateCount === 0) {
-      const id = this.singleRowIdTarget(record, query);
-      if (id !== undefined) {
-        await this.runZeroRowFilteredWriteHooks(table, id, 'write');
-      }
+    if (!this.runAsSystem && recordUpdateCount === 0 && rowId !== undefined) {
+      await this.runZeroRowFilteredWriteHooks(table, rowId, 'write', recordCopy);
     }
     await this.tableWatcherRunner.runAfterUpdateTableWatchers(
       table,
@@ -965,11 +966,11 @@ export class Db<R extends Record = Record> implements DbService<R> {
   }
 
   /** Update-side twin of {@link addColumnInsertHooks} — see `ColumnOptions.onBeforeUpdate`. */
-  private async runColumnBeforeUpdateHooks(table: Table<any>, record: any) {
+  private async runColumnBeforeUpdateHooks(table: Table<any>, record: any, rows: UpdateRows) {
     for (const columnPropertyName in table.columns) {
       const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
       if (column.options?.onBeforeUpdate) {
-        await column.options.onBeforeUpdate(table, record, this.runAsSystem);
+        await column.options.onBeforeUpdate(table, record, this.runAsSystem, rows);
       }
     }
   }
@@ -983,21 +984,27 @@ export class Db<R extends Record = Record> implements DbService<R> {
    * an `ObjectQuery`.
    */
   private singleRowIdTarget<T extends R>(record?: Partial<T>, query?: Query<T>): string | undefined {
-    if (query === undefined) {
+    if (!query) {
       return typeof record?.id === 'string' ? record.id : undefined;
     }
     if (isInstanceOf(query, QueryBuilder)) {
       return undefined;
     }
     const objectQuery = query as ObjectQuery<T>;
-    return typeof objectQuery.id === 'string' ? objectQuery.id : undefined;
+    const isAConditionOfTheQuery = Object.prototype.propertyIsEnumerable.call(objectQuery, 'id');
+    return isAConditionOfTheQuery && typeof objectQuery.id === 'string' ? objectQuery.id : undefined;
   }
 
-  private async runZeroRowFilteredWriteHooks(table: Table<any>, id: string, operation: 'write' | 'delete') {
+  private async runZeroRowFilteredWriteHooks(
+    table: Table<any>,
+    id: string,
+    operation: 'write' | 'delete',
+    record?: any
+  ) {
     for (const columnPropertyName in table.columns) {
       const column = (table.columns as any)[columnPropertyName] as Column<any, any>;
       if (column.options?.onZeroRowFilteredWrite) {
-        await column.options.onZeroRowFilteredWrite(table, id, operation, this.runAsSystem);
+        await column.options.onZeroRowFilteredWrite(table, id, operation, this.runAsSystem, record);
       }
     }
   }
